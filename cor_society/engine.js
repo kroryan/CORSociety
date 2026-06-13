@@ -349,14 +349,12 @@
           return society
         },
         ensureKey(society, state) {
-          let characterCount = state && state.characters ? Object.keys(state.characters).length : 0
-          let dynastyCount = state && state.dynasties ? Object.keys(state.dynasties).length : 0
           let societyDynastyCount = society && society.dynasties ? Object.keys(society.dynasties).length : 0
           let houseCount = society && society.houses ? Object.keys(society.houses).length : 0
+          let currentId = state && state.current ? state.current.id : 'none'
           return [
             this.monthKey(state || {}),
-            characterCount,
-            dynastyCount,
+            currentId,
             societyDynastyCount,
             houseCount,
             this.version
@@ -1678,26 +1676,32 @@
           ;(current.householdCharacterIds || []).forEach((characterId) => {
             household[characterId] = true
           })
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) {
-              continue
+          if (state.dynasties) {
+            for (let dynastyId in state.dynasties) {
+              if (!state.dynasties.hasOwnProperty(dynastyId) || dynastyId === playerDynastyId) {
+                continue
+              }
+              let dynasty = state.dynasties[dynastyId]
+              if (!dynasty || !dynasty.memberIds) continue
+              dynasty.memberIds.forEach((characterId) => {
+                let character = state.characters[characterId]
+                if (!character || character.isDead || !character.dynastyId) {
+                  return
+                }
+                if (character.corSocietySlaveMarket && character.corSocietySlaveActive === false) {
+                  return
+                }
+                if (household[characterId] && character.dynastyId === playerDynastyId) {
+                  return
+                }
+                character.id = character.id || characterId
+                let houseId = character.corSocietyHouseId && society && society.houses && society.houses[character.corSocietyHouseId]
+                  ? character.corSocietyHouseId
+                  : character.dynastyId
+                result[houseId] = result[houseId] || []
+                result[houseId].push(character)
+              })
             }
-            let character = state.characters[characterId]
-            if (!character || character.isDead || !character.dynastyId || character.dynastyId === playerDynastyId) {
-              continue
-            }
-            if (character.corSocietySlaveMarket && character.corSocietySlaveActive === false) {
-              continue
-            }
-            if (household[characterId] && character.dynastyId === playerDynastyId) {
-              continue
-            }
-            character.id = character.id || characterId
-            let houseId = character.corSocietyHouseId && society && society.houses && society.houses[character.corSocietyHouseId]
-              ? character.corSocietyHouseId
-              : character.dynastyId
-            result[houseId] = result[houseId] || []
-            result[houseId].push(character)
           }
           return result
         },
@@ -3702,19 +3706,16 @@
           })
         },
         findPaternityChild(state, record) {
+          let mother = state.characters[record.motherId]
+          if (!mother || !mother.childrenIds) return false
           let best = false
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) {
-              continue
-            }
+          for (let i = 0; i < mother.childrenIds.length; i++) {
+            let characterId = mother.childrenIds[i]
             let child = state.characters[characterId]
             if (!child || child.isDead || child.corSocietyPaternityId) {
               continue
             }
             child.id = child.id || characterId
-            if (!this.sameCharacterId(child.motherId, record.motherId)) {
-              continue
-            }
             if (!this.sameCharacterId(child.fatherId, record.biologicalFatherId) && !this.sameCharacterId(child.fatherId, record.officialFatherId)) {
               continue
             }
@@ -4599,50 +4600,54 @@
           }
           let currentDynastyId = this.currentCharacterDynastyId(state)
           let added = false
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) continue
-            let character = state.characters[characterId]
-            if (!character || character.isDead || character.corSocietySlave || !(parentIds[character.fatherId] || parentIds[character.motherId])) continue
-            let parentRecord = parentIds[character.fatherId] || parentIds[character.motherId]
-            let age = this.age(character, state)
-            if (age > 16) continue
-            let origin = parentRecord.origin || (state.characters[parentRecord.characterId] && state.characters[parentRecord.characterId].corSocietySlaveOrigin) || this.randomSlaveOrigin()
-            try {
-              daapi.updateCharacter({
+          Object.keys(parentIds).forEach((parentId) => {
+            let parent = state.characters[parentId]
+            if (!parent || !parent.childrenIds) return
+            parent.childrenIds.forEach((characterId) => {
+              let character = state.characters[characterId]
+              if (!character || character.isDead || character.corSocietySlave) return
+              let parentRecord = parentIds[character.fatherId] || parentIds[character.motherId]
+              if (!parentRecord) return
+              let age = this.age(character, state)
+              if (age > 16) return
+              let origin = parentRecord.origin || (state.characters[parentRecord.characterId] && state.characters[parentRecord.characterId].corSocietySlaveOrigin) || this.randomSlaveOrigin()
+              try {
+                daapi.updateCharacter({
+                  characterId,
+                  character: {
+                    dynastyId: currentDynastyId || character.dynastyId,
+                    corSocietySlave: true,
+                    corSocietySlaveActive: true,
+                    corSocietySlaveType: 'labor',
+                    corSocietySlaveLevel: 1,
+                    corSocietySlaveOwnerHouseId: currentDynastyId || '',
+                    corSocietySlaveOrigin: origin,
+                    corSocietySlaveTask: 'labor',
+                    corSocietySlaveSavings: 0,
+                    corSocietyOrigin: 'enslaved_dependant',
+                    flagCannotMarry: true,
+                    flagDoNotCull: true
+                  }
+                })
+              } catch (err) {
+                console.warn(err)
+                return
+              }
+              let updated = (daapi.getState().characters || {})[characterId] || { ...character, id: characterId }
+              records = records.filter((record) => !this.sameCharacterId(record.characterId, characterId))
+              records.push(this.playerSlaveRecordFromCharacter({
+                key: 'slave_' + this.safeId(characterId),
                 characterId,
-                character: {
-                  dynastyId: currentDynastyId || character.dynastyId,
-                  corSocietySlave: true,
-                  corSocietySlaveActive: true,
-                  corSocietySlaveType: 'labor',
-                  corSocietySlaveLevel: 1,
-                  corSocietySlaveOwnerHouseId: currentDynastyId || '',
-                  corSocietySlaveOrigin: origin,
-                  corSocietySlaveTask: 'labor',
-                  corSocietySlaveSavings: 0,
-                  corSocietyOrigin: 'enslaved_dependant',
-                  flagCannotMarry: true,
-                  flagDoNotCull: true
-                }
-              })
-            } catch (err) {
-              console.warn(err)
-              continue
-            }
-            let updated = (daapi.getState().characters || {})[characterId] || { ...character, id: characterId }
-            records = records.filter((record) => !this.sameCharacterId(record.characterId, characterId))
-            records.push(this.playerSlaveRecordFromCharacter({
-              key: 'slave_' + this.safeId(characterId),
-              characterId,
-              type: 'labor',
-              level: 1,
-              age,
-              origin,
-              task: 'labor',
-              savings: 0
-            }, updated, state))
-            added = true
-          }
+                type: 'labor',
+                level: 1,
+                age,
+                origin,
+                task: 'labor',
+                savings: 0
+              }, updated, state))
+              added = true
+            })
+          })
           society.playerSlaves = records
           if (added) {
             this.log(society, 'A child born to household slaves is recorded in the household slave list.', 'birth')
@@ -5230,10 +5235,9 @@
           }
           ;(house.memberIds || []).forEach(add)
           ;(house.notableIds || []).forEach(add)
-          for (let characterId in state.characters) {
-            if (state.characters.hasOwnProperty(characterId)) {
-              add(characterId)
-            }
+          let dynastyId = this.gameDynastyIdForHouse(house)
+          if (dynastyId && state.dynasties && state.dynasties[dynastyId] && state.dynasties[dynastyId].memberIds) {
+            state.dynasties[dynastyId].memberIds.forEach(add)
           }
           house.memberIds = ids
           house.notableIds = ids
@@ -13066,24 +13070,26 @@
             list.push(characterId)
           }
           ;(character.childrenIds || []).forEach((childId) => addUnique(relatives.children, childId))
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) {
-              continue
-            }
-            let other = state.characters[characterId]
-            if (!other || other.isDead) {
-              continue
-            }
-            other.id = other.id || characterId
-            if (this.sameCharacterId(other.fatherId, id) || this.sameCharacterId(other.motherId, id)) {
-              addUnique(relatives.children, other.id)
-            }
-            if (!this.sameCharacterId(other.id, id) && (
-              (character.fatherId && this.sameCharacterId(other.fatherId, character.fatherId)) ||
-              (character.motherId && this.sameCharacterId(other.motherId, character.motherId))
-            )) {
-              addUnique(relatives.siblings, other.id)
-            }
+          let spouse = state.characters[character.spouseId]
+          if (spouse && spouse.childrenIds) {
+            spouse.childrenIds.forEach((childId) => {
+              let child = state.characters[childId]
+              if (child && (this.sameCharacterId(child.fatherId, id) || this.sameCharacterId(child.motherId, id))) {
+                addUnique(relatives.children, childId)
+              }
+            })
+          }
+          let father = state.characters[character.fatherId]
+          if (father && father.childrenIds) {
+            father.childrenIds.forEach((childId) => {
+              if (!this.sameCharacterId(childId, id)) addUnique(relatives.siblings, childId)
+            })
+          }
+          let mother = state.characters[character.motherId]
+          if (mother && mother.childrenIds) {
+            mother.childrenIds.forEach((childId) => {
+              if (!this.sameCharacterId(childId, id)) addUnique(relatives.siblings, childId)
+            })
           }
           return relatives
         },
@@ -13244,22 +13250,17 @@
           this.applyAttributedCharacterPortraitOverlays(state)
         },
         hasActiveWardrobeOutfits(state) {
-          if (!state || !state.characters) {
+          if (!state || !state.current || !state.current.householdCharacterIds) {
             return false
           }
-          let count = Object.keys(state.characters).length
-          let month = this.monthKey(state)
-          if (this.wardrobeOutfitCache && this.wardrobeOutfitCache.count === count && this.wardrobeOutfitCache.month === month) {
-            return !!this.wardrobeOutfitCache.active
-          }
           let active = false
-          for (let characterId in state.characters) {
-            if (state.characters.hasOwnProperty(characterId) && state.characters[characterId] && state.characters[characterId].corSocietyOutfit) {
+          for (let i = 0; i < state.current.householdCharacterIds.length; i++) {
+            let characterId = state.current.householdCharacterIds[i]
+            if (state.characters[characterId] && state.characters[characterId].corSocietyOutfit) {
               active = true
               break
             }
           }
-          this.wardrobeOutfitCache = { count, month, active }
           return active
         },
         restoreClearedPortraitOverlays(state) {
