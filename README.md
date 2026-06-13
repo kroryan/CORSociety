@@ -28,7 +28,7 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 - Custom Roman house shields for the player and NPC houses, including a configurable player shield.
 - Bundled vanilla-style and other-mod actions so Roman Society can be installed as one package instead of requiring several separate mods.
 - Integrated Bank of Rome, Coemptio matchmaking, and Household Slaves systems adapted into Society instead of requiring separate legacy installs.
-- Real slave characters in the Society slave order, with origins, owners, portraits, cooldown-limited household tasks, directed child education, market purchases, capture opportunities, NPC house ownership, self-purchase savings, family rescue attempts, slave-to-slave marriages, children, and manumission into their own Freedmen house.
+- Real slave characters in the Society slave order, with origins, owners, portraits, cooldown-limited household tasks, directed child education, market purchases, capture opportunities, NPC house ownership, self-purchase savings, family rescue attempts, slave-to-slave marriages, children, manumission into their own Freedmen house, and legitimization flow for eligible household bastards.
 - Bank of Rome emergency credit can appear when the household cash goes negative, giving the player a loan route before forced sales become unavoidable.
 - NPC houses can borrow from the bank, buy and manage slaves, seek marriages, and suffer consequences from hostile social actions; cheat-style systems are not used for NPC simulation.
 - Android-focused safety rules: old unstable Society-only data can be repaired, migrated, or discarded when needed to protect loading performance and save stability.

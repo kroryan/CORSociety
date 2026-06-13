@@ -1025,10 +1025,11 @@
           if (method === 'assignSlaveTask') return this.effectLine(['changes future household slave output', 'no immediate stats change'])
           if (method === 'openSlaveEducationTargets') return 'Consequences: selects a child under 13 for future education ticks; no immediate stats change.'
           if (method === 'setSlaveEducationTarget') return this.effectLine(['sets pupil for education task', 'future ticks improve skills and may add education traits'])
-          if (method === 'privateCompanySlave') return this.effectLine(['+1 prestige', '+small personal relation', '+2 slave savings', 'risk of illegitimate child (female, age 16-42)', '5 month cooldown if no pregnancy'])
+          if (method === 'privateCompanySlave') return this.effectLine(['+1 prestige', '+small personal relation', '+2 slave savings', 'risk of illegitimate child (female, age 10-42)', '5 month cooldown'])
           if (method === 'openSlaveMarriageCandidates') return 'Consequences: chooses another owned household slave; no stats change yet.'
           if (method === 'marryOwnedSlaves') return this.effectLine(['creates spouse link between two owned slaves', 'future slave-spouse pregnancy may occur', 'no family alliance'])
           if (method === 'acceptSlaveSelfPurchase') return this.effectLine(['cash payment to your household', 'manumits slave into their own Freedmen house'])
+          if (method === 'legitimizeSlaveBastard') return this.effectLine(['cash, prestige, and influence cost', 'removes slave status', 'moves child into the non-slave father dynasty'])
           if (method === 'acceptMatchmakerCandidate') return this.effectLine(['cash fee', 'performs vanilla marriage if still valid', 'candidate remains a real Society character'])
           if (method === 'declineMatchmakerCandidates') return 'Consequences: returns without choosing; candidates remain real Society characters.'
           if (method === 'offerPatronage') {
@@ -3055,6 +3056,9 @@
             let patch = {
               corSocietyTrueFatherId: record.biologicalFatherId,
               corSocietyOfficialFatherId: record.officialFatherId,
+              corSocietyTrueMotherId: record.motherId,
+              corSocietyBastard: true,
+              corSocietyIllegitimate: true,
               corSocietyPaternityDiscovered: !!record.discovered
             }
             if (!record.discovered) {
@@ -3074,24 +3078,26 @@
               let currentDynastyId = this.currentCharacterDynastyId(state)
               let mother = state.characters[record.motherId]
               let origin = (mother && mother.corSocietySlaveOrigin) || this.randomSlaveOrigin()
+              let privatePatch = {
+                dynastyId: currentDynastyId || child.dynastyId,
+                corSocietySlave: true,
+                corSocietySlaveActive: true,
+                corSocietySlaveType: 'labor',
+                corSocietySlaveLevel: 1,
+                corSocietySlaveOwnerHouseId: currentDynastyId || '',
+                corSocietySlaveOrigin: origin,
+                corSocietySlaveTask: 'labor',
+                corSocietySlaveSavings: 0,
+                corSocietyOrigin: 'private_company_bastard',
+                flagCannotMarry: true,
+                flagDoNotCull: true
+              }
               try {
                 daapi.updateCharacter({
                   characterId: child.id,
-                  character: {
-                    dynastyId: currentDynastyId || child.dynastyId,
-                    corSocietySlave: true,
-                    corSocietySlaveActive: true,
-                    corSocietySlaveType: 'labor',
-                    corSocietySlaveLevel: 1,
-                    corSocietySlaveOwnerHouseId: currentDynastyId || '',
-                    corSocietySlaveOrigin: origin,
-                    corSocietySlaveTask: 'labor',
-                    corSocietySlaveSavings: 0,
-                    corSocietyOrigin: 'private_company_bastard',
-                    flagCannotMarry: true,
-                    flagDoNotCull: true
-                  }
+                  character: privatePatch
                 })
+                Object.assign(child, privatePatch)
               } catch (err) {
                 console.warn(err)
               }
@@ -3683,16 +3689,21 @@
           if (!slave || slave.isDead) {
             return false
           }
+          slave.id = slave.id || record.characterId
           let isFemale = !this.characterIsMale(slave)
           if (!isFemale) {
             return false
           }
           let age = this.age(slave, state)
-          if (age < 16 || age > 42 || slave.flagCannotGetPregnant || slave.startedPregnancyTime) {
+          if (age < 10 || age > 42 || slave.flagCannotGetPregnant || slave.startedPregnancyTime) {
             return false
           }
           let owner = state.characters && state.characters[ownerId]
           if (!owner || owner.isDead || !this.characterIsMale(owner)) {
+            return false
+          }
+          owner.id = owner.id || ownerId
+          if (this.age(owner, state) < 16 || owner.corSocietySlave) {
             return false
           }
           let chance = this.clamp(0.12, 0.12, 0.12)
@@ -3766,7 +3777,7 @@
           }
           this.log(society, this.characterName(couple.mother, state) + ', a household slave, is expecting a child with spouse ' + this.characterName(couple.father, state) + '.', 'birth')
           return true
-        }
+        },
         processBankYear(society, state) {
           society.bank = {
             principal: 0,
@@ -7874,6 +7885,24 @@
           let childrenUnder13 = this.householdChildrenUnder13(state)
           let freedomPrice = this.slaveFreedomPrice(record)
           let savings = Math.round(parseFloat(record.savings || 0))
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          let currentDynastyId = this.currentCharacterDynastyId(state)
+          let currentCharacterId = this.currentCharacterId(state)
+          let currentCharacter = currentCharacterId && state.characters && state.characters[currentCharacterId]
+          let fatherId = character && (character.corSocietyTrueFatherId || character.fatherId)
+          let father = fatherId && state.characters && state.characters[fatherId]
+          if (father) father.id = father.id || fatherId
+          let isPrivateCompanyBastard = !!(character && character.corSocietyOrigin === 'private_company_bastard')
+          let canLegitimize = !!(isPrivateCompanyBastard && father && !father.corSocietySlave && father.dynastyId && father.dynastyId === currentDynastyId)
+          let legitimizeCost = Math.max(25, Math.round(freedomPrice * 0.6))
+          let slaveAge = character ? this.age(character, state) : parseFloat(record.age || 0)
+          let privateCompanyCooldown = record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state)
+          let privateCompanyDisabled = !!privateCompanyCooldown || !character || slaveAge < 10 || (currentCharacter && this.age(currentCharacter, state) < 16)
+          let privateCompanyTooltip = privateCompanyCooldown ? 'Available again after ' + record.nextCompanionMonth + '.' :
+            !character ? 'No linked character record is available.' :
+              slaveAge < 10 ? 'Slave must be at least 10 years old.' :
+                currentCharacter && this.age(currentCharacter, state) < 16 ? 'The current household head is not an adult.' :
+                  'Private company action. Consequences: prestige effect, relation softening, risk of illegitimate child if female and fertile.'
           let options = []
           if (originHouseId && society.houses[originHouseId]) {
             options.push({
@@ -7914,12 +7943,24 @@
           options.push({
             variant: 'info',
             text: 'Private company',
-            disabled: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state),
+            disabled: privateCompanyDisabled,
             showDisabledWithTooltip: true,
-            tooltip: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state) ? 'Available again after ' + record.nextCompanionMonth + '.' : 'Private company action. Consequences: prestige effect, relation softening, risk of illegitimate child if female and fertile.',
+            tooltip: privateCompanyTooltip,
             icons: [this.slaveTypeIcon('entertainer')],
             action: { event: this.event, method: 'privateCompanySlave', context: { slaveKey: record.key, characterId: record.characterId } }
           })
+          if (isPrivateCompanyBastard) {
+            options.push({
+              variant: 'info',
+              text: 'Legitimize bastard (' + legitimizeCost + ')',
+              disabled: !canLegitimize || cash < legitimizeCost,
+              showDisabledWithTooltip: true,
+              tooltip: !canLegitimize ? 'Only the free father from your dynasty can legitimize this child.' : cash < legitimizeCost ? 'Need ' + legitimizeCost + ' cash.' : 'Acknowledge the child through the free parent. Consequences: removes slave status, joins the father dynasty, costs cash and standing.',
+              statChanges: canLegitimize && cash >= legitimizeCost ? { cash: -legitimizeCost, prestige: -6, influence: -8 } : undefined,
+              icons: [this.affairIcon('birth'), this.affairIcon('familyTree')],
+              action: { event: this.event, method: 'legitimizeSlaveBastard', context: { slaveKey: record.key, characterId: record.characterId, cost: legitimizeCost } }
+            })
+          }
           options.push({
             variant: 'info',
             text: 'Marry to household slave' + (marriageCandidates.length ? '' : ' (none)'),
@@ -8121,16 +8162,24 @@
             this.openHouseholdSlaves()
             return
           }
-          record.savings = Math.max(0, parseFloat(record.savings || 0) + 2)
-          this.applyStats({ prestige: 1 })
+          let character = record.characterId && state.characters && state.characters[record.characterId]
           let currentId = this.currentCharacterId(state)
+          let currentCharacter = currentId && state.characters && state.characters[currentId]
+          if (!character || character.isDead || this.age(character, state) < 16 || (currentCharacter && this.age(currentCharacter, state) < 16)) {
+            this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
+          record.savings = Math.max(0, parseFloat(record.savings || 0) + 2)
+          record.nextCompanionMonth = this.futureMonthKey(5)
+          this.applyStats({ prestige: 1 })
           if (record.characterId) {
             this.changePersonalRelation(society, currentId, record.characterId, 4, 'admirer')
             try {
               daapi.updateCharacter({
                 characterId: record.characterId,
                 character: {
-                  corSocietySlaveSavings: record.savings
+                  corSocietySlaveSavings: record.savings,
+                  corSocietySlaveNextCompanionMonth: record.nextCompanionMonth
                 }
               })
             } catch (err) {
@@ -8139,25 +8188,81 @@
           }
           let hadPregnancy = this.tryPrivateCompanyPregnancy(society, state, record, currentId)
           if (!hadPregnancy) {
-            record.nextCompanionMonth = this.futureMonthKey(5)
-            if (record.characterId) {
-              try {
-                daapi.updateCharacter({
-                  characterId: record.characterId,
-                  character: {
-                    corSocietySlaveNextCompanionMonth: record.nextCompanionMonth
-                  }
-                })
-              } catch (err) {
-                console.warn(err)
-              }
-            }
             this.log(society, record.name + ' provides private company; household mood improves slightly.', 'slaves')
           } else {
             this.log(society, record.name + ' becomes pregnant; a bastard child will join the household.', 'slaves')
           }
           this.save(society)
           this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+        },
+        legitimizeSlaveBastard({ slaveKey, characterId, cost } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
+          let character = record && record.characterId && state.characters && state.characters[record.characterId]
+          if (!record || !character || character.corSocietyOrigin !== 'private_company_bastard') {
+            this.openHouseholdSlaves()
+            return
+          }
+          character.id = character.id || record.characterId
+          let currentDynastyId = this.currentCharacterDynastyId(state)
+          let fatherId = character.corSocietyTrueFatherId || character.fatherId
+          let father = fatherId && state.characters && state.characters[fatherId]
+          if (!father || father.corSocietySlave || father.dynastyId !== currentDynastyId) {
+            this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
+          father.id = father.id || fatherId
+          cost = Math.max(0, Math.round(parseFloat(cost || Math.max(25, this.slaveFreedomPrice(record) * 0.6))))
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          if (cash < cost) {
+            this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
+          this.applyStats({ cash: -cost, prestige: -6, influence: -8 })
+          let patch = {
+            dynastyId: father.dynastyId,
+            fatherId: father.id,
+            corSocietySlave: false,
+            corSocietySlaveActive: false,
+            corSocietySlaveMarket: false,
+            corSocietyFreedman: false,
+            corSocietyLegitimizedBastard: true,
+            corSocietyIllegitimate: false,
+            corSocietyOrigin: 'legitimized_bastard',
+            corSocietySlaveOwnerHouseId: '',
+            flagCannotMarry: false,
+            flagDoNotCull: true
+          }
+          try {
+            daapi.updateCharacter({ characterId: character.id, character: patch })
+            Object.assign(character, patch)
+            this.addChildToParent(state, father.id, character.id)
+            try {
+              daapi.setCharacterStatusActive({ characterId: character.id, key: 'cor_society_slave_status', isActive: false })
+            } catch (statusErr) {
+              console.warn(statusErr)
+            }
+            daapi.forceUpdateCharacterDisplay({ characterId: character.id })
+          } catch (err) {
+            console.warn(err)
+          }
+          let house = society.houses[father.dynastyId]
+          if (!house) {
+            house = this.createHouseRecord(father.dynastyId)
+            house.name = this.houseName((state.dynasties && state.dynasties[father.dynastyId]) || {}, father.dynastyId)
+            society.houses[father.dynastyId] = house
+          }
+          house.memberIds = house.memberIds || []
+          if (house.memberIds.indexOf(character.id) < 0) house.memberIds.push(character.id)
+          if (this.age(character, state) >= 16) {
+            house.notableIds = house.notableIds || []
+            if (house.notableIds.indexOf(character.id) < 0) house.notableIds.push(character.id)
+          }
+          society.playerSlaves = (society.playerSlaves || []).filter((slave) => slave !== record)
+          this.log(society, this.characterName(character, state) + ' is legitimized and joins the free father dynasty.', 'birth', father.dynastyId)
+          this.save(society)
+          this.openHouseholdSlaves()
         },
         ownedSlaveMarriageCandidates(society, state, record) {
           let character = record && record.characterId && state.characters && state.characters[record.characterId]
@@ -12232,6 +12337,9 @@
     },
     privateCompanySlave(args) {
       window.corSociety.privateCompanySlave(args || {})
+    },
+    legitimizeSlaveBastard(args) {
+      window.corSociety.legitimizeSlaveBastard(args || {})
     },
     openSlaveMarriageCandidates(args) {
       window.corSociety.openSlaveMarriageCandidates(args || {})
