@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.285` removes duplicated Society action effects by stripping vanilla `statChanges` from Society engine buttons whose methods already apply the result. It also hardens Bank of Rome loan/payment state, keeps cleared principal cleared, improves wardrobe overlays for family portraits on the main screen, keeps normal notification-button responses on a lightweight Society state path, and processes large-save house simulation in rotating monthly batches.
+`1.1.286` keeps duplicated Society action effects suppressed while restoring readable vanilla-style previews: buttons show passive money, influence, prestige, revenue, and property icons, but executable vanilla `statChanges` are still stripped from Society engine actions whose methods already apply the result. It also keeps the Bank of Rome loan/payment hardening, cleared-principal protection, wardrobe overlays for main-screen family portraits, lightweight notification-button responses, and rotating large-save house simulation from the previous release.
 
 ## Features
 

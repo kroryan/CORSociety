@@ -82,7 +82,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.285') {
+      if (window.corSociety && window.corSociety.version === '1.1.286') {
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -91,7 +91,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.285',
+        version: '1.1.286',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -706,6 +706,15 @@
           return this.assetIcon(icons[stratum] || 'familyTree')
         },
         affairIcon(kind) {
+          if (kind === 'coins' || kind === 'bank') {
+            return this.vanillaStatIcon('cash', 1)
+          }
+          if (kind === 'prestige' || kind === 'patronage' || kind === 'scandal') {
+            return this.vanillaStatIcon('prestige', 1)
+          }
+          if (kind === 'influence' || kind === 'feud' || kind === 'slander' || kind === 'rivalry') {
+            return this.vanillaStatIcon('influence', 1)
+          }
           let icons = {
             officeCampaign: 'senator',
             tradeVenture: 'trade',
@@ -734,6 +743,28 @@
             log: 'familyTree'
           }
           return this.assetIcon(icons[kind] || 'familyTree')
+        },
+        vanillaStatIcon(stat, value) {
+          this._iconCache = this._iconCache || {}
+          let amount = parseFloat(value || 0)
+          let key = 'vanilla-stat:' + stat + ':' + (stat === 'cash' && amount < 0 ? 'loss' : 'normal')
+          if (this._iconCache[key]) {
+            return this._iconCache[key]
+          }
+          let paths = {
+            cash: amount < 0 ? 'img/moneyLoss.d7a3a17f.svg' : 'img/coins.c7069303.svg',
+            influence: 'img/influence.ec1c54e6.svg',
+            prestige: 'img/prestige.015fb54a.svg',
+            revenue: 'img/revenue.9f784a4a.svg',
+            property: 'img/moneybag.aef53b64.svg'
+          }
+          try {
+            this._iconCache[key] = daapi.requireImage(paths[stat] || paths.cash)
+          } catch (err) {
+            console.warn(err)
+            this._iconCache[key] = this.assetIcon(stat === 'cash' ? 'coins' : (stat || 'familyTree'))
+          }
+          return this._iconCache[key]
         },
         installDebtSaleModalPatch() {
           if (this.debtSaleModalPatchInstalled) {
@@ -1204,6 +1235,8 @@
           if (option.options) {
             option.options = this.decorateModalOptions(option.options, payload)
           }
+          let suppressedStatChanges = this.shouldSuppressVanillaStatChanges(option) ? option.statChanges : false
+          this.decorateOptionStatPreview(option, suppressedStatChanges, payload)
           let consequence = this.optionConsequence(option, payload)
           if (consequence) {
             option.tooltip = option.tooltip ? option.tooltip + '\n' + consequence : consequence
@@ -1217,6 +1250,115 @@
             delete option.statChanges
           }
           return option
+        },
+        decorateOptionStatPreview(option, suppressedStatChanges, payload) {
+          let previewIcons = this.statPreviewIcons(suppressedStatChanges || this.methodPreviewStats(option, payload))
+          if (!previewIcons.length) {
+            return
+          }
+          option.icons = this.mergePreviewIcons(previewIcons, option.icons || [])
+        },
+        mergePreviewIcons(primary, secondary) {
+          let merged = []
+          let seen = {}
+          ;(primary || []).concat(secondary || []).forEach((icon) => {
+            if (!icon) return
+            let key = String(icon)
+            if (seen[key]) return
+            seen[key] = true
+            merged.push(icon)
+          })
+          return merged
+        },
+        statPreviewIcons(statChanges) {
+          if (!statChanges || typeof statChanges !== 'object') {
+            return []
+          }
+          let icons = []
+          let pushStat = (stat, value) => {
+            let amount = parseFloat(value || 0)
+            if (!amount) return
+            icons.push(this.vanillaStatIcon(stat, amount))
+          }
+          pushStat('cash', statChanges.cash)
+          pushStat('influence', statChanges.influence)
+          pushStat('prestige', statChanges.prestige)
+          pushStat('revenue', statChanges.revenue)
+          if (statChanges.property && Object.keys(statChanges.property || {}).length) {
+            icons.push(this.vanillaStatIcon('property', 1))
+          }
+          ;(statChanges.additiveModifiers || []).forEach((modifier) => {
+            if (!modifier) return
+            let key = modifier.key || modifier.modifier
+            if (key === 'revenue') {
+              icons.push(this.vanillaStatIcon('revenue', modifier.amount || 1))
+            }
+          })
+          ;(statChanges.removeAdditiveModifiers || []).forEach((modifier) => {
+            if (!modifier) return
+            let key = modifier.key || modifier.modifier
+            if (key === 'revenue') {
+              icons.push(this.vanillaStatIcon('revenue', -1))
+            }
+          })
+          ;(statChanges.modifiers || []).forEach((modifier) => {
+            if (!modifier) return
+            let key = modifier.key || modifier.modifier || ''
+            if (key === 'revenue' || /^property_/.test(String(key))) {
+              icons.push(this.vanillaStatIcon('revenue', modifier.amount || modifier.factor || 1))
+            }
+          })
+          return this.mergePreviewIcons(icons, [])
+        },
+        methodPreviewStats(option, payload) {
+          let action = option && option.action
+          let method = action && action.method
+          if (!method) {
+            return false
+          }
+          let stats = {
+            sendGift: { cash: -1 },
+            hostDinner: { cash: -1, prestige: 1 },
+            askSupport: { influence: 1 },
+            tradeDeal: { revenue: 1 },
+            takeBankLoan: { cash: 1 },
+            takeEmergencyDebtLoan: { cash: 1 },
+            payBankLoan: { cash: -1 },
+            deferBankPayment: { prestige: -1, influence: -1 },
+            buySlave: { cash: -1 },
+            buyEnslavedCharacter: { cash: -1 },
+            captureEnslavedCharacter: { cash: -1, influence: -1 },
+            sellSlave: { cash: 1 },
+            freeSlave: { prestige: 1, influence: 1 },
+            privateCompanySlave: { prestige: 1 },
+            acceptSlaveSelfPurchase: { cash: 1 },
+            legitimizeSlaveBastard: { cash: -1, prestige: -1, influence: -1 },
+            acceptMatchmakerCandidate: { cash: -1 },
+            offerPatronage: { revenue: -1, prestige: 1 },
+            seekPatronage: { influence: 1, prestige: -1 },
+            startRivalry: { prestige: 1, influence: 1 },
+            reconcile: { cash: -1, influence: -1 },
+            praisePerson: { prestige: 1 },
+            requestIntroduction: { influence: 1 },
+            treatFamilyMember: { cash: -1, prestige: 1 },
+            ignoreFamilyDistress: { prestige: -1 },
+            spreadRumor: { influence: 1, prestige: 1 },
+            answerSlander: { influence: -1, prestige: 1 },
+            ignoreSlander: { prestige: -1 },
+            acceptOpening: { influence: 1 },
+            declineOpening: { prestige: 1 },
+            supportPetition: { cash: -1, prestige: 1 },
+            attendFamilyInvitation: { cash: -1, prestige: 1 },
+            endorseOffice: { influence: -1, prestige: 1 },
+            honorWedding: { cash: -1, prestige: 1 },
+            judgeInheritance: { influence: -1, prestige: 1 },
+            investVenture: { cash: -1 },
+            collectVentureResult: { cash: 1 },
+            shieldScandal: { influence: -1, prestige: -1 },
+            exploitScandal: { influence: 1, prestige: 1 },
+            performSocietyMarriage: { cash: -1, prestige: 1, influence: 1 }
+          }
+          return stats[method] || false
         },
         shouldSuppressVanillaStatChanges(option) {
           let action = option && option.action

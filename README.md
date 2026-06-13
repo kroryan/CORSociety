@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.285.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.286.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.285.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.286.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -45,14 +45,14 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 ## Performance Notes
 
-Version `1.1.285` focuses on action correctness and button-response freezes: Society engine buttons no longer send vanilla `statChanges` when the Society method already applies the effect, Bank of Rome payments/loans are guarded against double cash changes and cleared principal stays cleared, family wardrobe overlays now search the main family screen when vanilla images lack character IDs, repeated full Society synchronization was removed from normal notification actions, and large-save house simulation runs in rotating monthly batches.
+Version `1.1.286` keeps the duplicate-effect protection from `1.1.285` and restores clearer vanilla-style resource previews: Society buttons now show passive vanilla money, influence, prestige, revenue, and property icons while still stripping executable vanilla `statChanges` from Society engine actions whose methods already apply the real effect. Bank of Rome payments/loans remain guarded against double cash changes and cleared principal stays cleared, family wardrobe overlays still search the main family screen when vanilla images lack character IDs, repeated full Society synchronization stays removed from normal notification actions, and large-save house simulation continues in rotating monthly batches.
 
 ## Development
 
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.285.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.286.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.
