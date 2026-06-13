@@ -3,61 +3,6 @@
   checkType: 'general',
   checkAndAct: function() {
     try {
-      let legacyGlobalKeys = [
-        'cor_society',
-        'cor_society_player_crest',
-        'cor_society_wardrobe',
-        'cor_society_bank_of_rome',
-        'cor_society_household_slaves'
-      ]
-      legacyGlobalKeys.forEach((key) => {
-        try {
-          if (daapi.deleteGlobalAction) {
-            try {
-              daapi.deleteGlobalAction({ key })
-            } catch (err) {
-            }
-            try {
-              daapi.deleteGlobalAction(key)
-            } catch (err) {
-            }
-          }
-        } catch (err) {
-          console.warn(err)
-        }
-      })
-      let state = daapi.getState()
-      let characterId = state && state.current && state.current.id
-      if (characterId) {
-        let addCharacterEntry = function(key, title, tooltip, icon, method, context) {
-          daapi.addCharacterAction({
-            characterId,
-            key,
-            action: {
-              title,
-              tooltip,
-              icon,
-              isAvailable: true,
-              hideWhenBusy: false,
-              process: {
-                event: '/cor_society/main',
-                method,
-                context: { characterId, ...(context || {}) }
-              }
-            }
-          })
-        }
-        addCharacterEntry('cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
-        addCharacterEntry('cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
-        addCharacterEntry('cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
-        addCharacterEntry('cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', daapi.requireImage('/cor_society/bundled/bank_of_rome/money.svg'), 'openBankOfRome')
-        addCharacterEntry('cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', daapi.requireImage('/cor_society/bundled/household_slaves/household.svg'), 'openHouseholdSlaves')
-        addCharacterEntry('cor_society_player_tree', 'Player Dynasty Tree', 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.', daapi.requireImage('/cor_society/assets/familyTree.svg'), 'openPlayerFamilyTree')
-      }
-    } catch (err) {
-      console.warn(err)
-    }
-    try {
       daapi.invokeMethod({
         event: '/cor_society/engine',
         method: 'boot'

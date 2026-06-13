@@ -3,55 +3,6 @@
   checkType: 'general',
   checkAndAct() {
     try {
-      let legacyGlobalKeys = [
-        'cor_society',
-        'cor_society_player_crest',
-        'cor_society_wardrobe',
-        'cor_society_bank_of_rome',
-        'cor_society_household_slaves'
-      ]
-      legacyGlobalKeys.forEach((key) => {
-        try {
-          if (daapi.deleteGlobalAction) {
-            daapi.deleteGlobalAction({ key })
-            daapi.deleteGlobalAction(key)
-          }
-        } catch (err) {
-          console.warn(err)
-        }
-      })
-      let state = daapi.getState()
-      let characterId = state && state.current && state.current.id
-      if (characterId) {
-        let addCharacterEntry = (key, title, tooltip, icon, method, context) => {
-          daapi.addCharacterAction({
-            characterId,
-            key,
-            action: {
-              title,
-              tooltip,
-              icon,
-              isAvailable: true,
-              hideWhenBusy: false,
-              process: {
-                event: '/cor_society/engine',
-                method,
-                context: { characterId, ...(context || {}) }
-              }
-            }
-          })
-        }
-        addCharacterEntry('cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
-        addCharacterEntry('cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
-        addCharacterEntry('cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
-        addCharacterEntry('cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', daapi.requireImage('/cor_society/bundled/bank_of_rome/money.svg'), 'openBankOfRome')
-        addCharacterEntry('cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', daapi.requireImage('/cor_society/bundled/household_slaves/household.svg'), 'openHouseholdSlaves')
-        addCharacterEntry('cor_society_player_tree', 'Player Dynasty Tree', 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.', daapi.requireImage('/cor_society/assets/familyTree.svg'), 'openPlayerFamilyTree')
-      }
-    } catch (err) {
-      console.warn(err)
-    }
-    try {
       daapi.invokeMethod({
         event: '/cor_society/engine',
         method: 'boot'
@@ -82,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.286') {
+      if (window.corSociety && window.corSociety.version === '1.1.288') {
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -91,7 +42,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.286',
+        version: '1.1.288',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -827,15 +778,17 @@
           return Math.max(50, Math.ceil(Math.abs(Math.min(0, cash)) + 25))
         },
         debtLoanOption(amount) {
+          amount = Math.max(1, Math.round(parseFloat(amount || 0)))
           return {
             variant: 'danger',
             text: 'Borrow from Bank of Rome (' + amount + ')',
             tooltip: 'Covers the current negative cash before selling property. Consequences: principal increases and annual interest applies.',
+            statChanges: { cash: amount },
             icons: [this.bundledIcon('bank_of_rome', 'money')],
             action: {
               event: this.event,
               method: 'takeEmergencyDebtLoan',
-              context: { amount }
+              context: { amount, corSocietyVanillaStatChanges: { cash: amount } }
             }
           }
         },
@@ -1235,8 +1188,7 @@
           if (option.options) {
             option.options = this.decorateModalOptions(option.options, payload)
           }
-          let suppressedStatChanges = this.shouldSuppressVanillaStatChanges(option) ? option.statChanges : false
-          this.decorateOptionStatPreview(option, suppressedStatChanges, payload)
+          this.decorateOptionVanillaStatChanges(option, payload)
           let consequence = this.optionConsequence(option, payload)
           if (consequence) {
             option.tooltip = option.tooltip ? option.tooltip + '\n' + consequence : consequence
@@ -1246,126 +1198,93 @@
           if (option.disabled && option.tooltip) {
             option.showDisabledWithTooltip = true
           }
-          if (this.shouldSuppressVanillaStatChanges(option)) {
-            delete option.statChanges
-          }
           return option
         },
-        decorateOptionStatPreview(option, suppressedStatChanges, payload) {
-          let previewIcons = this.statPreviewIcons(suppressedStatChanges || this.methodPreviewStats(option, payload))
-          if (!previewIcons.length) {
+        decorateOptionVanillaStatChanges(option, payload) {
+          if (!option || !option.action || option.action.event !== this.event || !option.action.method) {
             return
           }
-          option.icons = this.mergePreviewIcons(previewIcons, option.icons || [])
-        },
-        mergePreviewIcons(primary, secondary) {
-          let merged = []
-          let seen = {}
-          ;(primary || []).concat(secondary || []).forEach((icon) => {
-            if (!icon) return
-            let key = String(icon)
-            if (seen[key]) return
-            seen[key] = true
-            merged.push(icon)
-          })
-          return merged
-        },
-        statPreviewIcons(statChanges) {
+          let statChanges = option.statChanges || this.methodStatChanges(option, payload)
           if (!statChanges || typeof statChanges !== 'object') {
-            return []
+            return
           }
-          let icons = []
-          let pushStat = (stat, value) => {
-            let amount = parseFloat(value || 0)
-            if (!amount) return
-            icons.push(this.vanillaStatIcon(stat, amount))
+          if (!option.statChanges) {
+            option.statChanges = statChanges
           }
-          pushStat('cash', statChanges.cash)
-          pushStat('influence', statChanges.influence)
-          pushStat('prestige', statChanges.prestige)
-          pushStat('revenue', statChanges.revenue)
-          if (statChanges.property && Object.keys(statChanges.property || {}).length) {
-            icons.push(this.vanillaStatIcon('property', 1))
-          }
-          ;(statChanges.additiveModifiers || []).forEach((modifier) => {
-            if (!modifier) return
-            let key = modifier.key || modifier.modifier
-            if (key === 'revenue') {
-              icons.push(this.vanillaStatIcon('revenue', modifier.amount || 1))
-            }
-          })
-          ;(statChanges.removeAdditiveModifiers || []).forEach((modifier) => {
-            if (!modifier) return
-            let key = modifier.key || modifier.modifier
-            if (key === 'revenue') {
-              icons.push(this.vanillaStatIcon('revenue', -1))
-            }
-          })
-          ;(statChanges.modifiers || []).forEach((modifier) => {
-            if (!modifier) return
-            let key = modifier.key || modifier.modifier || ''
-            if (key === 'revenue' || /^property_/.test(String(key))) {
-              icons.push(this.vanillaStatIcon('revenue', modifier.amount || modifier.factor || 1))
-            }
-          })
-          return this.mergePreviewIcons(icons, [])
+          option.action.context = option.action.context || {}
+          option.action.context.corSocietyVanillaStatChanges = this.baseStatChangesOnly(statChanges)
         },
-        methodPreviewStats(option, payload) {
+        baseStatChangesOnly(statChanges) {
+          statChanges = statChanges || {}
+          let clean = {}
+          ;['cash', 'influence', 'prestige'].forEach((key) => {
+            let value = parseFloat(statChanges[key] || 0)
+            if (value) {
+              clean[key] = value
+            }
+          })
+          return clean
+        },
+        methodStatChanges(option, payload) {
           let action = option && option.action
           let method = action && action.method
           if (!method) {
             return false
           }
-          let stats = {
-            sendGift: { cash: -1 },
-            hostDinner: { cash: -1, prestige: 1 },
-            askSupport: { influence: 1 },
-            tradeDeal: { revenue: 1 },
-            takeBankLoan: { cash: 1 },
-            takeEmergencyDebtLoan: { cash: 1 },
-            payBankLoan: { cash: -1 },
-            deferBankPayment: { prestige: -1, influence: -1 },
-            buySlave: { cash: -1 },
-            buyEnslavedCharacter: { cash: -1 },
-            captureEnslavedCharacter: { cash: -1, influence: -1 },
-            sellSlave: { cash: 1 },
-            freeSlave: { prestige: 1, influence: 1 },
-            privateCompanySlave: { prestige: 1 },
-            acceptSlaveSelfPurchase: { cash: 1 },
-            legitimizeSlaveBastard: { cash: -1, prestige: -1, influence: -1 },
-            acceptMatchmakerCandidate: { cash: -1 },
-            offerPatronage: { revenue: -1, prestige: 1 },
-            seekPatronage: { influence: 1, prestige: -1 },
-            startRivalry: { prestige: 1, influence: 1 },
-            reconcile: { cash: -1, influence: -1 },
-            praisePerson: { prestige: 1 },
-            requestIntroduction: { influence: 1 },
-            treatFamilyMember: { cash: -1, prestige: 1 },
-            ignoreFamilyDistress: { prestige: -1 },
-            spreadRumor: { influence: 1, prestige: 1 },
-            answerSlander: { influence: -1, prestige: 1 },
-            ignoreSlander: { prestige: -1 },
-            acceptOpening: { influence: 1 },
-            declineOpening: { prestige: 1 },
-            supportPetition: { cash: -1, prestige: 1 },
-            attendFamilyInvitation: { cash: -1, prestige: 1 },
-            endorseOffice: { influence: -1, prestige: 1 },
-            honorWedding: { cash: -1, prestige: 1 },
-            judgeInheritance: { influence: -1, prestige: 1 },
-            investVenture: { cash: -1 },
-            collectVentureResult: { cash: 1 },
-            shieldScandal: { influence: -1, prestige: -1 },
-            exploitScandal: { influence: 1, prestige: 1 },
-            performSocietyMarriage: { cash: -1, prestige: 1, influence: 1 }
+          let context = action.context || {}
+          let house = this.houseFromContext(context, payload)
+          let profile = house ? (this.strata[house.stratum] || this.strata.plebeian) : this.strata.plebeian
+          if (method === 'sendGift' && house) return { cash: -this.actionCost(house, 'gift') }
+          if (method === 'hostDinner' && house) return { cash: -this.actionCost(house, 'dinner'), prestige: 12 }
+          if (method === 'askSupport' && house) return { influence: Math.max(20, Math.round((profile.support || 50) + (house.strength || 0) * 2)) }
+          if (method === 'offerPatronage' && house) return { prestige: 8 }
+          if (method === 'seekPatronage' && house) return { influence: Math.max(60, Math.round((house.strength || 20) * 3)), prestige: -5 }
+          if (method === 'startRivalry') return { prestige: 10, influence: 25 }
+          if (method === 'reconcile' && house) return { cash: -this.actionCost(house, 'reconcile'), influence: -20 }
+          if (method === 'praisePerson') return { prestige: 3 }
+          if (method === 'requestIntroduction') return { influence: 35 }
+          if (method === 'supportPetition' && house) return { cash: -this.petitionCost(house), prestige: 7 }
+          if (method === 'attendFamilyInvitation' && house) return { cash: -this.invitationCost(house), prestige: 10 }
+          if (method === 'performSocietyMarriage' && house) {
+            try {
+              let effects = this.marriageEffects(daapi.getState(), house)
+              return effects && effects.stats ? effects.stats : false
+            } catch (err) {
+              console.warn(err)
+            }
           }
-          return stats[method] || false
-        },
-        shouldSuppressVanillaStatChanges(option) {
-          let action = option && option.action
-          if (!action || action.event !== this.event || !action.method) {
-            return false
+          let amount = Math.round(parseFloat(context.amount || 0))
+          let cost = Math.round(parseFloat(context.cost || 0))
+          let price = Math.round(parseFloat(context.price || 0))
+          if ((method === 'takeBankLoan' || method === 'takeEmergencyDebtLoan') && amount > 0) return { cash: amount }
+          if (method === 'payBankLoan') {
+            try {
+              let society = this.load()
+              let principal = Math.max(0, Math.round(parseFloat(((society || {}).bank || {}).principal || 0)))
+              let interest = principal ? this.bankInterest(society) : 0
+              let principalPayment = context.interestOnly ? 0 : Math.min(principal, Math.max(0, amount))
+              return { cash: -(interest + principalPayment) }
+            } catch (err) {
+              console.warn(err)
+            }
           }
-          return !!option.statChanges
+          if (method === 'deferBankPayment') return { prestige: -8, influence: -20 }
+          if ((method === 'buySlave' || method === 'buyEnslavedCharacter') && cost > 0) return { cash: -cost }
+          if (method === 'captureEnslavedCharacter' && cost > 0) return { cash: -cost, influence: -10 }
+          if (method === 'privateCompanySlave') return { prestige: 1 }
+          if (method === 'acceptSlaveSelfPurchase' && price > 0) return { cash: price, prestige: 8, influence: 10 }
+          if (method === 'legitimizeSlaveBastard' && cost > 0) return { cash: -cost, prestige: -6, influence: -8 }
+          if (method === 'acceptMatchmakerCandidate' && cost > 0) return { cash: -cost }
+          if (method === 'treatFamilyMember' && cost > 0) return { cash: -cost }
+          if (method === 'ignoreFamilyDistress') return { prestige: -2 }
+          if (method === 'fundTradeSafeguards' && cost > 0) return { cash: -cost, prestige: 3 }
+          if (method === 'pressTradeTerms' && cost > 0) return { influence: -cost }
+          if (method === 'coverPatronageShortage' && cost > 0) return { cash: -cost, prestige: 3 }
+          if (method === 'auditPatronageAccounts' && cost > 0) return { influence: -cost }
+          if (method === 'endPatronage') return { prestige: -3 }
+          if (method === 'sponsorTutorship' && cost > 0) return { cash: -cost, prestige: 2 }
+          if (method === 'requestTutorshipFavor' && cost > 0) return { influence: -cost }
+          return false
         },
         defaultOptionTooltip(option) {
           let text = String((option && option.text) || '')
@@ -5077,6 +4996,7 @@
           }
           society.bank.lastNoticeYear = year
           let interest = this.bankInterest(society)
+          let yearlyPrincipalChunk = Math.min(principal, Math.max(50, Math.round(principal * 0.25)))
           this.pushModal({
             corTranslatorPretranslateNow: true,
             disableSocietyClose: true,
@@ -5098,20 +5018,22 @@
                 }
               },
               {
-                text: 'Pay down principal (' + Math.min(principal, Math.max(50, Math.round(principal * 0.25))) + ')',
-                disabled: parseFloat(((state || {}).current || {}).cash || 0) < (interest + Math.min(principal, Math.max(50, Math.round(principal * 0.25)))),
+                text: 'Pay down principal (' + yearlyPrincipalChunk + ')',
+                disabled: parseFloat(((state || {}).current || {}).cash || 0) < (interest + yearlyPrincipalChunk),
                 showDisabledWithTooltip: true,
                 tooltip: 'Pay interest plus a chunk of principal.',
+                statChanges: { cash: -(interest + yearlyPrincipalChunk) },
                 action: {
                   event: this.event,
                   method: 'payBankLoan',
-                  context: { amount: Math.min(principal, Math.max(50, Math.round(principal * 0.25))) }
+                  context: { amount: yearlyPrincipalChunk }
                 }
               },
               {
                 variant: 'danger',
                 text: 'Defer payment',
                 tooltip: 'Adds the interest to principal and hurts public standing.',
+                statChanges: { prestige: -8, influence: -20 },
                 action: {
                   event: this.event,
                   method: 'deferBankPayment'
@@ -6194,7 +6116,7 @@
                 variant: 'info',
                 text: 'Arrange treatment',
                 tooltip: 'Spend cash for the best chance to remove the condition and improve family rapport.',
-                statChanges: { cash: -cost, prestige: 3 },
+                statChanges: { cash: -cost },
                 icons: [this.traitStatusIcon(trait), this.affairIcon('coins')],
                 action: {
                   event: this.event,
@@ -6352,24 +6274,179 @@
           let hostile = houses.filter((house) => house.rivalry || house.relation <= -45)
           let friendly = houses.filter((house) => house.relation >= 35)
           let lower = houses.filter((house) => ['plebeian', 'freedmen', 'poor'].indexOf(house.stratum) >= 0)
+          let currentMonthIndex = this.monthIndex(this.monthKey(state))
+          let recently = (key, gap) => society[key] && currentMonthIndex - this.monthIndex(society[key]) < gap
+          let tradeReviews = recently('lastTradeReviewMonth', 5) ? [] : houses.filter((house) => this.houseTradeActive(house, state) && (house.relation || 0) >= -15)
+          let patronageReviews = recently('lastPatronageAuditMonth', 5) ? [] : houses.filter((house) => this.housePatronageActive(house, state))
+          let tutorshipChild = recently('lastTutorshipEventMonth', 8) ? false : this.playerTutorshipCandidate(state)
+          let tutorshipHouses = tutorshipChild ? friendly.filter((house) => house.stratum !== 'poor' && (house.relation || 0) >= 40) : []
           
           let capturable = []
           let roll = Math.random()
-          if (roll >= 0.68 && roll < 0.82) {
+          if (roll >= 0.72 && roll < 0.84) {
              capturable = this.knownEnslavedCandidates(society, state, null, { houses: allHouses }).filter((item) => item.house && item.house.stratum === 'poor' && item.info.visible)
           }
 
-          if (hostile.length && roll < 0.35) {
+          if (tradeReviews.length && roll < 0.16) {
+            this.eventTradeCompactReview(society, this.pick(tradeReviews), { silent: true })
+          } else if (patronageReviews.length && roll < 0.28) {
+            this.eventPatronageAudit(society, this.pick(patronageReviews), { silent: true })
+          } else if (tutorshipChild && tutorshipHouses.length && roll < 0.40) {
+            this.eventTutorshipExchange(society, this.pick(tutorshipHouses), tutorshipChild, { silent: true })
+          } else if (hostile.length && roll < 0.55) {
             this.eventRivalSlander(society, this.pick(hostile), { silent: true })
-          } else if (friendly.length && roll < 0.68) {
+          } else if (friendly.length && roll < 0.72) {
             this.eventFriendlyOpening(society, this.pick(friendly), { silent: true })
-          } else if (capturable.length && roll < 0.82) {
+          } else if (capturable.length && roll < 0.84) {
             this.eventSlaveCaptureOpportunity(society, this.pick(capturable), { silent: true })
           } else if (lower.length) {
             this.eventPetition(society, this.pick(lower), { silent: true })
           } else {
             this.eventFamilyInvitation(society, this.pick(houses), { silent: true })
           }
+        },
+        housePatronageActive(house, state) {
+          return !!(house && house.patronageUntil && !this.monthKeyReached(house.patronageUntil, state || daapi.getState()))
+        },
+        playerTutorshipCandidate(state) {
+          state = state || daapi.getState()
+          let children = this.playerFamilyMembers(state).filter((character) => {
+            let age = this.age(character, state)
+            return character && !character.isDead && age >= 5 && age < 13
+          })
+          return children.length ? this.pick(children) : false
+        },
+        eventTradeCompactReview(society, house, options) {
+          if (!house) {
+            return false
+          }
+          let state = daapi.getState()
+          if (!options || !options.silent) this.save(society)
+          society.lastTradeReviewMonth = this.monthKey(state)
+          this.save(society)
+          let cost = Math.max(4, this.actionCost(house, 'gift'))
+          let influenceCost = Math.max(12, Math.round((this.strata[house.stratum] || this.strata.plebeian).support * 0.2))
+          let amount = Math.max(2, Math.round(Math.max(6, house.tradeAmount || 8) * 0.35))
+          this.pushModal({
+            corTranslatorPretranslateNow: true,
+            disableSocietyClose: true,
+            title: 'Trade compact review',
+            message: house.name + ' asks to review safeguards around your active trade compact. A little attention can keep the income steady; pressure can squeeze more value but risks trust.',
+            image: this.affairIcon('tradeVenture'),
+            options: [
+              {
+                variant: 'info',
+                text: 'Fund safeguards (' + cost + ')',
+                tooltip: 'Pay for contracts and escorts. Consequences: steadier relation and a short revenue guard bonus.',
+                statChanges: { cash: -cost, prestige: 3 },
+                icons: [this.affairIcon('coins'), this.affairIcon('trade')],
+                action: { event: this.event, method: 'fundTradeSafeguards', context: { houseId: house.id, cost, amount } }
+              },
+              {
+                text: 'Press better terms',
+                tooltip: 'Spend influence to push for better terms. Consequences: success improves trade income; failure strains relations.',
+                statChanges: { influence: -influenceCost },
+                icons: [this.affairIcon('influence'), this.affairIcon('tradeVenture')],
+                action: { event: this.event, method: 'pressTradeTerms', context: { houseId: house.id, cost: influenceCost, amount } }
+              },
+              {
+                text: 'Let it stand',
+                tooltip: 'No change. Consequences: the existing trade compact continues as written.',
+                action: { event: this.event, method: 'letStandTradeReview', context: { houseId: house.id } }
+              }
+            ]
+          })
+          return true
+        },
+        eventPatronageAudit(society, house, options) {
+          if (!house) {
+            return false
+          }
+          let state = daapi.getState()
+          if (!options || !options.silent) this.save(society)
+          society.lastPatronageAuditMonth = this.monthKey(state)
+          this.save(society)
+          let cost = Math.max(5, Math.round(this.actionCost(house, 'gift') * 0.7))
+          let influenceCost = Math.max(10, Math.round((this.strata[house.stratum] || this.strata.plebeian).support * 0.16))
+          this.pushModal({
+            corTranslatorPretranslateNow: true,
+            disableSocietyClose: true,
+            title: 'Patronage accounts',
+            message: house.name + ' sends accounts from your patronage tie. Shortages can be covered, audited, or the relationship can be ended before it becomes a burden.',
+            image: this.affairIcon('patronage'),
+            options: [
+              {
+                variant: 'info',
+                text: 'Cover shortages (' + cost + ')',
+                tooltip: 'Spend cash to protect the relationship. Consequences: prestige and better relation.',
+                statChanges: { cash: -cost, prestige: 3 },
+                icons: [this.affairIcon('coins'), this.affairIcon('prestige')],
+                action: { event: this.event, method: 'coverPatronageShortage', context: { houseId: house.id, cost } }
+              },
+              {
+                text: 'Audit accounts',
+                tooltip: 'Spend influence to demand order. Consequences: may improve stability, but can offend the house.',
+                statChanges: { influence: -influenceCost },
+                icons: [this.affairIcon('influence'), this.affairIcon('log')],
+                action: { event: this.event, method: 'auditPatronageAccounts', context: { houseId: house.id, cost: influenceCost } }
+              },
+              {
+                variant: 'warning',
+                text: 'End patronage',
+                tooltip: 'Cancel the patronage modifier early. Consequences: loses prestige and relation, but stops the tie.',
+                statChanges: { prestige: -3 },
+                icons: [this.affairIcon('rivalry')],
+                action: { event: this.event, method: 'endPatronage', context: { houseId: house.id } }
+              }
+            ]
+          })
+          return true
+        },
+        eventTutorshipExchange(society, house, child, options) {
+          if (!house || !child) {
+            return false
+          }
+          let state = daapi.getState()
+          child.id = child.id || this.playerFamilyMemberIds(state).find((id) => state.characters[id] === child) || child.id
+          if (!child.id) {
+            return false
+          }
+          if (!options || !options.silent) this.save(society)
+          society.lastTutorshipEventMonth = this.monthKey(state)
+          this.save(society)
+          let cost = Math.max(6, Math.round(this.actionCost(house, 'gift') * 0.6))
+          let influenceCost = Math.max(8, Math.round((this.strata[house.stratum] || this.strata.plebeian).support * 0.13))
+          let skill = house.stratum === 'senatorial' ? 'eloquence' : house.stratum === 'equestrian' ? 'stewardship' : house.stratum === 'poor' ? 'combat' : this.pick(['intelligence', 'stewardship', 'eloquence'])
+          this.pushModal({
+            corTranslatorPretranslateNow: true,
+            disableSocietyClose: true,
+            title: 'Household tutorship',
+            message: house.name + ' offers contacts who can help educate ' + this.characterName(child, state) + '. This uses the child\'s real vanilla skills and keeps the Society tie meaningful.',
+            image: this.characterPortrait(child, state),
+            options: [
+              {
+                variant: 'info',
+                text: 'Sponsor lessons (' + cost + ')',
+                tooltip: 'Pay for lessons. Consequences: small skill gain, prestige, and better house relation.',
+                statChanges: { cash: -cost, prestige: 2 },
+                icons: [this.affairIcon('coins'), this.affairIcon('prestige')],
+                action: { event: this.event, method: 'sponsorTutorship', context: { houseId: house.id, characterId: child.id, skill, cost } }
+              },
+              {
+                text: 'Ask as a favor',
+                tooltip: 'Spend influence to call on the relationship. Consequences: smaller skill gain and a social tie.',
+                statChanges: { influence: -influenceCost },
+                icons: [this.affairIcon('influence'), this.affairIcon('support')],
+                action: { event: this.event, method: 'requestTutorshipFavor', context: { houseId: house.id, characterId: child.id, skill, cost: influenceCost } }
+              },
+              {
+                text: 'Decline',
+                tooltip: 'No change. Consequences: the offer passes.',
+                action: { event: this.event, method: 'declineTutorshipExchange', context: { houseId: house.id, characterId: child.id } }
+              }
+            ]
+          })
+          return true
         },
         eventFamilyAffair(society, house, options) {
           let event = house.pendingPlayerEvent
@@ -9648,6 +9725,7 @@
           options.push({
             text: 'Sell (' + Math.round(this.slaveCost(record) * 0.55) + ')',
             tooltip: 'Sell this slave out of your household. The character remains in the game but no longer gives household effects.',
+            statChanges: { cash: Math.round(this.slaveCost(record) * 0.55) },
             icons: [this.affairIcon('coins')],
             action: { event: this.event, method: 'sellSlave', context: { slaveKey: record.key, characterId: record.characterId } }
           })
@@ -9655,6 +9733,7 @@
             variant: 'info',
             text: 'Manumit',
             tooltip: 'Free this slave. They keep existing as a real character, but leave the household slave list.',
+            statChanges: { prestige: 8, influence: 10 },
             icons: [this.affairIcon('prestige')],
             action: { event: this.event, method: 'freeSlave', context: { slaveKey: record.key, characterId: record.characterId } }
           })
@@ -10786,6 +10865,73 @@
             })
           }
         },
+        fundTradeSafeguards({ houseId, cost, amount } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || this.actionCost(house, 'gift'))))
+            amount = Math.max(1, Math.round(parseFloat(amount || Math.max(2, (house.tradeAmount || 8) * 0.35))))
+            this.applyStats({ cash: -cost, prestige: 3 })
+            try {
+              daapi.addAdditiveModifier({
+                key: 'revenue',
+                id: 'cor_society_trade_guard_' + this.safeId(house.id),
+                durationInMonths: 4,
+                amount
+              })
+            } catch (err) {
+              console.warn(err)
+            }
+            house.relation = this.clamp((house.relation || 0) + 8, -100, 100)
+            house.stability = this.clamp((house.stability || 50) + 4, 0, 100)
+            house.lastFamilyEvent = 'Trade safeguards funded by your household.'
+            house.lastFamilyKind = 'tradeVenture'
+            this.log(society, 'You fund safeguards for trade with ' + house.name + ': +' + amount + ' revenue for a short term.', 'tradeVenture', house.id)
+            result = { title: 'Trade secured', message: 'Safeguards are funded. The compact is steadier and short-term revenue improves.', image: this.affairIcon('tradeVenture') }
+          })
+          this.pushModal({ title: result ? result.title : 'Trade review', message: result ? result.message : 'The trade review could not be resolved.', image: result ? result.image : this.affairIcon('tradeVenture'), options: [{ text: 'Continue' }] })
+        },
+        pressTradeTerms({ houseId, cost, amount } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || 12)))
+            amount = Math.max(1, Math.round(parseFloat(amount || Math.max(2, (house.tradeAmount || 8) * 0.35))))
+            this.applyStats({ influence: -cost })
+            let success = Math.random() < this.clamp(0.48 + (house.relation || 0) / 240 + ((house.favor || 0) * 0.06), 0.15, 0.82)
+            if (success) {
+              try {
+                daapi.addAdditiveModifier({
+                  key: 'revenue',
+                  id: 'cor_society_trade_terms_' + this.safeId(house.id),
+                  durationInMonths: 4,
+                  amount
+                })
+              } catch (err) {
+                console.warn(err)
+              }
+              house.tradeAmount = Math.max(0, Math.round(parseFloat(house.tradeAmount || 0) + amount))
+              house.relation = this.clamp((house.relation || 0) - 3, -100, 100)
+              house.lastFamilyEvent = 'Pressed into better trade terms.'
+              this.log(society, 'You press ' + house.name + ' for better trade terms: +' + amount + ' short-term revenue.', 'tradeVenture', house.id)
+              result = { title: 'Terms improved', message: house.name + ' accepts sharper terms. Revenue improves for a short term, but they notice the pressure.', image: this.affairIcon('tradeVenture') }
+            } else {
+              house.relation = this.clamp((house.relation || 0) - 14, -100, 100)
+              house.heat = (house.heat || 0) + 1
+              house.lastFamilyEvent = 'Rejected your pressure for better trade terms.'
+              this.log(society, house.name + ' refuses your pressure over trade terms.', 'tradeVenture', house.id)
+              result = { title: 'Terms refused', message: house.name + ' resents the pressure. The compact survives, but relations suffer.', image: this.affairIcon('rivalry') }
+            }
+          })
+          this.pushModal({ title: result ? result.title : 'Trade review', message: result ? result.message : 'The trade review could not be resolved.', image: result ? result.image : this.affairIcon('tradeVenture'), options: [{ text: 'Continue' }] })
+        },
+        letStandTradeReview({ houseId } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            house.lastFamilyEvent = 'Trade compact continues unchanged.'
+            this.log(society, 'Trade compact with ' + house.name + ' continues unchanged.', 'tradeVenture', house.id)
+            result = { title: 'Terms unchanged', message: house.name + ' keeps the trade compact as it stands.', image: this.affairIcon('tradeVenture') }
+          })
+          this.pushModal({ title: result ? result.title : 'Trade review', message: result ? result.message : 'The trade compact continues unchanged.', image: result ? result.image : this.affairIcon('tradeVenture'), options: [{ text: 'Continue' }] })
+        },
         offerPatronage({ houseId }) {
           this.withHouse(houseId, (society, house) => {
             let stipend = Math.max(8, Math.round((this.strata[house.stratum].revenue || 20) / 2))
@@ -10812,6 +10958,125 @@
             this.log(society, house.name + ' lends you standing: +' + amount + ' influence.')
           })
           this.openHouse({ houseId })
+        },
+        coverPatronageShortage({ houseId, cost } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || Math.max(5, this.actionCost(house, 'gift') * 0.7))))
+            this.applyStats({ cash: -cost, prestige: 3 })
+            house.relation = this.clamp((house.relation || 0) + 10, -100, 100)
+            house.stability = this.clamp((house.stability || 50) + 5, 0, 100)
+            house.favor = (house.favor || 0) + (Math.random() < 0.35 ? 1 : 0)
+            house.lastFamilyEvent = 'Patronage shortages covered.'
+            house.lastFamilyKind = 'patronage'
+            this.log(society, 'You cover patronage shortages for ' + house.name + '.', 'patronage', house.id)
+            result = { title: 'Patronage steadied', message: house.name + ' remains loyal under your support. Stability and relation improve.', image: this.affairIcon('patronage') }
+          })
+          this.pushModal({ title: result ? result.title : 'Patronage', message: result ? result.message : 'The patronage action could not be resolved.', image: result ? result.image : this.affairIcon('patronage'), options: [{ text: 'Continue' }] })
+        },
+        auditPatronageAccounts({ houseId, cost } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || 10)))
+            this.applyStats({ influence: -cost })
+            let success = Math.random() < this.clamp(0.55 + (house.relation || 0) / 260, 0.18, 0.85)
+            if (success) {
+              house.stability = this.clamp((house.stability || 50) + 9, 0, 100)
+              house.relation = this.clamp((house.relation || 0) + 3, -100, 100)
+              house.lastFamilyEvent = 'Patronage accounts audited cleanly.'
+              this.log(society, 'You audit patronage accounts for ' + house.name + ' and restore order.', 'patronage', house.id)
+              result = { title: 'Accounts ordered', message: 'The audit exposes waste without a public quarrel. The house becomes more stable.', image: this.affairIcon('log') }
+            } else {
+              house.relation = this.clamp((house.relation || 0) - 12, -100, 100)
+              house.heat = (house.heat || 0) + 1
+              house.lastFamilyEvent = 'Patronage audit causes resentment.'
+              this.log(society, 'A patronage audit offends ' + house.name + '.', 'patronage', house.id)
+              result = { title: 'Audit resented', message: house.name + ' takes the audit as an insult. Relations suffer.', image: this.affairIcon('rivalry') }
+            }
+          })
+          this.pushModal({ title: result ? result.title : 'Patronage', message: result ? result.message : 'The patronage action could not be resolved.', image: result ? result.image : this.affairIcon('patronage'), options: [{ text: 'Continue' }] })
+        },
+        endPatronage({ houseId } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            try {
+              daapi.removeAdditiveModifier({ key: 'revenue', id: 'cor_society_patronage_' + this.safeId(house.id) })
+            } catch (err) {
+              console.warn(err)
+            }
+            house.patronageUntil = ''
+            house.relation = this.clamp((house.relation || 0) - 10, -100, 100)
+            house.lastFamilyEvent = 'Patronage ended by your household.'
+            this.applyStats({ prestige: -3 })
+            this.log(society, 'You end patronage over ' + house.name + '.', 'patronage', house.id)
+            result = { title: 'Patronage ended', message: 'The patronage tie is cancelled. The house resents the withdrawal, but the modifier is removed.', image: this.affairIcon('patronage') }
+          })
+          this.pushModal({ title: result ? result.title : 'Patronage', message: result ? result.message : 'The patronage action could not be resolved.', image: result ? result.image : this.affairIcon('patronage'), options: [{ text: 'Continue' }] })
+        },
+        improveChildSkill(characterId, skill, amount) {
+          let state = daapi.getState()
+          let character = state.characters && state.characters[characterId]
+          if (!character || !skill) {
+            return false
+          }
+          let skills = { ...(character.skills || {}) }
+          skills[skill] = parseFloat(skills[skill] || 0) + parseFloat(amount || 1)
+          try {
+            daapi.updateCharacter({ characterId, character: { skills } })
+            character.skills = skills
+            daapi.forceUpdateCharacterDisplay({ characterId })
+          } catch (err) {
+            console.warn(err)
+          }
+          return { character, skill, amount }
+        },
+        sponsorTutorship({ houseId, characterId, skill, cost } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || Math.max(6, this.actionCost(house, 'gift') * 0.6))))
+            this.applyStats({ cash: -cost, prestige: 2 })
+            let gain = this.randomInt(2, 4)
+            let improved = this.improveChildSkill(characterId, skill || 'intelligence', gain)
+            house.relation = this.clamp((house.relation || 0) + 6, -100, 100)
+            house.lastFamilyEvent = 'Tutorship offered to your household.'
+            this.log(society, house.name + ' provides tutorship for a child of your household.', 'education', house.id)
+            result = {
+              title: 'Lessons sponsored',
+              message: improved ? this.characterName(improved.character, daapi.getState()) + ' gains +' + gain + ' ' + improved.skill + ' from Society tutorship.' : 'Tutorship was funded, but the child could not be updated.',
+              image: improved ? this.characterPortrait(improved.character, daapi.getState(), house) : this.affairIcon('prestige')
+            }
+          })
+          this.pushModal({ title: result ? result.title : 'Tutorship', message: result ? result.message : 'The tutorship action could not be resolved.', image: result ? result.image : this.affairIcon('prestige'), options: [{ text: 'Continue' }] })
+        },
+        requestTutorshipFavor({ houseId, characterId, skill, cost } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            cost = Math.max(1, Math.round(parseFloat(cost || 8)))
+            this.applyStats({ influence: -cost })
+            let gain = this.randomInt(1, 2)
+            let improved = this.improveChildSkill(characterId, skill || 'intelligence', gain)
+            house.relation = this.clamp((house.relation || 0) + 3, -100, 100)
+            if (Math.random() < 0.25) {
+              house.favor = (house.favor || 0) + 1
+            }
+            house.lastFamilyEvent = 'A tutorship favor was exchanged.'
+            this.log(society, house.name + ' grants a tutorship favor to your household.', 'education', house.id)
+            result = {
+              title: 'Favor granted',
+              message: improved ? this.characterName(improved.character, daapi.getState()) + ' gains +' + gain + ' ' + improved.skill + '. The relationship remains useful.' : 'The favor was granted, but the child could not be updated.',
+              image: improved ? this.characterPortrait(improved.character, daapi.getState(), house) : this.affairIcon('support')
+            }
+          })
+          this.pushModal({ title: result ? result.title : 'Tutorship', message: result ? result.message : 'The tutorship action could not be resolved.', image: result ? result.image : this.affairIcon('support'), options: [{ text: 'Continue' }] })
+        },
+        declineTutorshipExchange({ houseId } = {}) {
+          let result = false
+          this.withHouse(houseId, (society, house) => {
+            house.lastFamilyEvent = 'Tutorship offer declined.'
+            this.log(society, 'You decline a tutorship offer from ' + house.name + '.', 'education', house.id)
+            result = { title: 'Tutorship declined', message: 'The offer from ' + house.name + ' passes without offense.', image: this.affairIcon('prestige') }
+          })
+          this.pushModal({ title: result ? result.title : 'Tutorship declined', message: result ? result.message : 'The offer passes.', image: result ? result.image : this.affairIcon('prestige'), options: [{ text: 'Continue' }] })
         },
         startRivalry({ houseId }) {
           this.withHouse(houseId, (society, house) => {
@@ -11379,12 +11644,6 @@
             message: message + (house ? '\nHouse: ' + house.name + '.' : ''),
             image: this.affairIcon('tradeVenture'),
             options: [
-              house ? {
-                variant: 'info',
-                text: 'View house',
-                icons: [this.houseCrestIcon(society, house)],
-                action: { event: this.event, method: 'openHouse', context: { houseId: house.id, returnTo: 'hub' } }
-              } : false,
               {
                 text: 'Back to Society',
                 action: { event: this.event, method: 'openHub' }
@@ -11392,7 +11651,7 @@
               {
                 text: 'Close'
               }
-            ].filter(Boolean)
+            ]
           })
         },
         shieldScandal({ houseId }) {
@@ -11495,6 +11754,19 @@
         },
         applyStats(stats) {
           stats = stats || {}
+          let alreadyApplied = this._currentVanillaStatChanges || {}
+          stats = { ...stats }
+          ;['cash', 'influence', 'prestige'].forEach((key) => {
+            let applied = parseFloat(alreadyApplied[key] || 0)
+            if (!applied || !stats[key]) {
+              return
+            }
+            stats[key] = parseFloat(stats[key] || 0) - applied
+            alreadyApplied[key] = 0
+            if (Math.abs(stats[key]) < 0.0001) {
+              stats[key] = 0
+            }
+          })
           try {
             if (stats.cash) daapi.addCash({ cash: stats.cash })
             if (stats.influence) daapi.addInfluence({ influence: stats.influence })
@@ -11506,6 +11778,19 @@
               influence: stats.influence || 0,
               prestige: stats.prestige || 0
             })
+          }
+        },
+        runAction(method, args) {
+          args = args || {}
+          if (!method || typeof this[method] !== 'function') {
+            return false
+          }
+          let previous = this._currentVanillaStatChanges
+          this._currentVanillaStatChanges = args.corSocietyVanillaStatChanges || false
+          try {
+            return this[method](args)
+          } finally {
+            this._currentVanillaStatChanges = previous
           }
         },
         sortedHouses(society) {
@@ -13400,8 +13685,9 @@
                 variant: 'info',
                 text: 'Bribe a worker',
                 tooltip: 'Lower gain, lower risk, small cash preparation cost.',
+                statChanges: { cash: -this.stealingBribeCost(info.loot.value) },
                 icons: [this.affairIcon('coins')],
-                action: { event: this.event, method: 'resolveStealingFromCharacter', context: { houseId: house.id, characterId, approach: 'bribe' } }
+                action: { event: this.event, method: 'resolveStealingFromCharacter', context: { houseId: house.id, characterId, approach: 'bribe', prepCost: this.stealingBribeCost(info.loot.value) } }
               },
               {
                 text: 'Leave it',
@@ -13409,6 +13695,9 @@
               }
             ]
           })
+        },
+        stealingBribeCost(value) {
+          return Math.max(3, Math.round(Math.max(1, parseFloat(value || 0)) * 0.18 * 0.70))
         },
         resolveStealingFromCharacter({ houseId, characterId, approach } = {}) {
           let society = this.loadForAction()
@@ -13433,7 +13722,7 @@
           } else if (approach === 'bribe') {
             value = Math.round(value * 0.70)
             difficulty -= 9
-            this.applyStats({ cash: -Math.max(3, Math.round(value * 0.18)) })
+            this.applyStats({ cash: -this.stealingBribeCost(info.loot.value) })
           }
           let successChance = this.clamp(0.48 + (stealth - difficulty) / 120, 0.12, 0.82)
           let success = Math.random() < successChance
@@ -14222,28 +14511,28 @@
       window.corSociety.openHub()
     },
     openEstate(args) {
-      window.corSociety.openEstate(args || {})
+      window.corSociety.runAction('openEstate', args || {})
     },
     openDynasty(args) {
-      window.corSociety.openDynasty(args || {})
+      window.corSociety.runAction('openDynasty', args || {})
     },
     createPlayerCadetHouse(args) {
-      window.corSociety.createPlayerCadetHouse(args || {})
+      window.corSociety.runAction('createPlayerCadetHouse', args || {})
     },
     openRelations() {
       window.corSociety.openRelations()
     },
     openAllies(args) {
-      window.corSociety.openAllies(args || {})
+      window.corSociety.runAction('openAllies', args || {})
     },
     openRivals(args) {
-      window.corSociety.openRivals(args || {})
+      window.corSociety.runAction('openRivals', args || {})
     },
     openLog(args) {
-      window.corSociety.openLog(args || {})
+      window.corSociety.runAction('openLog', args || {})
     },
     openLogEntry(args) {
-      window.corSociety.openLogEntry(args || {})
+      window.corSociety.runAction('openLogEntry', args || {})
     },
     openPlayerCrest() {
       window.corSociety.openPlayerCrest()
@@ -14252,7 +14541,7 @@
       window.corSociety.randomizePlayerCrest()
     },
     cyclePlayerCrest(args) {
-      window.corSociety.cyclePlayerCrest(args || {})
+      window.corSociety.runAction('cyclePlayerCrest', args || {})
     },
     togglePlayerCrestOverlay() {
       window.corSociety.togglePlayerCrestOverlay()
@@ -14261,43 +14550,43 @@
       window.corSociety.openWardrobe()
     },
     openWardrobeCharacter(args) {
-      window.corSociety.openWardrobeCharacter(args || {})
+      window.corSociety.runAction('openWardrobeCharacter', args || {})
     },
     applyWardrobeOutfit(args) {
-      window.corSociety.applyWardrobeOutfit(args || {})
+      window.corSociety.runAction('applyWardrobeOutfit', args || {})
     },
     openHouse(args) {
-      window.corSociety.openHouse(args || {})
+      window.corSociety.runAction('openHouse', args || {})
     },
     openPeople(args) {
-      window.corSociety.openPeople(args || {})
+      window.corSociety.runAction('openPeople', args || {})
     },
     openMemberGroups(args) {
-      window.corSociety.openMemberGroups(args || {})
+      window.corSociety.runAction('openMemberGroups', args || {})
     },
     openMemberGroup(args) {
-      window.corSociety.openMemberGroup(args || {})
+      window.corSociety.runAction('openMemberGroup', args || {})
     },
     openPerson(args) {
-      window.corSociety.openPerson(args || {})
+      window.corSociety.runAction('openPerson', args || {})
     },
     openVanillaActions(args) {
-      window.corSociety.openVanillaActions(args || {})
+      window.corSociety.runAction('openVanillaActions', args || {})
     },
     openVanillaKnownFamily(args) {
-      window.corSociety.openVanillaKnownFamily(args || {})
+      window.corSociety.runAction('openVanillaKnownFamily', args || {})
     },
     openVanillaFullFamilyTree(args) {
-      window.corSociety.openVanillaFullFamilyTree(args || {})
+      window.corSociety.runAction('openVanillaFullFamilyTree', args || {})
     },
     openFamilyTree(args) {
-      window.corSociety.openFamilyTree(args || {})
+      window.corSociety.runAction('openFamilyTree', args || {})
     },
     openDynastyTree(args) {
-      window.corSociety.openDynastyTree(args || {})
+      window.corSociety.runAction('openDynastyTree', args || {})
     },
     openHouseFamilyTree(args) {
-      window.corSociety.openHouseFamilyTree(args || {})
+      window.corSociety.runAction('openHouseFamilyTree', args || {})
     },
     openPlayerFamilyTree() {
       window.corSociety.openPlayerFamilyTree()
@@ -14306,220 +14595,247 @@
       window.corSociety.closeFamilyTreeOverlay()
     },
     openMarriageHousehold(args) {
-      window.corSociety.openMarriageHousehold(args || {})
+      window.corSociety.runAction('openMarriageHousehold', args || {})
     },
     openMarriageCandidates(args) {
-      window.corSociety.openMarriageCandidates(args || {})
+      window.corSociety.runAction('openMarriageCandidates', args || {})
     },
     confirmSocietyMarriage(args) {
-      window.corSociety.confirmSocietyMarriage(args || {})
+      window.corSociety.runAction('confirmSocietyMarriage', args || {})
     },
     performSocietyMarriage(args) {
-      window.corSociety.performSocietyMarriage(args || {})
+      window.corSociety.runAction('performSocietyMarriage', args || {})
     },
     registerBundledBankActions(args) {
-      window.corSociety.registerBundledBankActions(args || {})
+      window.corSociety.runAction('registerBundledBankActions', args || {})
     },
     registerBundledSlaveActions(args) {
-      window.corSociety.registerBundledSlaveActions(args || {})
+      window.corSociety.runAction('registerBundledSlaveActions', args || {})
     },
     registerBundledMatchmakerAction(args) {
-      window.corSociety.registerBundledMatchmakerAction(args || {})
+      window.corSociety.runAction('registerBundledMatchmakerAction', args || {})
     },
     openBankOfRome() {
       window.corSociety.openBankOfRome()
     },
     takeBankLoan(args) {
-      window.corSociety.takeBankLoan(args || {})
+      window.corSociety.runAction('takeBankLoan', args || {})
     },
     takeEmergencyDebtLoan(args) {
-      window.corSociety.takeEmergencyDebtLoan(args || {})
+      window.corSociety.runAction('takeEmergencyDebtLoan', args || {})
     },
     payBankLoan(args) {
-      window.corSociety.payBankLoan(args || {})
+      window.corSociety.runAction('payBankLoan', args || {})
     },
     deferBankPayment(args) {
-      window.corSociety.deferBankPayment(args || {})
+      window.corSociety.runAction('deferBankPayment', args || {})
     },
     openHouseholdSlaves(args) {
-      window.corSociety.openHouseholdSlaves(args || {})
+      window.corSociety.runAction('openHouseholdSlaves', args || {})
     },
     openPlayerSlavePath(args) {
-      window.corSociety.openPlayerSlavePath(args || {})
+      window.corSociety.runAction('openPlayerSlavePath', args || {})
     },
     playerSlaveWorkExtra(args) {
-      window.corSociety.playerSlaveWorkExtra(args || {})
+      window.corSociety.runAction('playerSlaveWorkExtra', args || {})
     },
     playerSlavePetitionFreedom(args) {
-      window.corSociety.playerSlavePetitionFreedom(args || {})
+      window.corSociety.runAction('playerSlavePetitionFreedom', args || {})
     },
     playerSlaveSeekPatron(args) {
-      window.corSociety.playerSlaveSeekPatron(args || {})
+      window.corSociety.runAction('playerSlaveSeekPatron', args || {})
     },
     playerSlaveEscape(args) {
-      window.corSociety.playerSlaveEscape(args || {})
+      window.corSociety.runAction('playerSlaveEscape', args || {})
     },
     openSlaveMarket(args) {
-      window.corSociety.openSlaveMarket(args || {})
+      window.corSociety.runAction('openSlaveMarket', args || {})
     },
     buySlave(args) {
-      window.corSociety.buySlave(args || {})
+      window.corSociety.runAction('buySlave', args || {})
     },
     openManageSlave(args) {
-      window.corSociety.openManageSlave(args || {})
+      window.corSociety.runAction('openManageSlave', args || {})
     },
     openAssignSlaveTask(args) {
-      window.corSociety.openAssignSlaveTask(args || {})
+      window.corSociety.runAction('openAssignSlaveTask', args || {})
     },
     assignSlaveTask(args) {
-      window.corSociety.assignSlaveTask(args || {})
+      window.corSociety.runAction('assignSlaveTask', args || {})
     },
     openSlaveEducationTargets(args) {
-      window.corSociety.openSlaveEducationTargets(args || {})
+      window.corSociety.runAction('openSlaveEducationTargets', args || {})
     },
     setSlaveEducationTarget(args) {
-      window.corSociety.setSlaveEducationTarget(args || {})
+      window.corSociety.runAction('setSlaveEducationTarget', args || {})
     },
     privateCompanySlave(args) {
-      window.corSociety.privateCompanySlave(args || {})
+      window.corSociety.runAction('privateCompanySlave', args || {})
     },
     legitimizeSlaveBastard(args) {
-      window.corSociety.legitimizeSlaveBastard(args || {})
+      window.corSociety.runAction('legitimizeSlaveBastard', args || {})
     },
     openSlaveMarriageCandidates(args) {
-      window.corSociety.openSlaveMarriageCandidates(args || {})
+      window.corSociety.runAction('openSlaveMarriageCandidates', args || {})
     },
     marryOwnedSlaves(args) {
-      window.corSociety.marryOwnedSlaves(args || {})
+      window.corSociety.runAction('marryOwnedSlaves', args || {})
     },
     acceptSlaveSelfPurchase(args) {
-      window.corSociety.acceptSlaveSelfPurchase(args || {})
+      window.corSociety.runAction('acceptSlaveSelfPurchase', args || {})
     },
     sellSlave(args) {
-      window.corSociety.sellSlave(args || {})
+      window.corSociety.runAction('sellSlave', args || {})
     },
     freeSlave(args) {
-      window.corSociety.freeSlave(args || {})
+      window.corSociety.runAction('freeSlave', args || {})
     },
     buyEnslavedCharacter(args) {
-      window.corSociety.buyEnslavedCharacter(args || {})
+      window.corSociety.runAction('buyEnslavedCharacter', args || {})
     },
     captureEnslavedCharacter(args) {
-      window.corSociety.captureEnslavedCharacter(args || {})
+      window.corSociety.runAction('captureEnslavedCharacter', args || {})
     },
     openMatchmaker(args) {
-      window.corSociety.openMatchmaker(args || {})
+      window.corSociety.runAction('openMatchmaker', args || {})
     },
     acceptMatchmakerCandidate(args) {
-      window.corSociety.acceptMatchmakerCandidate(args || {})
+      window.corSociety.runAction('acceptMatchmakerCandidate', args || {})
     },
     declineMatchmakerCandidates(args) {
-      window.corSociety.declineMatchmakerCandidates(args || {})
+      window.corSociety.runAction('declineMatchmakerCandidates', args || {})
     },
     sendGift(args) {
-      window.corSociety.sendGift(args || {})
+      window.corSociety.runAction('sendGift', args || {})
     },
     hostDinner(args) {
-      window.corSociety.hostDinner(args || {})
+      window.corSociety.runAction('hostDinner', args || {})
     },
     askSupport(args) {
-      window.corSociety.askSupport(args || {})
+      window.corSociety.runAction('askSupport', args || {})
     },
     tradeDeal(args) {
-      window.corSociety.tradeDeal(args || {})
+      window.corSociety.runAction('tradeDeal', args || {})
+    },
+    fundTradeSafeguards(args) {
+      window.corSociety.runAction('fundTradeSafeguards', args || {})
+    },
+    pressTradeTerms(args) {
+      window.corSociety.runAction('pressTradeTerms', args || {})
+    },
+    letStandTradeReview(args) {
+      window.corSociety.runAction('letStandTradeReview', args || {})
     },
     offerPatronage(args) {
-      window.corSociety.offerPatronage(args || {})
+      window.corSociety.runAction('offerPatronage', args || {})
     },
     seekPatronage(args) {
-      window.corSociety.seekPatronage(args || {})
+      window.corSociety.runAction('seekPatronage', args || {})
+    },
+    coverPatronageShortage(args) {
+      window.corSociety.runAction('coverPatronageShortage', args || {})
+    },
+    auditPatronageAccounts(args) {
+      window.corSociety.runAction('auditPatronageAccounts', args || {})
+    },
+    endPatronage(args) {
+      window.corSociety.runAction('endPatronage', args || {})
+    },
+    sponsorTutorship(args) {
+      window.corSociety.runAction('sponsorTutorship', args || {})
+    },
+    requestTutorshipFavor(args) {
+      window.corSociety.runAction('requestTutorshipFavor', args || {})
+    },
+    declineTutorshipExchange(args) {
+      window.corSociety.runAction('declineTutorshipExchange', args || {})
     },
     startRivalry(args) {
-      window.corSociety.startRivalry(args || {})
+      window.corSociety.runAction('startRivalry', args || {})
     },
     reconcile(args) {
-      window.corSociety.reconcile(args || {})
+      window.corSociety.runAction('reconcile', args || {})
     },
     praisePerson(args) {
-      window.corSociety.praisePerson(args || {})
+      window.corSociety.runAction('praisePerson', args || {})
     },
     requestIntroduction(args) {
-      window.corSociety.requestIntroduction(args || {})
+      window.corSociety.runAction('requestIntroduction', args || {})
     },
     inviteHomeTalk(args) {
-      window.corSociety.inviteHomeTalk(args || {})
+      window.corSociety.runAction('inviteHomeTalk', args || {})
     },
     courtCharacter(args) {
-      window.corSociety.courtCharacter(args || {})
+      window.corSociety.runAction('courtCharacter', args || {})
     },
     resolveCourtship(args) {
-      window.corSociety.resolveCourtship(args || {})
+      window.corSociety.runAction('resolveCourtship', args || {})
     },
     spreadRumor(args) {
-      window.corSociety.spreadRumor(args || {})
+      window.corSociety.runAction('spreadRumor', args || {})
     },
     startStealingFromCharacter(args) {
-      window.corSociety.startStealingFromCharacter(args || {})
+      window.corSociety.runAction('startStealingFromCharacter', args || {})
     },
     resolveStealingFromCharacter(args) {
-      window.corSociety.resolveStealingFromCharacter(args || {})
+      window.corSociety.runAction('resolveStealingFromCharacter', args || {})
     },
     answerSlander(args) {
-      window.corSociety.answerSlander(args || {})
+      window.corSociety.runAction('answerSlander', args || {})
     },
     ignoreSlander(args) {
-      window.corSociety.ignoreSlander(args || {})
+      window.corSociety.runAction('ignoreSlander', args || {})
     },
     acceptOpening(args) {
-      window.corSociety.acceptOpening(args || {})
+      window.corSociety.runAction('acceptOpening', args || {})
     },
     declineOpening(args) {
-      window.corSociety.declineOpening(args || {})
+      window.corSociety.runAction('declineOpening', args || {})
     },
     supportPetition(args) {
-      window.corSociety.supportPetition(args || {})
+      window.corSociety.runAction('supportPetition', args || {})
     },
     refusePetition(args) {
-      window.corSociety.refusePetition(args || {})
+      window.corSociety.runAction('refusePetition', args || {})
     },
     attendFamilyInvitation(args) {
-      window.corSociety.attendFamilyInvitation(args || {})
+      window.corSociety.runAction('attendFamilyInvitation', args || {})
     },
     declineFamilyInvitation(args) {
-      window.corSociety.declineFamilyInvitation(args || {})
+      window.corSociety.runAction('declineFamilyInvitation', args || {})
     },
     endorseOffice(args) {
-      window.corSociety.endorseOffice(args || {})
+      window.corSociety.runAction('endorseOffice', args || {})
     },
     honorWedding(args) {
-      window.corSociety.honorWedding(args || {})
+      window.corSociety.runAction('honorWedding', args || {})
     },
     judgeInheritance(args) {
-      window.corSociety.judgeInheritance(args || {})
+      window.corSociety.runAction('judgeInheritance', args || {})
     },
     investVenture(args) {
-      window.corSociety.investVenture(args || {})
+      window.corSociety.runAction('investVenture', args || {})
     },
     collectVentureResult(args) {
-      window.corSociety.collectVentureResult(args || {})
+      window.corSociety.runAction('collectVentureResult', args || {})
     },
     treatFamilyMember(args) {
-      window.corSociety.treatFamilyMember(args || {})
+      window.corSociety.runAction('treatFamilyMember', args || {})
     },
     comfortFamilyMember(args) {
-      window.corSociety.comfortFamilyMember(args || {})
+      window.corSociety.runAction('comfortFamilyMember', args || {})
     },
     ignoreFamilyDistress(args) {
-      window.corSociety.ignoreFamilyDistress(args || {})
+      window.corSociety.runAction('ignoreFamilyDistress', args || {})
     },
     shieldScandal(args) {
-      window.corSociety.shieldScandal(args || {})
+      window.corSociety.runAction('shieldScandal', args || {})
     },
     exploitScandal(args) {
-      window.corSociety.exploitScandal(args || {})
+      window.corSociety.runAction('exploitScandal', args || {})
     },
     declineFamilyAffair(args) {
-      window.corSociety.declineFamilyAffair(args || {})
+      window.corSociety.runAction('declineFamilyAffair', args || {})
     }
   }
 }

@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.286` keeps duplicated Society action effects suppressed while restoring readable vanilla-style previews: buttons show passive money, influence, prestige, revenue, and property icons, but executable vanilla `statChanges` are still stripped from Society engine actions whose methods already apply the result. It also keeps the Bank of Rome loan/payment hardening, cleared-principal protection, wardrobe overlays for main-screen family portraits, lightweight notification-button responses, and rotating large-save house simulation from the previous release.
+`1.1.288` completes the vanilla `statChanges` integration for Society buttons with exact money, influence, or prestige effects. Citizen of Rome draws the resource icons, while Society handlers subtract the already-applied vanilla values before applying their own results, preventing duplicated costs or rewards. It also adds final feedback modals for new Society choices, exact bribe-cost previews for Stealing From, and keeps debt-relief loans inside the original forced-sale/debt notice.
 
 ## Features
 
@@ -64,6 +64,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Derives the player's Society order from the base game's property class, senatorial flag, and vanilla heritage, then updates the visible main-screen citizen title without overwriting vanilla `heritage`.
 - Applies real game effects through cash, prestige, influence, revenue modifiers, and monthly events.
 - Adds family-care events for stressed, severely stressed, depressed, sick, ill, or wounded household members, with treatment, rest, or neglect options.
+- Adds lightweight trade compact reviews, patronage account audits, and child tutorship offers so active social ties keep producing choices without heavy monthly processing.
 - Trade compacts no longer stack infinitely: each house can maintain one active trade bonus, and the compact breaks automatically if relations collapse or rivalry starts.
 - Lets houses play their own monthly social game through wealth, power, stability, agendas, family events, inter-house marriages, pregnancies, inter-house relationships, and rank movement.
 - Gives each house a separate virtual-player state: AI cash, AI influence, AI prestige, property, focus, and controller marker.
