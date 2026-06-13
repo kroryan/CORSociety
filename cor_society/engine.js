@@ -3070,6 +3070,47 @@
             } catch (err) {
               console.warn(err)
             }
+            if (record.isPrivateCompany && !child.corSocietySlave) {
+              let currentDynastyId = this.currentCharacterDynastyId(state)
+              let mother = state.characters[record.motherId]
+              let origin = (mother && mother.corSocietySlaveOrigin) || this.randomSlaveOrigin()
+              try {
+                daapi.updateCharacter({
+                  characterId: child.id,
+                  character: {
+                    dynastyId: currentDynastyId || child.dynastyId,
+                    corSocietySlave: true,
+                    corSocietySlaveActive: true,
+                    corSocietySlaveType: 'labor',
+                    corSocietySlaveLevel: 1,
+                    corSocietySlaveOwnerHouseId: currentDynastyId || '',
+                    corSocietySlaveOrigin: origin,
+                    corSocietySlaveTask: 'labor',
+                    corSocietySlaveSavings: 0,
+                    corSocietyOrigin: 'private_company_bastard',
+                    flagCannotMarry: true,
+                    flagDoNotCull: true
+                  }
+                })
+              } catch (err) {
+                console.warn(err)
+              }
+              let slaveRecord = this.playerSlaveRecordFromCharacter({
+                key: 'slave_' + this.safeId(child.id),
+                characterId: child.id,
+                type: 'labor',
+                level: 1,
+                age: this.age(child, state),
+                origin,
+                task: 'labor',
+                savings: 0
+              }, child, state)
+              society.playerSlaves = society.playerSlaves || []
+              if (!society.playerSlaves.some((slave) => slave && this.sameCharacterId(slave.characterId, child.id))) {
+                society.playerSlaves.push(slaveRecord)
+                this.log(society, this.characterName(child, state) + ' is born into slavery and recorded in the household slave list.', 'birth')
+              }
+            }
           })
         },
         findPaternityChild(state, record) {
@@ -12189,8 +12230,8 @@
     setSlaveEducationTarget(args) {
       window.corSociety.setSlaveEducationTarget(args || {})
     },
-    domesticCompanionSlave(args) {
-      window.corSociety.domesticCompanionSlave(args || {})
+    privateCompanySlave(args) {
+      window.corSociety.privateCompanySlave(args || {})
     },
     openSlaveMarriageCandidates(args) {
       window.corSociety.openSlaveMarriageCandidates(args || {})
