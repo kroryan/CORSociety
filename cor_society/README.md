@@ -18,13 +18,13 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Uses vanilla Citizen of Rome portrait assets through a local `icons/characters/...` to `img/*.svg` resolver, and keeps vanilla look data as the base identity.
 - Uses stable vanilla-based looks for Society-generated characters, with age progression and inherited look colors.
 - Gives generated characters vanilla Citizen of Rome traits through `daapi.addTrait`.
-- Adds Society social traits with icons, such as Adulterer, Faithful, Liar, Honorable, Manipulator, Charitable, Cruel, Gossip, Ambitious, Resentful, Mentor, and Student; these affect relationships, courtship, trade, scandals, and family events.
+- Adds Society social traits as real game trait definitions with original Roman Society SVG icons, such as Adulterer, Faithful, Liar, Honorable, Manipulator, Charitable, Cruel, Gossip, Ambitious, Resentful, Mentor, and Student; these appear alongside game traits where Citizen of Rome shows character traits and affect relationships, courtship, trade, scandals, and family events.
 - Generates persistent Roman-style house shields for the player and every known NPC house.
 - Adds a separate global `House Shield` action for editing the player's shield without cluttering the Society menus.
 - Adds a global `Family Wardrobe` action with its own wardrobe icon for changing safe vanilla-SVG clothing tint, with outfit availability tied to the player's Society order.
 - Bundles compatible standalone actions inside Society so they do not need separate installation: Play As, Attempt Murder, animal stealing events, Disinherit, Restore Inheritance, and optional desktop DevTools access. Society can also surface the bundled character actions from its `Vanilla / other mods actions` menu even if the base game has not injected them into that character yet.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
-- Shows visual relationship badges with score, color, and icon in Society character lists and on detectable vanilla family/member cards, including last known relationship for dead relatives.
+- Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.
 - Splits allies/patrons and rivals into separate paged menus with matching overview counts and contextual Back navigation.
 - Shows past affairs as paged notification-style entries with their own event icons.
 - Uses copied vanilla interface icons for social orders and Society actions where the mod API allows local assets.

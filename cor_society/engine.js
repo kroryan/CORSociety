@@ -100,7 +100,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.24') {
+      if (window.corSociety && window.corSociety.version === '1.1.25') {
         window.corSociety.ensure()
         window.corSociety.startPlayerCrestOverlay()
         window.corSociety.startPlayerStatusOverlay()
@@ -108,7 +108,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.24',
+        version: '1.1.25',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -323,10 +323,15 @@
             if (society.lastEnsureKey === ensureKey) {
               this.registerPlayerDynastyTreeAction(state)
               this.ensurePlayerDynastyTreeForCurrent(society, state)
+              this.registerSocietyTraitDefinitions()
+              state = daapi.getState()
+              this.syncSocietyTraitsWithVanilla(society, state)
+              this.syncFamilyRelationStatuses(society, state)
               this.save(society)
               return society
             }
           }
+          this.registerSocietyTraitDefinitions()
           this.registerPlayerDynastyTreeAction(state)
           this.syncWithGame(society, state)
           this.ensureVisibleHouseMembers(society, state)
@@ -342,6 +347,8 @@
           this.syncPlayerSocietyStatus(society, state)
           this.ensurePlayerDynastyTreeForCurrent(society, state)
           state = daapi.getState()
+          this.syncSocietyTraitsWithVanilla(society, state)
+          this.syncFamilyRelationStatuses(society, state)
           this.restoreSocietyPortraitLooks(state)
           this.allowAchievementsWithSociety(state)
           society.lastEnsureKey = this.ensureKey(society, state)
@@ -440,6 +447,7 @@
             pendingPaternities: [],
             discoveredPaternities: {},
             playerTreeGeneratedLivingIds: [],
+            relationStatusCharacterIds: [],
             lastProcessedMonth: '',
             log: []
           }
@@ -469,6 +477,7 @@
           society.pendingPaternities = society.pendingPaternities || []
           society.discoveredPaternities = society.discoveredPaternities || {}
           society.playerTreeGeneratedLivingIds = society.playerTreeGeneratedLivingIds || []
+          society.relationStatusCharacterIds = society.relationStatusCharacterIds || []
           society.log = society.log || []
           return society
         },
@@ -523,64 +532,16 @@
         },
         pushModal(payload) {
           payload = payload || {}
-          if (payload.societySummaryHtml) {
-            this.prepareSocietySummaryPayload(payload)
-          }
           if (!payload.corTranslatorPretranslateNow) {
             payload.corTranslatorSkipPretranslate = true
             payload.skipTranslatorPretranslate = true
           }
-          payload.options = this.decorateModalOptions(this.addSocietyCloseOption(payload.options || [], payload), payload)
+          let options = payload.options || []
+          if (payload.societySummaryOptions && payload.societySummaryOptions.length) {
+            options = payload.societySummaryOptions.concat(options)
+          }
+          payload.options = this.decorateModalOptions(this.addSocietyCloseOption(options, payload), payload)
           daapi.pushInteractionModalQueue(payload)
-          if (payload.societySummaryToken && payload.societySummaryHtml) {
-            this.scheduleSocietySummaryRender(payload.societySummaryToken, payload.societySummaryHtml)
-          }
-        },
-        prepareSocietySummaryPayload(payload) {
-          let token = 'COR_SOCIETY_UI_' + Date.now() + '_' + Math.floor(Math.random() * 1000000)
-          payload.societySummaryToken = token
-          payload.message = String(payload.message || 'Roman Society') + '\n\n[' + token + ']'
-        },
-        scheduleSocietySummaryRender(token, html) {
-          if (typeof window === 'undefined' || typeof document === 'undefined') {
-            return
-          }
-          let attempts = 0
-          let render = () => {
-            attempts += 1
-            if (this.renderSocietySummaryToken(token, html) || attempts > 80) {
-              if (timer) {
-                window.clearInterval(timer)
-              }
-            }
-          }
-          let timer = window.setInterval(render, 80)
-          window.setTimeout(render, 0)
-        },
-        renderSocietySummaryToken(token, html) {
-          let selectors = [
-            '.interaction-modal-content-message',
-            '#interactionModal .interaction-modal-content-message',
-            '.modal .interaction-modal-content-message',
-            '#interactionModal .modal-body .break-word'
-          ]
-          let nodes = []
-          selectors.forEach((selector) => {
-            Array.prototype.slice.call(document.querySelectorAll(selector)).forEach((node) => {
-              if (nodes.indexOf(node) < 0) {
-                nodes.push(node)
-              }
-            })
-          })
-          for (let i = nodes.length - 1; i >= 0; i--) {
-            let node = nodes[i]
-            if (node && (node.textContent || '').indexOf(token) >= 0) {
-              node.innerHTML = html
-              node.classList.add('cor-society-summary-mounted')
-              return true
-            }
-          }
-          return false
         },
         escapeHtml(value) {
           return String(value === undefined || value === null ? '' : value)
@@ -644,6 +605,122 @@
         },
         summaryGrid(items) {
           return '<div class="cor-society-summary-grid">' + (items || []).join('') + '</div>'
+        },
+        summaryOption(title, value, icons, tooltip, variant) {
+          let text = title ? (title + ': ' + value) : String(value || '')
+          return {
+            variant: variant || 'info',
+            text,
+            disabled: true,
+            showDisabledWithTooltip: true,
+            tooltip: tooltip || text,
+            icons: (icons || []).filter(Boolean)
+          }
+        },
+        hubSummaryOptions(state, society, counts, rivals, allies, playerStatus) {
+          let houseCount = Object.keys((society && society.houses) || {}).length
+          let orderText = this.stratumOrder
+            .map((stratum) => this.strata[stratum].title + ' ' + (counts[stratum] || 0))
+            .join(' | ')
+          return [
+            this.summaryOption(
+              'Date and standing',
+              'Year ' + state.year + ', month ' + ((state.month || 0) + 1) + ' - ' + playerStatus.title + (playerStatus.className ? ' (' + playerStatus.className + ')' : ''),
+              [this.affairIcon('log'), this.stratumIcon(playerStatus.stratum)],
+              'Your current Society order is derived from the same property ladder the base game uses.'
+            ),
+            this.summaryOption(
+              'Known society',
+              houseCount + ' houses in ' + this.stratumOrder.length + ' social orders; ' + allies + ' allies/patrons; ' + rivals + ' rivalries.',
+              [this.affairIcon('familyTree'), this.affairIcon('support'), this.affairIcon('rivalry')],
+              'This is the live map of Society houses currently simulated by the mod.'
+            ),
+            this.summaryOption(
+              'Orders',
+              orderText,
+              this.stratumOrder.map((stratum) => this.stratumIcon(stratum)),
+              'Counts by social order. Open an order to inspect its houses.'
+            ),
+            this.summaryOption(
+              'Monthly life',
+              'Houses pursue wealth, office, marriage, security, honor, or revenge. Effects can touch cash, prestige, influence, relations, favors, and revenue.',
+              [this.affairIcon('trade'), this.affairIcon('prestige'), this.affairIcon('coins')],
+              'These internal turns are simulated monthly and can create player-facing affairs.'
+            )
+          ]
+        },
+        houseSummaryOptions(society, state, house, profile, tradeActive) {
+          let property = (house.ai && house.ai.property) || {}
+          let status = house.rivalry ? 'Rivalry' : ((house.relation || 0) >= 55 ? 'Ally' : 'Neutral')
+          let relationVisual = {
+            icon: this.relationIcon(house.relation || 0, house.rivalry ? 'rival' : this.relationshipTypeFromScore(house.relation || 0))
+          }
+          return [
+            this.summaryOption(
+              'Order',
+              profile.title + '; citizen rank ' + (house.citizenRank || 'unknown') + '; status ' + status + '.',
+              [this.stratumIcon(house.stratum), status === 'Rivalry' ? this.affairIcon('rivalry') : this.affairIcon('support')],
+              'Public position, citizen rank, and diplomatic status of this house.'
+            ),
+            this.summaryOption(
+              'Power',
+              'Prestige ' + Math.round(house.prestige || 0) + '; strength ' + Math.round(house.strength || 0) + '; wealth ' + Math.round(house.wealth || 0) + '; power ' + Math.round(house.power || 0) + '.',
+              [this.affairIcon('prestige'), this.affairIcon('influence'), this.affairIcon('coins')],
+              'These values drive how strongly the house can act in Society events.'
+            ),
+            this.summaryOption(
+              'Estate',
+              'AI cash ' + Math.round((house.ai && house.ai.cash) || 0) + '; influence ' + Math.round((house.ai && house.ai.influence) || 0) + '; property L' + Math.round(property.land || 0) + ' A' + Math.round(property.animals || 0) + ' T' + Math.round(property.trade || 0) + '.',
+              [this.affairIcon('coins'), this.affairIcon('trade')],
+              'Internal estate resources used by the house simulation.'
+            ),
+            this.summaryOption(
+              'Relations',
+              'House relation ' + this.signed(house.relation || 0) + '; stability ' + Math.round(house.stability || 0) + '; favors owed ' + (house.favor || 0) + '; trade ' + (tradeActive ? 'active' : 'none') + '.',
+              [relationVisual.icon, this.affairIcon('familyTree'), this.affairIcon('gift')],
+              'Relationship, stability, favors, and trade state. Trade does not stack.'
+            ),
+            this.summaryOption(
+              'Current affairs',
+              'Agenda ' + (house.agenda || 'unknown') + '; latest ' + (house.lastFamilyEvent || 'none') + '.',
+              [this.affairIcon(house.lastFamilyKind || 'log')],
+              'Recent and current house behavior used by monthly Society turns.'
+            )
+          ]
+        },
+        personSummaryOptions(society, state, house, character, relatives, social, romance, relationScore, relationRecord, currentId, characterId) {
+          let skills = character.skills || {}
+          let spouse = character.spouseId && state.characters[character.spouseId] ? this.characterName(state.characters[character.spouseId], state) : 'none'
+          let relationText = currentId && !this.sameCharacterId(currentId, characterId)
+            ? this.signed(relationScore) + ' ' + this.relationshipLabel(relationRecord ? relationRecord.type : this.relationshipTypeFromScore(relationScore))
+            : 'controlled character'
+          let relationVisual = currentId && !this.sameCharacterId(currentId, characterId) ? this.relationVisual(society, state, character) : false
+          return [
+            this.summaryOption(
+              'Relation',
+              relationText,
+              [relationVisual ? relationVisual.icon : this.affairIcon('support')],
+              relationVisual ? relationVisual.tooltip : 'This is the currently controlled character.'
+            ),
+            this.summaryOption(
+              'Profile',
+              'Age ' + this.formatAge(character, state) + '; job ' + ((character.job || 'none') + (character.jobLevel ? ' ' + character.jobLevel : '')) + '; spouse ' + spouse + '; children ' + relatives.children.length + '.',
+              [this.affairIcon('familyTree'), this.affairIcon('marriage')],
+              'Basic character facts from the game character record.'
+            ),
+            this.summaryOption(
+              'Skills',
+              'Int ' + Math.round(skills.intelligence || 0) + '; Steward ' + Math.round(skills.stewardship || 0) + '; Eloquence ' + Math.round(skills.eloquence || 0) + '; Combat ' + Math.round(skills.combat || 0) + '.',
+              [this.affairIcon('prestige'), this.affairIcon('trade'), this.affairIcon('senator'), this.affairIcon('rivalry')],
+              'Vanilla skill values used by Society decisions where relevant.'
+            ),
+            this.summaryOption(
+              'Social state',
+              'Introduced ' + (social.introduced ? 'yes' : 'no') + '; rapport ' + Math.round(social.bond || 0) + '; lover ' + (romance ? ('yes, intensity ' + Math.round(romance.intensity || 0)) : 'no') + '; house relation ' + this.signed(house.relation || 0) + '.',
+              [this.affairIcon('invitation'), this.affairIcon('support'), this.affairIcon('lover')],
+              'Society social state for introductions, visits, courtship, and house relations.'
+            )
+          ]
         },
         hubSummaryHtml(state, society, counts, rivals, allies, playerStatus) {
           let houseCount = Object.keys((society && society.houses) || {}).length
@@ -1368,18 +1445,18 @@
         },
         societyTraitDefinitions() {
           return {
-            adulterer: { label: 'Adulterer', icon: 'romance' },
-            faithful: { label: 'Faithful', icon: 'marriage' },
-            liar: { label: 'Liar', icon: 'rivalry' },
-            honorable: { label: 'Honorable', icon: 'prestige' },
-            manipulator: { label: 'Manipulator', icon: 'influence' },
-            charitable: { label: 'Charitable', icon: 'gift' },
-            cruel: { label: 'Cruel', icon: 'rivalry' },
-            gossip: { label: 'Gossip', icon: 'log' },
-            ambitious: { label: 'Ambitious', icon: 'officeCampaign' },
-            resentful: { label: 'Resentful', icon: 'rivalry' },
-            mentor: { label: 'Mentor', icon: 'support' },
-            protege: { label: 'Student', icon: 'support' }
+            adulterer: { label: 'Adulterer', vanillaKey: 'corSocietyAdulterer', description: 'Known for dangerous affairs. Spouses and moral rivals react badly, but close friends may ignore the scandal.' },
+            faithful: { label: 'Faithful', vanillaKey: 'corSocietyFaithful', description: 'Values loyalty and stable household bonds. Improves spousal trust and lowers courtship scandal pressure.' },
+            liar: { label: 'Liar', vanillaKey: 'corSocietyLiar', description: 'Uses falsehoods easily. Honorable characters distrust this person.' },
+            honorable: { label: 'Honorable', vanillaKey: 'corSocietyHonorable', description: 'Publicly values reputation, fairness, and proper conduct.' },
+            manipulator: { label: 'Manipulator', vanillaKey: 'corSocietyManipulator', description: 'Pulls people into useful positions. Trusting characters are easier targets but less comfortable afterward.' },
+            charitable: { label: 'Charitable', vanillaKey: 'corSocietyCharitable', description: 'Gains warmth through gifts, mercy, and household support.' },
+            cruel: { label: 'Cruel', vanillaKey: 'corSocietyCruel', description: 'Feared more than loved. Often harms personal relations unless power matters more than affection.' },
+            gossip: { label: 'Gossip', vanillaKey: 'corSocietyGossip', description: 'Trades in rumors. Useful for intrigue, risky for spouses and private affairs.' },
+            ambitious: { label: 'Ambitious', vanillaKey: 'corSocietyAmbitious', description: 'Seeks rank, wealth, and status. Other ambitious characters may admire the drive.' },
+            resentful: { label: 'Resentful', vanillaKey: 'corSocietyResentful', description: 'Remembers slights and feeds rivalries when trust collapses.' },
+            mentor: { label: 'Mentor', vanillaKey: 'corSocietyMentor', description: 'Guides another character through public life and family politics.' },
+            protege: { label: 'Student', vanillaKey: 'corSocietyProtege', description: 'Learns from a patron, elder, or teacher within Society.' }
           }
         },
         addSocietyTrait(society, characterId, trait) {
@@ -1411,7 +1488,14 @@
         },
         traitIcon(trait) {
           let def = this.societyTraitDefinitions()[trait]
-          return this.affairIcon(def ? def.icon : 'log')
+          if (def) {
+            try {
+              return daapi.requireImage('/cor_society/assets/traits/' + trait + '.svg')
+            } catch (err) {
+              console.warn(err)
+            }
+          }
+          return this.affairIcon('log')
         },
         socialTraitSummary(society, character) {
           if (!character) {
@@ -1422,6 +1506,93 @@
             return 'none'
           }
           return ids.map((trait) => this.traitLabel(trait)).join(', ')
+        },
+        societyTraitOptions(society, character) {
+          let definitions = this.societyTraitDefinitions()
+          let traits = this.societyTraitsForCharacter(society, character && character.id)
+          if (!traits.length) {
+            return [{
+              text: 'Social traits: none',
+              disabled: true,
+              showDisabledWithTooltip: true,
+              tooltip: 'No Society social trait is currently known for this character.',
+              icons: [this.affairIcon('prestige')]
+            }]
+          }
+          return traits.map((trait) => {
+            let def = definitions[trait] || { label: this.traitLabel(trait), description: '' }
+            return {
+              text: 'Social trait: ' + def.label,
+              disabled: true,
+              showDisabledWithTooltip: true,
+              tooltip: def.description || 'This Society trait affects relationships, courtship, scandals, trade, and family events.',
+              icons: [this.traitIcon(trait)]
+            }
+          })
+        },
+        registerSocietyTraitDefinitions() {
+          let definitions = this.societyTraitDefinitions()
+          Object.keys(definitions).forEach((trait) => {
+            let def = definitions[trait]
+            if (!def || !def.vanillaKey) {
+              return
+            }
+            try {
+              daapi.addOrEditTraitDefinition({
+                trait: def.vanillaKey,
+                traitInfo: {
+                  group: 'neutral',
+                  modifiers: { skills: {} },
+                  isStackable: false,
+                  points: 0
+                },
+                icon: this.traitIcon(trait),
+                specialGroups: ['otherCharacterTraits'],
+                text: {
+                  title: def.label,
+                  description: def.description || def.label
+                }
+              })
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+        },
+        syncSocietyTraitsWithVanilla(society, state) {
+          if (!society || !state || !state.characters) {
+            return
+          }
+          let definitions = this.societyTraitDefinitions()
+          Object.keys(state.characters).forEach((characterId) => {
+            let character = state.characters[characterId]
+            if (!character) {
+              return
+            }
+            character.id = character.id || characterId
+            let socialTraits = this.societyTraitsForCharacter(society, characterId)
+            let vanillaTraits = character.traits || []
+            Object.keys(definitions).forEach((trait) => {
+              let def = definitions[trait]
+              let key = def && def.vanillaKey
+              if (!key) {
+                return
+              }
+              let shouldHave = socialTraits.indexOf(trait) >= 0
+              let has = vanillaTraits.indexOf(key) >= 0
+              try {
+                if (shouldHave && !has) {
+                  daapi.addTrait({ characterId, trait: key })
+                  vanillaTraits.push(key)
+                } else if (!shouldHave && has) {
+                  daapi.removeTrait({ characterId, trait: key })
+                  vanillaTraits = vanillaTraits.filter((item) => item !== key)
+                }
+              } catch (err) {
+                console.warn(err)
+              }
+            })
+            character.traits = vanillaTraits
+          })
         },
         characterHasTrait(society, character, trait) {
           if (!character || !trait) {
@@ -3313,6 +3484,58 @@
             tooltip: (character.isDead ? 'Last known relation' : 'Relation') + ': ' + this.signed(score) + ' - ' + label
           }
         },
+        syncFamilyRelationStatuses(society, state) {
+          if (!society || !state || !state.characters) {
+            return
+          }
+          let currentId = this.currentCharacterId(state)
+          let active = {}
+          let previous = society.relationStatusCharacterIds || []
+          this.familyRelationCandidateIds(state).forEach((characterId) => {
+            let character = state.characters[characterId]
+            if (!character || this.sameCharacterId(characterId, currentId)) {
+              return
+            }
+            character.id = character.id || characterId
+            let record = this.personalRelationRecord(society, currentId, characterId, false)
+            let visual = this.relationVisual(society, state, character, { lastKnownForDead: true })
+            if (!visual) {
+              return
+            }
+            let meaningful = !!record || Math.abs(visual.score || 0) >= 15 || ['friend', 'bestFriend', 'mentor', 'student', 'protector', 'admirer', 'lover', 'rival', 'enemy', 'traitor', 'resentful', 'humiliated'].indexOf(visual.type) >= 0
+            if (!meaningful) {
+              return
+            }
+            active[characterId] = true
+            try {
+              daapi.addCharacterStatus({
+                characterId,
+                key: 'cor_society_relation',
+                status: {
+                  title: visual.tooltip,
+                  icon: visual.icon,
+                  active: true
+                }
+              })
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+          previous.forEach((characterId) => {
+            if (!active[characterId]) {
+              try {
+                daapi.setCharacterStatusActive({ characterId, key: 'cor_society_relation', isActive: false })
+              } catch (err) {
+                try {
+                  daapi.deleteCharacterStatus({ characterId, key: 'cor_society_relation' })
+                } catch (innerErr) {
+                  console.warn(innerErr)
+                }
+              }
+            }
+          })
+          society.relationStatusCharacterIds = Object.keys(active)
+        },
         relationIcon(score, type) {
           score = parseFloat(score || 0)
           type = type || this.relationshipTypeFromScore(score)
@@ -3945,7 +4168,7 @@
             societyMenu: true,
             title: 'Roman Society',
             message: 'Roman Society overview.',
-            societySummaryHtml: this.hubSummaryHtml(state, society, counts, rivals, allies, playerStatus),
+            societySummaryOptions: this.hubSummaryOptions(state, society, counts, rivals, allies, playerStatus),
             image: daapi.requireImage('/cor_society/icon.svg'),
             options: [
               ...this.stratumOrder.map((stratum) => {
@@ -4483,7 +4706,7 @@
             societyMenu: true,
             title: house.name,
             message: 'House summary.',
-            societySummaryHtml: this.houseSummaryHtml(society, state, house, profile, tradeActive),
+            societySummaryOptions: this.houseSummaryOptions(society, state, house, profile, tradeActive),
             image: this.houseCrestIcon(society, house),
             options: [
               {
@@ -4831,16 +5054,10 @@
             societyMenu: true,
             title: this.characterName(character, state),
             message: 'Character summary.',
-            societySummaryHtml: this.personSummaryHtml(society, state, house, character, relatives, social, romance, relationScore, relationRecord, currentId, characterId),
+            societySummaryOptions: this.personSummaryOptions(society, state, house, character, relatives, social, romance, relationScore, relationRecord, currentId, characterId),
             image: this.characterPortrait(character, state, house),
             options: [
-              {
-                text: 'Social traits: ' + this.socialTraitSummary(society, character),
-                disabled: true,
-                showDisabledWithTooltip: true,
-                tooltip: 'These Society traits affect relationships, courtship, scandals, trade, and family events.',
-                icons: this.societyTraitIconList(society, character)
-              },
+              ...this.societyTraitOptions(society, character),
               {
                 variant: 'info',
                 text: 'Vanilla / other mods actions (' + vanillaActions.length + ')',
@@ -8687,20 +8904,20 @@
           if (this.playerStatusOverlayStarted) {
             this.applyPlayerStatusOverlay()
             this.applyPortraitOverlays()
-            this.applyRelationBadges()
+            this.clearRelationBadges()
             return
           }
           this.playerStatusOverlayStarted = true
           this.applyPlayerStatusOverlay()
           this.applyPortraitOverlays()
-          this.applyRelationBadges()
+          this.clearRelationBadges()
           if (typeof window !== 'undefined' && window.setInterval) {
             window.setInterval(() => {
               try {
                 if (window.corSociety) {
                   window.corSociety.applyPlayerStatusOverlay()
                   window.corSociety.applyPortraitOverlays()
-                  window.corSociety.applyRelationBadges()
+                  window.corSociety.clearRelationBadges()
                 }
               } catch (err) {
                 console.warn(err)
@@ -8817,6 +9034,8 @@
           if (typeof document === 'undefined') {
             return
           }
+          this.clearRelationBadges()
+          return
           let state = daapi.getState()
           if (!state || !state.characters) {
             return

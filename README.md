@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.24.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.25.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.24.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.25.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -19,7 +19,7 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 - Simulated dynasty play for NPC houses, including marriages, children, inheritance pressure, courtship, affairs, trade, relationship changes, and social mobility.
 - Visual family trees for Society dynasties and the player's dynasty, designed to avoid taking control away from the human player's current character.
 - Player Dynasty Tree as a current-character action, with missing player ancestors prepared when the mod starts rather than only when the tree is opened.
-- Visual relationship badges for Society characters and detectable vanilla family/member cards, including last known relationship values for dead relatives.
+- Visual relationship badges inside Society character views, plus safe game status icons for meaningful family relations where Citizen of Rome displays character statuses.
 - Interactive courtship, marriage, business, diplomacy, family-support, and scandal events with visible consequences.
 - Persistent relationship systems for friendship, rivalry, patronage, mentorship, admiration, resentment, betrayal, and house-level diplomacy.
 - Social traits with icons and gameplay effects, including traits that influence courtship, marriage, trade, scandals, opinions, and family events.
@@ -38,7 +38,7 @@ Performance, stability, Android safety, and visual quality take priority over co
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.24.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.25.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.
