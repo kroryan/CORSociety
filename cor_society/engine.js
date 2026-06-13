@@ -82,7 +82,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.284') {
+      if (window.corSociety && window.corSociety.version === '1.1.285') {
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -91,7 +91,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.284',
+        version: '1.1.285',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -568,7 +568,8 @@
               interestRate: 0.083,
               loansTaken: 0,
               lastPaymentYear: '',
-              lastNoticeYear: ''
+              lastNoticeYear: '',
+              lastClearedYear: ''
             },
             playerSlaves: [],
             slaveMarketOffers: [],
@@ -611,6 +612,7 @@
             loansTaken: 0,
             lastPaymentYear: '',
             lastNoticeYear: '',
+            lastClearedYear: '',
             ...(society.bank || {})
           }
           society.playerSlaves = society.playerSlaves || []
@@ -798,7 +800,6 @@
             variant: 'danger',
             text: 'Borrow from Bank of Rome (' + amount + ')',
             tooltip: 'Covers the current negative cash before selling property. Consequences: principal increases and annual interest applies.',
-            statChanges: { cash: amount },
             icons: [this.bundledIcon('bank_of_rome', 'money')],
             action: {
               event: this.event,
@@ -1212,7 +1213,17 @@
           if (option.disabled && option.tooltip) {
             option.showDisabledWithTooltip = true
           }
+          if (this.shouldSuppressVanillaStatChanges(option)) {
+            delete option.statChanges
+          }
           return option
+        },
+        shouldSuppressVanillaStatChanges(option) {
+          let action = option && option.action
+          if (!action || action.event !== this.event || !action.method) {
+            return false
+          }
+          return !!option.statChanges
         },
         defaultOptionTooltip(option) {
           let text = String((option && option.text) || '')
@@ -4907,9 +4918,14 @@
             loansTaken: 0,
             lastPaymentYear: '',
             lastNoticeYear: '',
+            lastClearedYear: '',
             ...(society.bank || {})
           }
           let principal = Math.round(parseFloat(society.bank.principal || 0))
+          if (principal <= 0) {
+            society.bank.principal = 0
+            return false
+          }
           let year = String((state && state.year) || '')
           if (!principal || (state && parseInt(state.month || 0, 10) !== 0) || !year) {
             return false
@@ -9028,6 +9044,15 @@
         payBankLoan({ amount, interestOnly } = {}) {
           let society = this.loadForAction()
           let state = daapi.getState()
+          society.bank = {
+            principal: 0,
+            interestRate: 0.083,
+            loansTaken: 0,
+            lastPaymentYear: '',
+            lastNoticeYear: '',
+            lastClearedYear: '',
+            ...(society.bank || {})
+          }
           let principal = Math.max(0, Math.round(parseFloat((society.bank && society.bank.principal) || 0)))
           let interest = principal ? this.bankInterest(society) : 0
           amount = Math.max(0, Math.round(parseFloat(amount || 0)))
@@ -9056,6 +9081,10 @@
           society.bank.principal = Math.max(0, principal - amount)
           society.bank.lastPaymentYear = String(state.year || '')
           society.bank.lastNoticeYear = String(state.year || '')
+          if (society.bank.principal <= 0) {
+            society.bank.principal = 0
+            society.bank.lastClearedYear = String(state.year || '')
+          }
           this.log(society, 'Bank payment made: ' + total + ' cash, principal now ' + society.bank.principal + '.', 'bank')
           this.save(society)
           this.openBankOfRome()
@@ -13505,6 +13534,7 @@
           this.restoreClearedPortraitOverlays(state)
           this.applyCurrentCharacterPortraitOverlay(state)
           this.applyAttributedCharacterPortraitOverlays(state)
+          this.applyNamedFamilyPortraitOverlays(state)
         },
         hasActiveWardrobeOutfits(state) {
           if (!state || !state.current || !state.current.householdCharacterIds) {
@@ -13558,6 +13588,67 @@
               this.replacePortraitImage(img, character, state)
             }
           })
+        },
+        applyNamedFamilyPortraitOverlays(state) {
+          if (!state || !state.characters) {
+            return
+          }
+          let ids = this.playerFamilyMemberIds(state).filter((characterId) => {
+            let character = state.characters[characterId]
+            return this.shouldUseSocietyPortrait(character)
+          })
+          if (!ids.length) {
+            return
+          }
+          ids.forEach((characterId) => {
+            let character = state.characters[characterId]
+            if (!character) return
+            character.id = character.id || characterId
+            this.findPortraitImagesByCharacterText(character, state).forEach((img) => {
+              this.replacePortraitImage(img, character, state)
+            })
+          })
+        },
+        findPortraitImagesByCharacterText(character, state) {
+          let names = this.characterSearchNames(character, state)
+          if (!names.length || typeof document === 'undefined') {
+            return []
+          }
+          let images = Array.prototype.slice.call(document.querySelectorAll('img'))
+          let matches = []
+          images.forEach((img) => {
+            if (!img || !img.getBoundingClientRect || img.getAttribute('data-cor-society-portrait-src')) return
+            if (img.closest && img.closest('#interactionModal, .interaction-modal, .modal, .cor-society-family-tree-overlay')) return
+            let rect = img.getBoundingClientRect()
+            if (rect.width < 42 || rect.height < 42 || rect.width > 240 || rect.height > 260) return
+            let node = img.parentElement
+            let depth = 0
+            while (node && node !== document.body && depth < 5) {
+              let text = (node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+              if (text && text.length < 260 && names.some((name) => name && text.indexOf(name) >= 0)) {
+                matches.push(img)
+                return
+              }
+              node = node.parentElement
+              depth += 1
+            }
+          })
+          return matches.slice(0, 3)
+        },
+        characterSearchNames(character, state) {
+          let names = []
+          let add = (value) => {
+            value = String(value || '').replace(/\s+/g, ' ').trim().toLowerCase()
+            if (value && value.length >= 3 && names.indexOf(value) < 0) names.push(value)
+          }
+          add(this.characterName(character, state))
+          add(character.praenomen)
+          let dynasty = state && state.dynasties && state.dynasties[character.dynastyId]
+          if (dynasty) {
+            add([character.praenomen, dynasty.nomen, dynasty.cognomen].filter(Boolean).join(' '))
+            add([character.praenomen, dynasty.cognomen].filter(Boolean).join(' '))
+          }
+          return names
         },
         applyRelationBadges() {
           if (typeof document === 'undefined') {

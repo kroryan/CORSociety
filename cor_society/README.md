@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.284` removes full Society synchronization from normal notification-button responses. Action buttons now use a lightweight Society state path, modal consequence text loads house data lazily, large-save house simulation is processed in rotating monthly batches, and repeated boot/action registration work is throttled for Android responsiveness.
+`1.1.285` removes duplicated Society action effects by stripping vanilla `statChanges` from Society engine buttons whose methods already apply the result. It also hardens Bank of Rome loan/payment state, keeps cleared principal cleared, improves wardrobe overlays for family portraits on the main screen, keeps normal notification-button responses on a lightweight Society state path, and processes large-save house simulation in rotating monthly batches.
 
 ## Features
 
