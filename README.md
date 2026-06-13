@@ -2,7 +2,7 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive is built from the contents of that folder and published with the mod version in the file name, for example `Releases/CORSociety-v1.1.23.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.23.zip`.
 
 ## Install
 
@@ -10,7 +10,7 @@ The source mod lives in `cor_society/`. The installable release archive is built
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
-The archive is intentionally built with `engine.js`, `main.js`, `monthly.js`, `style.css`, `assets/`, and `bundled/` at the zip root, matching the layout expected by the game mod loader.
+The archive is intentionally built with a top-level `cor_society/` folder. After extraction, the path must look like `mods/cor_society/main.js`; if `main.js` is extracted directly into `mods/`, the game will not detect the mod.
 
 ## Key Features
 
@@ -30,6 +30,22 @@ The archive is intentionally built with `engine.js`, `main.js`, `monthly.js`, `s
 ## Project Rule
 
 Performance, stability, Android safety, and visual quality take priority over compatibility with old internal Society save formats. When old Society-only data conflicts with clean integration or causes loading risk, the mod should repair, migrate, or discard that data instead of preserving unstable behavior.
+
+## Development
+
+Build the release zip from the repository root:
+
+```powershell
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.23.zip' 'cor_society'
+```
+
+Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.
+
+Validate the DAAPI object-literal scripts:
+
+```powershell
+node -e "const fs=require('fs'); for (const f of ['cor_society/engine.js','cor_society/main.js']) { const s=fs.readFileSync(f,'utf8'); new Function('return ('+s+'\n)'); console.log(f+' ok'); }"
+```
 
 
 ## Credits
