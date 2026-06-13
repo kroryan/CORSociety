@@ -2,6 +2,297 @@
   white-space: pre-line;
 }
 
+.cor-society-summary-mounted {
+  text-align: left;
+  white-space: normal !important;
+}
+
+.cor-society-summary {
+  --cor-summary-bg: rgba(255, 255, 255, 0.10);
+  --cor-summary-soft: rgba(255, 255, 255, 0.16);
+  --cor-summary-line: rgba(255, 255, 255, 0.18);
+  --cor-summary-text: currentColor;
+  --cor-summary-muted: rgba(255, 255, 255, 0.76);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 0.94rem;
+  line-height: 1.25;
+  color: var(--cor-summary-text);
+}
+
+[data-bs-theme="light"] .cor-society-summary,
+.theme-light .cor-society-summary,
+.cor-society-theme-light .cor-society-summary {
+  --cor-summary-bg: rgba(48, 43, 38, 0.07);
+  --cor-summary-soft: rgba(48, 43, 38, 0.10);
+  --cor-summary-line: rgba(48, 43, 38, 0.16);
+  --cor-summary-muted: rgba(48, 43, 38, 0.72);
+}
+
+.cor-society-summary-ribbon,
+.cor-society-summary-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  min-width: 0;
+}
+
+.cor-society-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.cor-society-summary-section {
+  padding: 0.52rem;
+  border: 1px solid var(--cor-summary-line);
+  border-radius: 0.45rem;
+  background: var(--cor-summary-bg);
+}
+
+.cor-society-summary-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.cor-society-summary-icon {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+  vertical-align: middle;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+}
+
+.cor-society-summary-chip,
+.cor-society-summary-tile,
+.cor-society-summary-meter {
+  min-width: 0;
+  border: 1px solid var(--cor-summary-line);
+  background: var(--cor-summary-bg);
+}
+
+.cor-society-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  padding: 0.32rem 0.42rem;
+  border-radius: 999px;
+  line-height: 1.1;
+}
+
+.cor-society-summary-chip-label {
+  color: var(--cor-summary-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cor-society-summary-chip strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.cor-society-summary-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 3.35rem;
+  padding: 0.48rem;
+  border-radius: 0.45rem;
+}
+
+.cor-society-summary-tile-copy {
+  min-width: 0;
+}
+
+.cor-society-summary-tile-copy span,
+.cor-society-summary-meter-head span {
+  display: block;
+  color: var(--cor-summary-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cor-society-summary-tile-copy strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 1.02rem;
+  font-weight: 900;
+}
+
+.cor-society-summary-tile-copy small {
+  display: block;
+  color: var(--cor-summary-muted);
+  font-size: 0.72rem;
+  line-height: 1.15;
+}
+
+.cor-society-summary-meter {
+  padding: 0.48rem;
+  border-radius: 0.45rem;
+}
+
+.cor-society-summary-meter-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.cor-society-summary-meter-head strong {
+  margin-left: auto;
+  font-size: 0.94rem;
+}
+
+.cor-society-summary-meter-track {
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.20);
+}
+
+.cor-society-summary-meter-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+}
+
+.cor-society-summary-note {
+  color: var(--cor-summary-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.cor-society-summary-traits {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cor-society-tone-good {
+  color: #68d391;
+}
+
+.cor-society-tone-calm,
+.cor-society-tone-senatorial,
+.cor-society-tone-equestrian,
+.cor-society-tone-civic {
+  color: #8bd3ff;
+}
+
+.cor-society-tone-warn,
+.cor-society-tone-plebeian,
+.cor-society-tone-freedmen {
+  color: #ffd166;
+}
+
+.cor-society-tone-bad,
+.cor-society-tone-poor {
+  color: #ff8a8a;
+}
+
+.cor-society-tone-neutral {
+  color: inherit;
+}
+
+.cor-society-relation-anchor {
+  position: relative !important;
+}
+
+.cor-society-vanilla-relation-badge {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.12rem;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: min(8rem, 92%);
+  min-height: 1.22rem;
+  padding: 0.12rem 0.24rem;
+  overflow: hidden;
+  color: currentColor;
+  background: rgba(18, 18, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  box-shadow: 0 0.12rem 0.28rem rgba(0, 0, 0, 0.35);
+  font-size: 0.68rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.cor-society-vanilla-relation-badge img {
+  width: 1.05rem;
+  height: 1.05rem;
+  object-fit: contain;
+}
+
+.cor-society-vanilla-relation-badge strong {
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.cor-society-vanilla-relation-badge span {
+  max-width: 4.6rem;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cor-society-relation-anchor-text {
+  padding-right: 5.6rem !important;
+}
+
+.cor-society-relation-anchor-text > .cor-society-vanilla-relation-badge {
+  top: 50%;
+  right: 0.2rem;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+@media (max-width: 430px) {
+  .cor-society-summary {
+    font-size: 0.88rem;
+  }
+
+  .cor-society-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cor-society-summary-chip {
+    border-radius: 0.45rem;
+  }
+
+  .cor-society-vanilla-relation-badge span {
+    display: none;
+  }
+
+  .cor-society-relation-anchor-text {
+    padding-right: 3.2rem !important;
+  }
+}
+
 .cor-society-player-crest-badge {
   position: fixed;
   z-index: 9999;

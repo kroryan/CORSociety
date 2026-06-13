@@ -41,19 +41,30 @@
         }
       }
     })
-    daapi.addGlobalAction({
-      key: 'cor_society_player_tree',
-      action: {
-        title: 'Player Dynasty Tree',
-        tooltip: 'Builds and opens your household dynasty tree in Society style. Consequences: may add dead ancestors and a small number of living kin if missing; no stats change.',
-        icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
-        isAvailable: true,
-        process: {
-          event: '/cor_society/engine',
-          method: 'openPlayerFamilyTree'
-        }
+    try {
+      let state = daapi.getState()
+      let characterId = state && state.current && state.current.id
+      if (characterId) {
+        daapi.addCharacterAction({
+          characterId,
+          key: 'cor_society_player_tree',
+          action: {
+            title: 'Player Dynasty Tree',
+            tooltip: 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.',
+            icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
+            isAvailable: true,
+            hideWhenBusy: false,
+            process: {
+              event: '/cor_society/engine',
+              method: 'openPlayerFamilyTree',
+              context: { characterId }
+            }
+          }
+        })
       }
-    })
+    } catch (err) {
+      console.warn(err)
+    }
     try {
       daapi.invokeMethod({
         event: '/cor_society/engine',
@@ -89,7 +100,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.23') {
+      if (window.corSociety && window.corSociety.version === '1.1.24') {
         window.corSociety.ensure()
         window.corSociety.startPlayerCrestOverlay()
         window.corSociety.startPlayerStatusOverlay()
@@ -97,7 +108,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.23',
+        version: '1.1.24',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -310,9 +321,13 @@
           let ensureKey = this.ensureKey(society, state)
           if (!options || !options.force) {
             if (society.lastEnsureKey === ensureKey) {
+              this.registerPlayerDynastyTreeAction(state)
+              this.ensurePlayerDynastyTreeForCurrent(society, state)
+              this.save(society)
               return society
             }
           }
+          this.registerPlayerDynastyTreeAction(state)
           this.syncWithGame(society, state)
           this.ensureVisibleHouseMembers(society, state)
           state = daapi.getState()
@@ -325,6 +340,8 @@
           this.ensureGeneratedLooks(society, state)
           this.ensureCrests(society, state)
           this.syncPlayerSocietyStatus(society, state)
+          this.ensurePlayerDynastyTreeForCurrent(society, state)
+          state = daapi.getState()
           this.restoreSocietyPortraitLooks(state)
           this.allowAchievementsWithSociety(state)
           society.lastEnsureKey = this.ensureKey(society, state)
@@ -342,6 +359,33 @@
             houseCount,
             this.version
           ].join(':')
+        },
+        registerPlayerDynastyTreeAction(state) {
+          try {
+            state = state || daapi.getState()
+            let characterId = state && state.current && state.current.id
+            if (!characterId) {
+              return
+            }
+            daapi.addCharacterAction({
+              characterId,
+              key: 'cor_society_player_tree',
+              action: {
+                title: 'Player Dynasty Tree',
+                tooltip: 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.',
+                icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
+                isAvailable: true,
+                hideWhenBusy: false,
+                process: {
+                  event: this.event,
+                  method: 'openPlayerFamilyTree',
+                  context: { characterId }
+                }
+              }
+            })
+          } catch (err) {
+            console.warn(err)
+          }
         },
         showInstallNoticeOnce() {
           let seen = false
@@ -479,12 +523,221 @@
         },
         pushModal(payload) {
           payload = payload || {}
+          if (payload.societySummaryHtml) {
+            this.prepareSocietySummaryPayload(payload)
+          }
           if (!payload.corTranslatorPretranslateNow) {
             payload.corTranslatorSkipPretranslate = true
             payload.skipTranslatorPretranslate = true
           }
           payload.options = this.decorateModalOptions(this.addSocietyCloseOption(payload.options || [], payload), payload)
           daapi.pushInteractionModalQueue(payload)
+          if (payload.societySummaryToken && payload.societySummaryHtml) {
+            this.scheduleSocietySummaryRender(payload.societySummaryToken, payload.societySummaryHtml)
+          }
+        },
+        prepareSocietySummaryPayload(payload) {
+          let token = 'COR_SOCIETY_UI_' + Date.now() + '_' + Math.floor(Math.random() * 1000000)
+          payload.societySummaryToken = token
+          payload.message = String(payload.message || 'Roman Society') + '\n\n[' + token + ']'
+        },
+        scheduleSocietySummaryRender(token, html) {
+          if (typeof window === 'undefined' || typeof document === 'undefined') {
+            return
+          }
+          let attempts = 0
+          let render = () => {
+            attempts += 1
+            if (this.renderSocietySummaryToken(token, html) || attempts > 80) {
+              if (timer) {
+                window.clearInterval(timer)
+              }
+            }
+          }
+          let timer = window.setInterval(render, 80)
+          window.setTimeout(render, 0)
+        },
+        renderSocietySummaryToken(token, html) {
+          let selectors = [
+            '.interaction-modal-content-message',
+            '#interactionModal .interaction-modal-content-message',
+            '.modal .interaction-modal-content-message',
+            '#interactionModal .modal-body .break-word'
+          ]
+          let nodes = []
+          selectors.forEach((selector) => {
+            Array.prototype.slice.call(document.querySelectorAll(selector)).forEach((node) => {
+              if (nodes.indexOf(node) < 0) {
+                nodes.push(node)
+              }
+            })
+          })
+          for (let i = nodes.length - 1; i >= 0; i--) {
+            let node = nodes[i]
+            if (node && (node.textContent || '').indexOf(token) >= 0) {
+              node.innerHTML = html
+              node.classList.add('cor-society-summary-mounted')
+              return true
+            }
+          }
+          return false
+        },
+        escapeHtml(value) {
+          return String(value === undefined || value === null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+        },
+        summaryIcon(src, label) {
+          if (!src) {
+            return ''
+          }
+          return '<img class="cor-society-summary-icon" src="' + this.escapeHtml(src) + '" alt="' + this.escapeHtml(label || '') + '">'
+        },
+        summaryChip(label, value, icon, tone) {
+          return '<span class="cor-society-summary-chip cor-society-tone-' + this.escapeHtml(tone || 'neutral') + '">' +
+            this.summaryIcon(icon, label) +
+            '<span class="cor-society-summary-chip-label">' + this.escapeHtml(label) + '</span>' +
+            '<strong>' + this.escapeHtml(value) + '</strong>' +
+            '</span>'
+        },
+        summaryTile(label, value, icon, tone, detail) {
+          return '<div class="cor-society-summary-tile cor-society-tone-' + this.escapeHtml(tone || 'neutral') + '">' +
+            this.summaryIcon(icon, label) +
+            '<div class="cor-society-summary-tile-copy">' +
+            '<span>' + this.escapeHtml(label) + '</span>' +
+            '<strong>' + this.escapeHtml(value) + '</strong>' +
+            (detail ? '<small>' + this.escapeHtml(detail) + '</small>' : '') +
+            '</div>' +
+            '</div>'
+        },
+        summaryMeter(label, value, min, max, icon, tone) {
+          value = parseFloat(value || 0)
+          min = parseFloat(min)
+          max = parseFloat(max)
+          let range = Math.max(1, max - min)
+          let percent = this.clamp(Math.round(((value - min) / range) * 100), 0, 100)
+          return '<div class="cor-society-summary-meter cor-society-tone-' + this.escapeHtml(tone || this.scoreTone(value)) + '">' +
+            '<div class="cor-society-summary-meter-head">' +
+            this.summaryIcon(icon, label) +
+            '<span>' + this.escapeHtml(label) + '</span>' +
+            '<strong>' + this.escapeHtml(Math.round(value)) + '</strong>' +
+            '</div>' +
+            '<div class="cor-society-summary-meter-track"><span style="width:' + percent + '%"></span></div>' +
+            '</div>'
+        },
+        scoreTone(value) {
+          value = parseFloat(value || 0)
+          if (value >= 55) return 'good'
+          if (value >= 15) return 'calm'
+          if (value <= -45) return 'bad'
+          if (value <= -12) return 'warn'
+          return 'neutral'
+        },
+        summarySection(title, icon, body) {
+          return '<section class="cor-society-summary-section">' +
+            '<h4>' + this.summaryIcon(icon, title) + '<span>' + this.escapeHtml(title) + '</span></h4>' +
+            body +
+            '</section>'
+        },
+        summaryGrid(items) {
+          return '<div class="cor-society-summary-grid">' + (items || []).join('') + '</div>'
+        },
+        hubSummaryHtml(state, society, counts, rivals, allies, playerStatus) {
+          let houseCount = Object.keys((society && society.houses) || {}).length
+          let orderChips = this.stratumOrder.map((stratum) => {
+            let profile = this.strata[stratum]
+            return this.summaryChip(profile.title, counts[stratum] || 0, this.stratumIcon(stratum), stratum)
+          }).join('')
+          return '<div class="cor-society-summary cor-society-summary-hub">' +
+            '<div class="cor-society-summary-ribbon">' +
+            this.summaryChip('Date', 'Year ' + state.year + ', month ' + ((state.month || 0) + 1), this.affairIcon('log'), 'calm') +
+            this.summaryChip('Standing', playerStatus.title + (playerStatus.className ? ' (' + playerStatus.className + ')' : ''), this.stratumIcon(playerStatus.stratum), playerStatus.stratum) +
+            '</div>' +
+            this.summaryGrid([
+              this.summaryTile('Known houses', houseCount, this.affairIcon('familyTree'), 'calm', this.stratumOrder.length + ' social orders'),
+              this.summaryTile('Allies / patrons', allies, this.affairIcon('support'), allies ? 'good' : 'neutral', 'Support, favors, and patrons'),
+              this.summaryTile('Open rivalries', rivals, this.affairIcon('rivalry'), rivals ? 'bad' : 'good', 'Hostile houses watching you'),
+              this.summaryTile('House turns', 'Monthly', this.affairIcon('trade'), 'calm', 'Wealth, office, marriage, security, honor, revenge')
+            ]) +
+            this.summarySection('Social orders', this.affairIcon('familyTree'), '<div class="cor-society-summary-chip-row">' + orderChips + '</div>') +
+            this.summarySection('Possible effects', this.affairIcon('prestige'), '<div class="cor-society-summary-chip-row">' +
+              this.summaryChip('Gifts', 'relations', this.affairIcon('gift'), 'good') +
+              this.summaryChip('Ventures', 'cash / revenue', this.affairIcon('trade'), 'calm') +
+              this.summaryChip('Scandals', 'prestige / heat', this.affairIcon('prestige'), 'warn') +
+              this.summaryChip('Petitions', 'influence', this.affairIcon('petition'), 'calm') +
+              '</div>') +
+            '</div>'
+        },
+        houseSummaryHtml(society, state, house, profile, tradeActive) {
+          let property = (house.ai && house.ai.property) || {}
+          let relationTone = this.scoreTone(house.relation || 0)
+          let status = house.rivalry ? 'Rivalry' : ((house.relation || 0) >= 55 ? 'Ally' : 'Neutral')
+          return '<div class="cor-society-summary cor-society-summary-house">' +
+            '<div class="cor-society-summary-ribbon">' +
+            this.summaryChip('Order', profile.title, this.stratumIcon(house.stratum), house.stratum) +
+            this.summaryChip('Citizen rank', house.citizenRank || 'Unknown', this.affairIcon('senator'), 'calm') +
+            this.summaryChip('Status', status, house.rivalry ? this.affairIcon('rivalry') : this.affairIcon('support'), house.rivalry ? 'bad' : ((house.relation || 0) >= 55 ? 'good' : 'neutral')) +
+            '</div>' +
+            this.summaryGrid([
+              this.summaryTile('Prestige', Math.round(house.prestige || 0), this.affairIcon('prestige'), 'calm'),
+              this.summaryTile('Strength', Math.round(house.strength || 0), this.affairIcon('influence'), 'calm'),
+              this.summaryTile('Wealth', Math.round(house.wealth || 0), this.affairIcon('coins'), 'good'),
+              this.summaryTile('Power', Math.round(house.power || 0), this.affairIcon('senator'), 'calm'),
+              this.summaryTile('AI cash', Math.round((house.ai && house.ai.cash) || 0), this.affairIcon('coins'), 'neutral'),
+              this.summaryTile('AI influence', Math.round((house.ai && house.ai.influence) || 0), this.affairIcon('influence'), 'neutral')
+            ]) +
+            this.summaryMeter('Relation', house.relation || 0, -100, 100, this.affairIcon('support'), relationTone) +
+            this.summaryMeter('Stability', house.stability || 0, 0, 100, this.affairIcon('familyTree'), (house.stability || 0) >= 55 ? 'good' : ((house.stability || 0) < 30 ? 'warn' : 'calm')) +
+            this.summarySection('House economy', this.affairIcon('trade'), '<div class="cor-society-summary-chip-row">' +
+              this.summaryChip('Property', 'L' + Math.round(property.land || 0) + ' A' + Math.round(property.animals || 0) + ' T' + Math.round(property.trade || 0), this.affairIcon('coins'), 'neutral') +
+              this.summaryChip('Favors owed', house.favor || 0, this.affairIcon('gift'), (house.favor || 0) > 0 ? 'good' : 'neutral') +
+              this.summaryChip('Trade compact', tradeActive ? 'active' : 'none', this.affairIcon('trade'), tradeActive ? 'good' : 'neutral') +
+              '</div>') +
+            this.summarySection('Current affairs', this.affairIcon(house.lastFamilyKind || 'log'), '<div class="cor-society-summary-note">' +
+              '<strong>Agenda:</strong> ' + this.escapeHtml(house.agenda || 'unknown') + '<br>' +
+              '<strong>Latest:</strong> ' + this.escapeHtml(house.lastFamilyEvent || 'none') +
+              '</div>') +
+            '</div>'
+        },
+        personSummaryHtml(society, state, house, character, relatives, social, romance, relationScore, relationRecord, currentId, characterId) {
+          let skills = character.skills || {}
+          let spouse = character.spouseId && state.characters[character.spouseId] ? this.characterName(state.characters[character.spouseId], state) : 'none'
+          let relationText = currentId && !this.sameCharacterId(currentId, characterId)
+            ? this.signed(relationScore) + ' (' + this.relationshipLabel(relationRecord ? relationRecord.type : this.relationshipTypeFromScore(relationScore)) + ')'
+            : 'controlled character'
+          let relationVisual = currentId && !this.sameCharacterId(currentId, characterId) ? this.relationVisual(society, state, character) : false
+          let traitIcons = this.societyTraitIconList(society, character)
+          let traitBody = traitIcons.length
+            ? traitIcons.map((icon) => this.summaryIcon(icon, 'Trait')).join('') + '<span>' + this.escapeHtml(this.socialTraitSummary(society, character)) + '</span>'
+            : '<span>none</span>'
+          return '<div class="cor-society-summary cor-society-summary-person">' +
+            '<div class="cor-society-summary-ribbon">' +
+            this.summaryChip('Age', this.formatAge(character, state), this.affairIcon('familyTree'), 'calm') +
+            this.summaryChip('Job', (character.job || 'none') + (character.jobLevel ? ' ' + character.jobLevel : ''), this.affairIcon('senator'), 'neutral') +
+            this.summaryChip('Relation to you', relationText, relationVisual ? relationVisual.icon : this.affairIcon('support'), this.scoreTone(relationScore)) +
+            '</div>' +
+            this.summaryGrid([
+              this.summaryTile('Intelligence', Math.round(skills.intelligence || 0), this.affairIcon('prestige'), 'calm'),
+              this.summaryTile('Stewardship', Math.round(skills.stewardship || 0), this.affairIcon('trade'), 'calm'),
+              this.summaryTile('Eloquence', Math.round(skills.eloquence || 0), this.affairIcon('senator'), 'calm'),
+              this.summaryTile('Combat', Math.round(skills.combat || 0), this.affairIcon('rivalry'), 'neutral')
+            ]) +
+            this.summarySection('Family', this.affairIcon('familyTree'), '<div class="cor-society-summary-chip-row">' +
+              this.summaryChip('Spouse', spouse, this.affairIcon('marriage'), spouse === 'none' ? 'neutral' : 'good') +
+              this.summaryChip('Children', relatives.children.length, this.affairIcon('birth'), relatives.children.length ? 'good' : 'neutral') +
+              this.summaryChip('House relation', this.signed(house.relation || 0), this.affairIcon('support'), this.scoreTone(house.relation || 0)) +
+              this.summaryChip('House favors', house.favor || 0, this.affairIcon('gift'), (house.favor || 0) > 0 ? 'good' : 'neutral') +
+              '</div>') +
+            this.summarySection('Social state', this.affairIcon('prestige'), '<div class="cor-society-summary-chip-row">' +
+              this.summaryChip('Introduced', social.introduced ? 'yes' : 'no', this.affairIcon('invitation'), social.introduced ? 'good' : 'neutral') +
+              this.summaryChip('Rapport', Math.round(social.bond || 0), this.affairIcon('support'), this.scoreTone(social.bond || 0)) +
+              this.summaryChip('Lover', romance ? ('yes, intensity ' + Math.round(romance.intensity || 0)) : 'no', this.affairIcon('lover'), romance ? 'warn' : 'neutral') +
+              '</div>') +
+            this.summarySection('Society traits', this.affairIcon('prestige'), '<div class="cor-society-summary-traits">' + traitBody + '</div>') +
+            '</div>'
         },
         addSocietyCloseOption(options, payload) {
           options = (options || []).slice()
@@ -1841,6 +2094,16 @@
             return (state.year || 0) - (character.birthYear || state.year || 0)
           }
         },
+        formatAge(character, state) {
+          let age = this.age(character || {}, state || daapi.getState())
+          if (!isFinite(age)) {
+            return 'unknown'
+          }
+          if (age < 1) {
+            return Math.max(0, Math.round(age * 12)) + ' months'
+          }
+          return String(Math.floor(age))
+        },
         countByStratum(society) {
           let counts = {}
           for (let houseId in society.houses) {
@@ -3022,16 +3285,66 @@
           return labels[type] || 'Neutral'
         },
         relationBadge(society, state, character) {
+          let visual = this.relationVisual(society, state, character)
+          return visual ? visual.text + ' ' + visual.label : ''
+        },
+        relationVisual(society, state, character, options) {
           if (!character || !character.id) {
-            return 'Rel 0'
+            return false
           }
+          state = state || daapi.getState()
+          society = society || this.load()
           let currentId = this.currentCharacterId(state)
           if (!currentId || this.sameCharacterId(currentId, character.id)) {
+            return false
+          }
+          let record = this.personalRelationRecord(society, currentId, character.id, false)
+          let useLastKnown = options && options.lastKnownForDead && character.isDead
+          let score = useLastKnown && record ? this.clamp(Math.round(record.score || 0), -100, 100) : this.personalRelationScore(society, state, currentId, character.id)
+          let type = record && record.type ? record.type : this.relationshipTypeFromScore(score)
+          let label = this.relationshipLabel(type)
+          return {
+            score,
+            type,
+            label,
+            text: this.signed(score),
+            tone: this.scoreTone(score),
+            icon: this.relationIcon(score, type),
+            tooltip: (character.isDead ? 'Last known relation' : 'Relation') + ': ' + this.signed(score) + ' - ' + label
+          }
+        },
+        relationIcon(score, type) {
+          score = parseFloat(score || 0)
+          type = type || this.relationshipTypeFromScore(score)
+          let tone = this.scoreTone(score)
+          let colors = {
+            good: ['#2f855a', '#9ae6b4'],
+            calm: ['#2b6cb0', '#90cdf4'],
+            neutral: ['#4a5568', '#cbd5e0'],
+            warn: ['#b7791f', '#fbd38d'],
+            bad: ['#9b2c2c', '#feb2b2']
+          }
+          let pair = colors[tone] || colors.neutral
+          let glyph = '<path d="M20 38 C20 28 29 24 36 31 C43 24 52 28 52 38 C52 49 36 56 36 56 C36 56 20 49 20 38 Z" fill="' + pair[1] + '"/>'
+          if (score <= -30 || type === 'enemy' || type === 'rival' || type === 'traitor') {
+            glyph = '<path d="M22 17 L43 32 L31 32 L45 49 L20 31 L33 31 Z" fill="' + pair[1] + '"/>'
+          } else if (score < 15 && score > -15) {
+            glyph = '<path d="M20 35 H52" stroke="' + pair[1] + '" stroke-width="8" stroke-linecap="round"/>'
+          } else if (type === 'mentor' || type === 'student' || type === 'protector') {
+            glyph = '<path d="M18 45 C25 31 47 31 54 45" fill="none" stroke="' + pair[1] + '" stroke-width="7" stroke-linecap="round"/><circle cx="36" cy="26" r="8" fill="' + pair[1] + '"/>'
+          }
+          let scoreText = this.escapeSvg(this.signed(score))
+          return this.svgDataUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><circle cx="36" cy="36" r="33" fill="' + pair[0] + '"/><circle cx="36" cy="36" r="29" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/><g transform="translate(0 -4)">' + glyph + '</g><rect x="16" y="52" width="40" height="15" rx="7.5" fill="rgba(0,0,0,.48)"/><text x="36" y="63.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="800" fill="#fff">' + scoreText + '</text></svg>')
+        },
+        relationBadgeHtml(visual) {
+          if (!visual) {
             return ''
           }
-          let score = this.personalRelationScore(society, state, currentId, character.id)
-          let mark = score >= 55 ? '++' : score >= 15 ? '+' : score <= -55 ? '--' : score <= -15 ? '-' : '0'
-          return 'Rel ' + this.signed(score) + ' ' + mark
+          return '<span class="cor-society-relation-badge cor-society-tone-' + this.escapeHtml(visual.tone) + '" title="' + this.escapeHtml(visual.tooltip) + '">' +
+            this.summaryIcon(visual.icon, 'Relation') +
+            '<strong>' + this.escapeHtml(visual.text) + '</strong>' +
+            '<span>' + this.escapeHtml(visual.label) + '</span>' +
+            '</span>'
         },
         traitRelationshipModifier(society, source, target, state) {
           if (!source || !target) {
@@ -3628,18 +3941,11 @@
           let rivals = this.rivalHouses(society).length
           let allies = this.alliedHouses(society).length
           let playerStatus = this.playerSocietyStatus(state)
-          let message = [
-            'Date: Year ' + state.year + ', month ' + ((state.month || 0) + 1),
-            'Your standing: ' + playerStatus.title + (playerStatus.className ? ' (' + playerStatus.className + ')' : '') + '.',
-            'Society: ' + Object.keys(society.houses).length + ' known houses across ' + this.stratumOrder.length + ' social orders.',
-            'Relations: ' + allies + ' allies/patrons, ' + rivals + ' open rivalries.',
-            'House turns: families pursue wealth, office, marriage, security, honor, or revenge each month.',
-            'Effects: gifts, alliances, rivalries, ventures, scandals, and petitions can change cash, prestige, influence, relations, favors, and revenue.'
-          ].join('\n')
           this.pushModal({
             societyMenu: true,
             title: 'Roman Society',
-            message,
+            message: 'Roman Society overview.',
+            societySummaryHtml: this.hubSummaryHtml(state, society, counts, rivals, allies, playerStatus),
             image: daapi.requireImage('/cor_society/icon.svg'),
             options: [
               ...this.stratumOrder.map((stratum) => {
@@ -4173,27 +4479,11 @@
           let marriageInfo = this.marriageOptionInfo(society, state, house)
           let tradeActive = this.houseTradeActive(house, state)
           let nav = this.navContext(returnTo, returnPage)
-          let message = [
-            'Order: ' + profile.title,
-            'Citizen rank: ' + (house.citizenRank || 'Unknown'),
-            'Prestige: ' + Math.round(house.prestige || 0),
-            'Strength: ' + Math.round(house.strength || 0),
-            'House wealth: ' + Math.round(house.wealth || 0),
-            'House power: ' + Math.round(house.power || 0),
-            'Stability: ' + Math.round(house.stability || 0),
-            'AI cash: ' + Math.round((house.ai && house.ai.cash) || 0),
-            'AI influence: ' + Math.round((house.ai && house.ai.influence) || 0),
-            'AI property: L' + Math.round((house.ai && house.ai.property && house.ai.property.land) || 0) + ' A' + Math.round((house.ai && house.ai.property && house.ai.property.animals) || 0) + ' T' + Math.round((house.ai && house.ai.property && house.ai.property.trade) || 0),
-            'Relation: ' + this.signed(house.relation || 0),
-            'Favors owed to you: ' + (house.favor || 0),
-            'Agenda: ' + (house.agenda || 'unknown'),
-            'Latest: ' + (house.lastFamilyEvent || 'none'),
-            'Status: ' + (house.rivalry ? 'Rivalry' : (house.relation >= 55 ? 'Ally' : 'Neutral'))
-          ].join('\n')
           this.pushModal({
             societyMenu: true,
             title: house.name,
-            message,
+            message: 'House summary.',
+            societySummaryHtml: this.houseSummaryHtml(society, state, house, profile, tradeActive),
             image: this.houseCrestIcon(society, house),
             options: [
               {
@@ -4370,12 +4660,12 @@
           let nav = this.navContext(returnTo, returnPage)
           let options = shown.map((characterId) => {
             let character = state.characters[characterId]
-            let relationBadge = character ? this.relationBadge(society, state, character) : ''
+            let relationVisual = character ? this.relationVisual(society, state, character) : false
             let traitIcons = character ? this.societyTraitIconList(society, character) : []
             return {
-              text: character ? (this.characterName(character, state) + (relationBadge ? ' - ' + relationBadge : '')) : characterId,
-              tooltip: character ? this.characterTooltip(character, state) + '\nCategory: ' + this.memberGroupLabel(group) + '\nSociety traits: ' + this.socialTraitSummary(society, character) : '',
-              icons: character ? [this.characterPortrait(character, state, house), this.houseCrestIcon(society, house)].concat(traitIcons) : [this.houseCrestIcon(society, house)],
+              text: character ? this.characterName(character, state) : characterId,
+              tooltip: character ? this.characterTooltip(character, state) + '\nCategory: ' + this.memberGroupLabel(group) + (relationVisual ? '\n' + relationVisual.tooltip : '') + '\nSociety traits: ' + this.socialTraitSummary(society, character) : '',
+              icons: character ? [this.characterPortrait(character, state, house)].concat(relationVisual ? [relationVisual.icon] : []).concat([this.houseCrestIcon(society, house)]).concat(traitIcons) : [this.houseCrestIcon(society, house)],
               action: {
                 event: this.event,
                 method: 'openPerson',
@@ -4528,18 +4818,6 @@
           let romance = this.getRomance(society, currentId, characterId)
           let relationScore = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationScore(society, state, currentId, characterId) : 0
           let relationRecord = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationRecord(society, currentId, characterId, false) : false
-          let message = [
-            this.characterTooltip(character, state),
-            'Spouse: ' + (character.spouseId && state.characters[character.spouseId] ? this.characterName(state.characters[character.spouseId], state) : 'none'),
-            'Children: ' + relatives.children.length,
-            'Relation to you: ' + (currentId && !this.sameCharacterId(currentId, characterId) ? this.signed(relationScore) + ' (' + this.relationshipLabel(relationRecord ? relationRecord.type : this.relationshipTypeFromScore(relationScore)) + ')' : 'controlled character'),
-            'Society traits: ' + this.socialTraitSummary(society, character),
-            'Introduced: ' + (social.introduced ? 'yes' : 'no'),
-            'Rapport: ' + Math.round(social.bond || 0),
-            'Lover: ' + (romance ? ('yes, intensity ' + Math.round(romance.intensity || 0)) : 'no'),
-            'House relation: ' + this.signed(house.relation || 0),
-            'House favors: ' + (house.favor || 0)
-          ].join('\n')
           let backAction = group ? {
             event: this.event,
             method: 'openMemberGroup',
@@ -4552,7 +4830,8 @@
           this.pushModal({
             societyMenu: true,
             title: this.characterName(character, state),
-            message,
+            message: 'Character summary.',
+            societySummaryHtml: this.personSummaryHtml(society, state, house, character, relatives, social, romance, relationScore, relationRecord, currentId, characterId),
             image: this.characterPortrait(character, state, house),
             options: [
               {
@@ -4683,6 +4962,30 @@
             this.openFamilyTree({ houseId, characterId, group, page, mode: 'full', returnTo, returnPage })
           }
         },
+        ensurePlayerDynastyTreeForCurrent(society, state) {
+          try {
+            society = society || this.load()
+            state = state || daapi.getState()
+            let characterId = this.currentCharacterId(state)
+            let character = state.characters && state.characters[characterId]
+            if (!character) {
+              return false
+            }
+            character.id = character.id || characterId
+            let ok = this.ensurePlayerDynastyTree(society, state, character)
+            state = daapi.getState()
+            character = state.characters[characterId] || character
+            let houseId = this.houseIdForCharacter(character, state, society)
+            let house = society.houses[houseId]
+            if (house) {
+              this.refreshHouseMemberLists(society, state, house)
+            }
+            return ok
+          } catch (err) {
+            console.warn(err)
+            return false
+          }
+        },
         openPlayerFamilyTree() {
           let society = this.ensure({ force: true })
           let state = daapi.getState()
@@ -4693,7 +4996,7 @@
             return
           }
           character.id = character.id || characterId
-          this.ensurePlayerDynastyTree(society, state, character)
+          this.ensurePlayerDynastyTreeForCurrent(society, state)
           state = daapi.getState()
           character = state.characters[characterId] || character
           let houseId = this.houseIdForCharacter(character, state, society)
@@ -7222,10 +7525,9 @@
           return (character.praenomen || 'Unknown') + ', ' + this.houseName(dynasty, character.dynastyId)
         },
         characterTooltip(character, state) {
-          let age = this.age(character, state)
           let skills = character.skills || {}
           return [
-            'Age: ' + age,
+            'Age: ' + this.formatAge(character, state),
             'Job: ' + (character.job || 'none') + ' ' + (character.jobLevel || 0),
             'Skills: I ' + Math.round(skills.intelligence || 0) + ', S ' + Math.round(skills.stewardship || 0) + ', E ' + Math.round(skills.eloquence || 0) + ', C ' + Math.round(skills.combat || 0)
           ].join('\n')
@@ -8385,17 +8687,20 @@
           if (this.playerStatusOverlayStarted) {
             this.applyPlayerStatusOverlay()
             this.applyPortraitOverlays()
+            this.applyRelationBadges()
             return
           }
           this.playerStatusOverlayStarted = true
           this.applyPlayerStatusOverlay()
           this.applyPortraitOverlays()
+          this.applyRelationBadges()
           if (typeof window !== 'undefined' && window.setInterval) {
             window.setInterval(() => {
               try {
                 if (window.corSociety) {
                   window.corSociety.applyPlayerStatusOverlay()
                   window.corSociety.applyPortraitOverlays()
+                  window.corSociety.applyRelationBadges()
                 }
               } catch (err) {
                 console.warn(err)
@@ -8507,6 +8812,166 @@
               this.replacePortraitImage(img, character, state)
             }
           })
+        },
+        applyRelationBadges() {
+          if (typeof document === 'undefined') {
+            return
+          }
+          let state = daapi.getState()
+          if (!state || !state.characters) {
+            return
+          }
+          let society = this.load()
+          this.clearRelationBadges()
+          this.familyRelationCandidateIds(state).forEach((characterId) => {
+            let character = state.characters[characterId]
+            if (!character || this.sameCharacterId(characterId, this.currentCharacterId(state))) {
+              return
+            }
+            character.id = character.id || characterId
+            let visual = this.relationVisual(society, state, character, { lastKnownForDead: true })
+            if (!visual) {
+              return
+            }
+            this.relationBadgeTargets(character, state).forEach((target) => {
+              this.mountRelationBadge(target.node, visual, characterId, target.mode)
+            })
+          })
+        },
+        clearRelationBadges() {
+          Array.prototype.slice.call(document.querySelectorAll('.cor-society-vanilla-relation-badge')).forEach((badge) => {
+            if (badge && badge.parentElement) {
+              badge.parentElement.removeChild(badge)
+            }
+          })
+          Array.prototype.slice.call(document.querySelectorAll('[data-cor-society-rel-anchor="1"]')).forEach((node) => {
+            if (node && !node.querySelector('.cor-society-vanilla-relation-badge')) {
+              node.removeAttribute('data-cor-society-rel-anchor')
+              node.classList.remove('cor-society-relation-anchor')
+              node.classList.remove('cor-society-relation-anchor-text')
+            }
+          })
+        },
+        familyRelationCandidateIds(state) {
+          let currentId = this.currentCharacterId(state)
+          let current = state.characters[currentId] || state.current || {}
+          let ids = []
+          let seen = {}
+          let add = (id) => {
+            if (!id || seen[id] || !state.characters[id]) {
+              return
+            }
+            seen[id] = true
+            ids.push(id)
+          }
+          ;((state.current && state.current.householdCharacterIds) || []).forEach(add)
+          ;((state.current && state.current.formerHouseholdCharacterIds) || []).forEach(add)
+          ;((state.current && state.current.deadHouseholdCharacterIds) || []).forEach(add)
+          ;((current && current.childrenIds) || []).forEach(add)
+          add(current.spouseId)
+          add(current.fatherId)
+          add(current.motherId)
+          for (let characterId in state.characters) {
+            if (!state.characters.hasOwnProperty(characterId)) {
+              continue
+            }
+            let character = state.characters[characterId]
+            if (!character) {
+              continue
+            }
+            if (current.dynastyId && character.dynastyId === current.dynastyId) {
+              add(characterId)
+            }
+          }
+          return ids.slice(0, 120)
+        },
+        relationBadgeTargets(character, state) {
+          let targets = []
+          let seen = []
+          let add = (node, mode) => {
+            if (!node || seen.indexOf(node) >= 0) {
+              return
+            }
+            if (node.closest && node.closest('#interactionModal, .interaction-modal, .modal, .cor-society-family-tree-overlay')) {
+              return
+            }
+            seen.push(node)
+            targets.push({ node, mode: mode || 'overlay' })
+          }
+          let id = this.attrEscape(character.id)
+          let selectors = [
+            '[data-character-id="' + id + '"] img',
+            '[data-characterid="' + id + '"] img',
+            '[data-character="' + id + '"] img',
+            '[data-id="' + id + '"] img',
+            'img[data-character-id="' + id + '"]',
+            'img[data-characterid="' + id + '"]',
+            'img[data-character="' + id + '"]',
+            'img[data-id="' + id + '"]',
+            '[data-character-id="' + id + '"]',
+            '[data-characterid="' + id + '"]',
+            '[data-character="' + id + '"]',
+            '[data-id="' + id + '"]'
+          ]
+          selectors.forEach((selector) => {
+            Array.prototype.slice.call(document.querySelectorAll(selector)).forEach((node) => {
+              let anchor = node.tagName && node.tagName.toLowerCase() === 'img' ? node.parentElement : node
+              add(anchor, 'overlay')
+            })
+          })
+          if (!targets.length) {
+            this.relationTextTargets(character, state).forEach((node) => add(node, 'text'))
+          }
+          return targets.slice(0, 4)
+        },
+        relationTextTargets(character, state) {
+          let names = []
+          let full = this.characterName(character, state)
+          if (full) names.push(full)
+          let dynasty = state.dynasties && state.dynasties[character.dynastyId] || {}
+          let expanded = [character.praenomen, dynasty.nomen, dynasty.cognomen].filter(Boolean).join(' ')
+          if (expanded) names.push(expanded)
+          let nodes = []
+          let candidates = Array.prototype.slice.call(document.querySelectorAll('button, a, .card, .list-group-item, .media, .row, .col, [class*="character"], [class*="family"], [class*="member"]'))
+          candidates.forEach((node) => {
+            if (!node || !node.textContent || node.offsetParent === null) {
+              return
+            }
+            let text = node.textContent.replace(/\s+/g, ' ').trim()
+            if (text.length > 180) {
+              return
+            }
+            if (names.some((name) => name && text.indexOf(name) >= 0)) {
+              nodes.push(node)
+            }
+          })
+          return nodes
+        },
+        mountRelationBadge(node, visual, characterId, mode) {
+          if (!node || !visual) {
+            return
+          }
+          node.setAttribute('data-cor-society-rel-anchor', '1')
+          node.classList.add('cor-society-relation-anchor')
+          if (mode === 'text') {
+            node.classList.add('cor-society-relation-anchor-text')
+          }
+          let badge = document.createElement('span')
+          badge.className = 'cor-society-vanilla-relation-badge cor-society-tone-' + visual.tone
+          badge.setAttribute('data-cor-society-rel-character-id', characterId)
+          badge.setAttribute('title', visual.tooltip)
+          let img = document.createElement('img')
+          img.src = visual.icon
+          img.alt = ''
+          img.setAttribute('aria-hidden', 'true')
+          let score = document.createElement('strong')
+          score.textContent = visual.text
+          let label = document.createElement('span')
+          label.textContent = visual.label
+          badge.appendChild(img)
+          badge.appendChild(score)
+          badge.appendChild(label)
+          node.appendChild(badge)
         },
         shouldUseSocietyPortrait(character) {
           return !!(character && character.corSocietyOutfit)

@@ -41,19 +41,30 @@
         }
       }
     })
-    daapi.addGlobalAction({
-      key: 'cor_society_player_tree',
-      action: {
-        title: 'Player Dynasty Tree',
-        tooltip: 'Builds and opens your household dynasty tree in Society style. Consequences: may add dead ancestors and a small number of living kin if missing; no stats change.',
-        icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
-        isAvailable: true,
-        process: {
-          event: '/cor_society/main',
-          method: 'openPlayerFamilyTree'
-        }
+    try {
+      let state = daapi.getState()
+      let characterId = state && state.current && state.current.id
+      if (characterId) {
+        daapi.addCharacterAction({
+          characterId,
+          key: 'cor_society_player_tree',
+          action: {
+            title: 'Player Dynasty Tree',
+            tooltip: 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.',
+            icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
+            isAvailable: true,
+            hideWhenBusy: false,
+            process: {
+              event: '/cor_society/main',
+              method: 'openPlayerFamilyTree',
+              context: { characterId }
+            }
+          }
+        })
       }
-    })
+    } catch (err) {
+      console.warn(err)
+    }
     try {
       daapi.invokeMethod({
         event: '/cor_society/engine',
