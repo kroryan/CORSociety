@@ -6,6 +6,10 @@ Roman Society adds a living social layer to Citizen of Rome.
 
 Roman Society prioritizes performance, stability, and visual quality over compatibility with older internal versions of the mod. When an older Society save format conflicts with Android stability or clean integration, the mod repairs or discards the old Society-only data instead of preserving risky behavior.
 
+## Performance
+
+`1.1.284` removes full Society synchronization from normal notification-button responses. Action buttons now use a lightweight Society state path, modal consequence text loads house data lazily, large-save house simulation is processed in rotating monthly batches, and repeated boot/action registration work is throttled for Android responsiveness.
+
 ## Features
 
 - Adds `Roman Society`, `House Shield`, `Family Wardrobe`, `Bank of Rome`, `Household Slaves`, and `Player Dynasty Tree` as actions on the current player character instead of cluttering the global action bar.

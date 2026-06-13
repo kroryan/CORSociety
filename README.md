@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.28.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.284.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.28.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.284.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -43,12 +43,16 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 
 Performance, stability, Android safety, and visual quality take priority over compatibility with old internal Society save formats. When old Society-only data conflicts with clean integration or causes loading risk, the mod should repair, migrate, or discard that data instead of preserving unstable behavior.
 
+## Performance Notes
+
+Version `1.1.284` focuses on button-response freezes: repeated full Society synchronization was removed from normal notification actions, modal consequence text now loads house data lazily, monthly house simulation runs in rotating batches on large saves, and startup/entry-action registration is throttled so Android does less work after each click.
+
 ## Development
 
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.28.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.284.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.
