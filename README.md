@@ -15,21 +15,27 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 ## Key Features
 
 - Living Roman houses with their own wealth, influence, prestige, stability, social order, alliances, rivalries, patronage, marriages, scandals, and internal history.
+- Separate dynasty and house model: a dynasty can contain several houses, with one immutable origin house and one current head house.
+- Cadet houses can be founded by the player or by NPC dynasties when wealth, prestige, family structure, and political weight justify it.
+- Dynasty headship can move from the origin house to a stronger secondary house without renaming either house.
 - Society orders tied to the base game's social and property systems, so status, marriage eligibility, and political standing evolve together instead of living in separate layers.
 - Simulated dynasty play for NPC houses, including marriages, children, inheritance pressure, courtship, affairs, trade, relationship changes, and social mobility.
-- Visual family trees for Society dynasties and the player's dynasty, designed to avoid taking control away from the human player's current character.
+- Visual family trees for Society dynasties, house branches, and the player's dynasty, designed to avoid taking control away from the human player's current character.
 - Player Dynasty Tree as a current-character action, with missing player ancestors prepared when the mod starts rather than only when the tree is opened.
 - Visual relationship badges inside Society character views, plus safe game status icons for meaningful family relations where Citizen of Rome displays character statuses.
 - Interactive courtship, marriage, business, diplomacy, family-support, and scandal events with visible consequences.
 - Persistent relationship systems for friendship, rivalry, patronage, mentorship, admiration, resentment, betrayal, and house-level diplomacy.
 - Social traits with icons and gameplay effects, including traits that influence courtship, marriage, trade, scandals, opinions, and family events.
 - Native-style portrait integration for Society characters, wardrobe changes, family trees, and vanilla/Society mixed marriages.
-- Family Wardrobe global action using native portrait SVG recoloring, with skin, hair, eyes, and jewelry protected from outfit tinting.
-- Custom Roman house shields for the player and NPC houses, including a configurable player shield.
+- Family Wardrobe current-character action using native portrait SVG recoloring, with skin, hair, eyes, and jewelry protected from outfit tinting.
+- Custom Roman house shields for the player and NPC houses, including a configurable player shield exposed as a current-character action.
 - Bundled vanilla-style and other-mod actions so Roman Society can be installed as one package instead of requiring several separate mods.
+- Contextual Stealing From integration exposed through Society character actions, with success/failure effects on personal relations, house relations, prestige, influence, and house heat.
 - Integrated Bank of Rome, Coemptio matchmaking, and Household Slaves systems adapted into Society instead of requiring separate legacy installs.
 - Real slave characters in the Society slave order, with origins, owners, portraits, cooldown-limited household tasks, directed child education, broader market roles, capture opportunities, NPC house ownership, self-purchase savings, family rescue attempts, slave-to-slave marriages, children, manumission into their own Freedmen house, and legitimization flow for eligible household bastards.
-- Bank of Rome emergency credit can appear when the household cash goes negative, giving the player a loan route before forced sales become unavoidable.
+- Slave play support for Play As: enslaved player characters get a Path to Freedom action with extra work, patron-seeking, petitions, escape attempts, savings, and manumission into a free Freedmen house.
+- Rare Roman slave origins can exist through debt, condemnation, or renegade status; those slavery-specific explanations are cleared after liberation.
+- Bank of Rome debt relief is integrated into negative-cash forced-sale/debt notices when possible, giving the player a loan route in the same flow before selling assets.
 - NPC houses can borrow from the bank, buy and manage slaves, seek marriages, and suffer consequences from hostile social actions; cheat-style systems are not used for NPC simulation.
 - Android-focused safety rules: old unstable Society-only data can be repaired, migrated, or discarded when needed to protect loading performance and save stability.
 

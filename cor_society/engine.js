@@ -2,65 +2,51 @@
   canTriggerIfUnavailable: true,
   checkType: 'general',
   checkAndAct() {
-    daapi.addGlobalAction({
-      key: 'cor_society',
-      action: {
-        title: 'Roman Society',
-        tooltip: 'Opens the Society overview. Consequences: no stats change until you choose an action inside.',
-        icon: daapi.requireImage('/cor_society/icon.svg'),
-        isAvailable: true,
-        process: {
-          event: '/cor_society/engine',
-          method: 'openHub'
-        }
-      }
-    })
-    daapi.addGlobalAction({
-      key: 'cor_society_player_crest',
-      action: {
-        title: 'House Shield',
-        tooltip: 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.',
-        icon: daapi.requireImage('/cor_society/shield.svg'),
-        isAvailable: true,
-        process: {
-          event: '/cor_society/engine',
-          method: 'openPlayerCrest'
-        }
-      }
-    })
-    daapi.addGlobalAction({
-      key: 'cor_society_wardrobe',
-      action: {
-        title: 'Family Wardrobe',
-        tooltip: 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.',
-        icon: daapi.requireImage('/cor_society/assets/wardrobe.svg'),
-        isAvailable: true,
-        process: {
-          event: '/cor_society/engine',
-          method: 'openWardrobe'
-        }
-      }
-    })
     try {
+      let legacyGlobalKeys = [
+        'cor_society',
+        'cor_society_player_crest',
+        'cor_society_wardrobe',
+        'cor_society_bank_of_rome',
+        'cor_society_household_slaves'
+      ]
+      legacyGlobalKeys.forEach((key) => {
+        try {
+          if (daapi.deleteGlobalAction) {
+            daapi.deleteGlobalAction({ key })
+            daapi.deleteGlobalAction(key)
+          }
+        } catch (err) {
+          console.warn(err)
+        }
+      })
       let state = daapi.getState()
       let characterId = state && state.current && state.current.id
       if (characterId) {
-        daapi.addCharacterAction({
-          characterId,
-          key: 'cor_society_player_tree',
-          action: {
-            title: 'Player Dynasty Tree',
-            tooltip: 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.',
-            icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
-            isAvailable: true,
-            hideWhenBusy: false,
-            process: {
-              event: '/cor_society/engine',
-              method: 'openPlayerFamilyTree',
-              context: { characterId }
+        let addCharacterEntry = (key, title, tooltip, icon, method, context) => {
+          daapi.addCharacterAction({
+            characterId,
+            key,
+            action: {
+              title,
+              tooltip,
+              icon,
+              isAvailable: true,
+              hideWhenBusy: false,
+              process: {
+                event: '/cor_society/engine',
+                method,
+                context: { characterId, ...(context || {}) }
+              }
             }
-          }
-        })
+          })
+        }
+        addCharacterEntry('cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
+        addCharacterEntry('cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
+        addCharacterEntry('cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
+        addCharacterEntry('cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', daapi.requireImage('/cor_society/bundled/bank_of_rome/money.svg'), 'openBankOfRome')
+        addCharacterEntry('cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', daapi.requireImage('/cor_society/bundled/household_slaves/household.svg'), 'openHouseholdSlaves')
+        addCharacterEntry('cor_society_player_tree', 'Player Dynasty Tree', 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.', daapi.requireImage('/cor_society/assets/familyTree.svg'), 'openPlayerFamilyTree')
       }
     } catch (err) {
       console.warn(err)
@@ -102,6 +88,8 @@
     boot() {
       if (window.corSociety && window.corSociety.version === '1.1.28') {
         window.corSociety.ensure()
+        window.corSociety.installDebtSaleModalPatch()
+        window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
         window.corSociety.startPlayerStatusOverlay()
         return
@@ -318,10 +306,11 @@
           }
           this.repairUnsafeWardrobeLooks(state)
           let society = this.load()
+          this.normalizeDynastyHouseModel(society, state)
           let ensureKey = this.ensureKey(society, state)
           if (!options || !options.force) {
             if (society.lastEnsureKey === ensureKey) {
-              this.registerPlayerDynastyTreeAction(state)
+              this.registerPlayerEntryActions(state)
               this.ensurePlayerDynastyTreeForCurrent(society, state)
               this.registerSocietyTraitDefinitions()
               this.ensureSlaveOrderPeople(society, state)
@@ -334,7 +323,7 @@
             }
           }
           this.registerSocietyTraitDefinitions()
-          this.registerPlayerDynastyTreeAction(state)
+          this.registerPlayerEntryActions(state)
           this.syncWithGame(society, state)
           this.ensureVisibleHouseMembers(society, state)
           this.ensureSlaveOrderPeople(society, state)
@@ -362,14 +351,87 @@
         ensureKey(society, state) {
           let characterCount = state && state.characters ? Object.keys(state.characters).length : 0
           let dynastyCount = state && state.dynasties ? Object.keys(state.dynasties).length : 0
+          let societyDynastyCount = society && society.dynasties ? Object.keys(society.dynasties).length : 0
           let houseCount = society && society.houses ? Object.keys(society.houses).length : 0
           return [
             this.monthKey(state || {}),
             characterCount,
             dynastyCount,
+            societyDynastyCount,
             houseCount,
             this.version
           ].join(':')
+        },
+        legacyGlobalActionKeys() {
+          return [
+            'cor_society',
+            'cor_society_player_crest',
+            'cor_society_wardrobe',
+            'cor_society_bank_of_rome',
+            'cor_society_household_slaves'
+          ]
+        },
+        cleanupLegacyGlobalActions() {
+          try {
+            if (!daapi.deleteGlobalAction) {
+              return
+            }
+            this.legacyGlobalActionKeys().forEach((key) => {
+              try {
+                daapi.deleteGlobalAction({ key })
+              } catch (err) {
+              }
+              try {
+                daapi.deleteGlobalAction(key)
+              } catch (err) {
+              }
+            })
+          } catch (err) {
+            console.warn(err)
+          }
+        },
+        registerCurrentCharacterAction(state, key, title, tooltip, icon, method, context) {
+          state = state || daapi.getState()
+          let characterId = state && state.current && state.current.id
+          if (!characterId) {
+            return false
+          }
+          daapi.addCharacterAction({
+            characterId,
+            key,
+            action: {
+              title,
+              tooltip,
+              icon,
+              isAvailable: true,
+              hideWhenBusy: false,
+              process: {
+                event: this.event,
+                method,
+                context: { characterId, ...(context || {}) }
+              }
+            }
+          })
+          return true
+        },
+        registerPlayerEntryActions(state) {
+          try {
+            state = state || daapi.getState()
+            this.cleanupLegacyGlobalActions()
+            this.registerCurrentCharacterAction(state, 'cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
+            this.registerCurrentCharacterAction(state, 'cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
+            this.registerCurrentCharacterAction(state, 'cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
+            this.registerCurrentCharacterAction(state, 'cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', this.bundledIcon('bank_of_rome', 'money'), 'openBankOfRome')
+            this.registerCurrentCharacterAction(state, 'cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', this.slaveTypeIcon('household'), 'openHouseholdSlaves')
+            this.registerPlayerDynastyTreeAction(state)
+            let currentId = this.currentCharacterId(state)
+            let current = state && state.characters && state.characters[currentId]
+            if (current && this.isSlaveCharacter(current)) {
+              this.registerCurrentCharacterAction(state, 'cor_society_slave_path', 'Path to Freedom', 'Open slave-focused Society actions for earning or negotiating freedom.', this.slaveTypeIcon(current.corSocietySlaveType || 'labor'), 'openPlayerSlavePath')
+            }
+          } catch (err) {
+            console.warn(err)
+          }
         },
         registerPlayerDynastyTreeAction(state) {
           try {
@@ -400,38 +462,16 @@
         },
         registerBundledBankActions() {
           try {
-            daapi.addGlobalAction({
-              key: 'cor_society_bank_of_rome',
-              action: {
-                title: 'Bank of Rome',
-                tooltip: 'Open Society banking. Consequences happen only when taking or repaying a loan.',
-                icon: this.bundledIcon('bank_of_rome', 'money'),
-                isAvailable: true,
-                process: {
-                  event: this.event,
-                  method: 'openBankOfRome'
-                }
-              }
-            })
+            this.cleanupLegacyGlobalActions()
+            this.registerCurrentCharacterAction(daapi.getState(), 'cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', this.bundledIcon('bank_of_rome', 'money'), 'openBankOfRome')
           } catch (err) {
             console.warn(err)
           }
         },
         registerBundledSlaveActions() {
           try {
-            daapi.addGlobalAction({
-              key: 'cor_society_household_slaves',
-              action: {
-                title: 'Household Slaves',
-                tooltip: 'Open Society household slave management. Slaves are real generated characters.',
-                icon: this.slaveTypeIcon('household'),
-                isAvailable: true,
-                process: {
-                  event: this.event,
-                  method: 'openHouseholdSlaves'
-                }
-              }
-            })
+            this.cleanupLegacyGlobalActions()
+            this.registerCurrentCharacterAction(daapi.getState(), 'cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', this.slaveTypeIcon('household'), 'openHouseholdSlaves')
           } catch (err) {
             console.warn(err)
           }
@@ -501,6 +541,7 @@
               monthlyEvents: true,
               autoGenerate: true
             },
+            dynasties: {},
             houses: {},
             generatedHouseIds: [],
             generatedCharacterIds: [],
@@ -518,6 +559,7 @@
             playerTreeGeneratedLivingIds: [],
             relationStatusCharacterIds: [],
             slaveStatusCharacterIds: [],
+            pendingSteals: {},
             bank: {
               principal: 0,
               interestRate: 0.083,
@@ -526,6 +568,7 @@
               lastNoticeYear: ''
             },
             playerSlaves: [],
+            slaveMarketOffers: [],
             lastProcessedMonth: '',
             log: []
           }
@@ -542,6 +585,7 @@
           }
           society.version = this.version
           society.settings = { enabled: true, monthlyEvents: true, autoGenerate: true, ...(society.settings || {}) }
+          society.dynasties = society.dynasties || {}
           society.houses = society.houses || {}
           society.generatedHouseIds = society.generatedHouseIds || []
           society.generatedCharacterIds = society.generatedCharacterIds || []
@@ -557,6 +601,7 @@
           society.playerTreeGeneratedLivingIds = society.playerTreeGeneratedLivingIds || []
           society.relationStatusCharacterIds = society.relationStatusCharacterIds || []
           society.slaveStatusCharacterIds = society.slaveStatusCharacterIds || []
+          society.pendingSteals = society.pendingSteals || {}
           society.bank = {
             principal: 0,
             interestRate: 0.083,
@@ -566,6 +611,7 @@
             ...(society.bank || {})
           }
           society.playerSlaves = society.playerSlaves || []
+          society.slaveMarketOffers = society.slaveMarketOffers || []
           society.log = society.log || []
           return society
         },
@@ -648,6 +694,148 @@
             log: 'familyTree'
           }
           return this.assetIcon(icons[kind] || 'familyTree')
+        },
+        installDebtSaleModalPatch() {
+          if (this.debtSaleModalPatchInstalled) {
+            this.startDebtSaleModalObserver()
+            return
+          }
+          this.debtSaleModalPatchInstalled = true
+          ;['pushInteractionModalQueue', 'pushInteractionModalButtonQueue'].forEach((methodName) => {
+            try {
+              let original = daapi[methodName]
+              if (typeof original !== 'function' || original.corSocietyDebtSalePatch) {
+                return
+              }
+              let self = this
+              let wrapped = function(payload) {
+                return original.call(this, self.patchDebtSaleModalPayload(payload))
+              }
+              wrapped.corSocietyDebtSalePatch = true
+              daapi[methodName] = wrapped
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+          this.startDebtSaleModalObserver()
+        },
+        patchDebtSaleModalPayload(payload) {
+          if (!this.isDebtSaleModalPayload(payload)) {
+            return payload
+          }
+          let amount = this.debtLoanAmount(daapi.getState())
+          let patched = { ...(payload || {}) }
+          let options = (patched.options || []).slice()
+          options.unshift(this.debtLoanOption(amount))
+          patched.options = options
+          patched.corSocietyDebtLoanInjected = true
+          return patched
+        },
+        isDebtSaleModalPayload(payload) {
+          if (!payload || payload.corSocietyDebtLoanInjected || payload.societyMenu) {
+            return false
+          }
+          let text = (String(payload.title || '') + ' ' + String(payload.message || '')).toLowerCase()
+          if (!text || text.indexOf('bank of rome') >= 0) {
+            return false
+          }
+          let options = payload.options || []
+          if (options.some((option) => option && option.action && option.action.method === 'takeEmergencyDebtLoan')) {
+            return false
+          }
+          let cash = parseFloat(((daapi.getState() || {}).current || {}).cash || 0)
+          if (cash >= 0) {
+            return false
+          }
+          let debtWords = ['debt', 'negative', 'owe', 'owed', 'bankrupt', 'bankruptcy', 'deuda', 'negativo']
+          let saleWords = ['sell', 'sale', 'property', 'asset', 'properties', 'slavery', 'vender', 'venta', 'propiedad', 'propiedades']
+          return debtWords.some((word) => text.indexOf(word) >= 0) && saleWords.some((word) => text.indexOf(word) >= 0)
+        },
+        debtLoanAmount(state) {
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          return Math.max(50, Math.ceil(Math.abs(Math.min(0, cash)) + 25))
+        },
+        debtLoanOption(amount) {
+          return {
+            variant: 'danger',
+            text: 'Borrow from Bank of Rome (' + amount + ')',
+            tooltip: 'Covers the current negative cash before selling property. Consequences: principal increases and annual interest applies.',
+            statChanges: { cash: amount },
+            icons: [this.bundledIcon('bank_of_rome', 'money')],
+            action: {
+              event: this.event,
+              method: 'takeEmergencyDebtLoan',
+              context: { amount }
+            }
+          }
+        },
+        startDebtSaleModalObserver() {
+          if (this.debtSaleObserverStarted || typeof document === 'undefined') {
+            return
+          }
+          this.debtSaleObserverStarted = true
+          let sync = () => {
+            try {
+              if (window.corSociety) {
+                window.corSociety.injectDebtLoanButtonIntoDebtModal()
+              }
+            } catch (err) {
+              console.warn(err)
+            }
+          }
+          if (typeof MutationObserver !== 'undefined' && document.body) {
+            this.debtSaleObserver = new MutationObserver(sync)
+            this.debtSaleObserver.observe(document.body, { childList: true, subtree: true })
+          }
+          if (typeof window !== 'undefined' && window.setInterval) {
+            window.setInterval(sync, 1800)
+          }
+          sync()
+        },
+        injectDebtLoanButtonIntoDebtModal() {
+          if (typeof document === 'undefined') {
+            return false
+          }
+          let state = daapi.getState()
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          if (cash >= 0) {
+            return false
+          }
+          let amount = this.debtLoanAmount(state)
+          let modals = Array.prototype.slice.call(document.querySelectorAll('#interactionModal, .interaction-modal, .modal.show, .modal'))
+          let modal = modals.find((node) => {
+            if (!node || node.offsetParent === null || node.querySelector('[data-cor-society-bank-debt-option]')) {
+              return false
+            }
+            let text = (node.textContent || '').toLowerCase()
+            if (!text || text.indexOf('bank of rome') >= 0 || text.indexOf('roman society') >= 0) {
+              return false
+            }
+            let hasDebt = ['debt', 'negative', 'owe', 'owed', 'bankrupt', 'bankruptcy', 'deuda', 'negativo'].some((word) => text.indexOf(word) >= 0)
+            let hasSale = ['sell', 'sale', 'property', 'asset', 'properties', 'slavery', 'vender', 'venta', 'propiedad', 'propiedades'].some((word) => text.indexOf(word) >= 0)
+            return hasDebt && hasSale
+          })
+          if (!modal) {
+            return false
+          }
+          let target = modal.querySelector('.modal-footer, .interaction-modal-options, .interaction-modal-content-options, .interaction-modal-content-buttons, .modal-body') || modal
+          let button = document.createElement('button')
+          button.type = 'button'
+          button.setAttribute('data-cor-society-bank-debt-option', '1')
+          button.className = 'btn btn-info cor-society-bank-debt-option'
+          button.textContent = 'Borrow from Bank of Rome (' + amount + ')'
+          button.title = 'Covers negative cash with a Society bank loan before forced property sales.'
+          button.style.margin = '6px'
+          button.style.whiteSpace = 'normal'
+          button.onclick = (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            button.disabled = true
+            button.textContent = 'Loan taken'
+            this.takeEmergencyDebtLoan({ amount })
+          }
+          target.appendChild(button)
+          return true
         },
         pushModal(payload) {
           payload = payload || {}
@@ -1122,6 +1310,310 @@
         effectLine(parts) {
           return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
         },
+        gameDynastyIdForHouse(house) {
+          if (!house) {
+            return ''
+          }
+          return house.dynastyId || house.gameDynastyId || house.id || ''
+        },
+        originHouseIdForDynasty(dynastyId) {
+          return String(dynastyId || '')
+        },
+        normalizeDynastyHouseModel(society, state) {
+          if (!society || !society.houses) {
+            return society
+          }
+          society.dynasties = society.dynasties || {}
+          let knownHousesByDynasty = {}
+          for (let houseId in society.houses) {
+            if (!society.houses.hasOwnProperty(houseId)) {
+              continue
+            }
+            let house = society.houses[houseId]
+            if (!house) {
+              continue
+            }
+            house.id = house.id || houseId
+            let dynastyId = house.dynastyId || house.gameDynastyId || house.id
+            house.dynastyId = dynastyId
+            house.gameDynastyId = dynastyId
+            let originHouseId = this.originHouseIdForDynasty(dynastyId)
+            if (house.originHouse === undefined) {
+              house.originHouse = String(house.id) === originHouseId
+            }
+            house.branchName = house.branchName || (house.originHouse ? 'House of origin' : 'Cadet house')
+            house.houseKind = house.houseKind || (house.originHouse ? 'origin' : 'cadet')
+            knownHousesByDynasty[dynastyId] = knownHousesByDynasty[dynastyId] || []
+            if (knownHousesByDynasty[dynastyId].indexOf(house.id) < 0) {
+              knownHousesByDynasty[dynastyId].push(house.id)
+            }
+          }
+          for (let dynastyId in knownHousesByDynasty) {
+            if (!knownHousesByDynasty.hasOwnProperty(dynastyId)) {
+              continue
+            }
+            let gameDynasty = (state && state.dynasties && state.dynasties[dynastyId]) || {}
+            let record = society.dynasties[dynastyId] || {}
+            let originHouseId = this.originHouseIdForDynasty(dynastyId)
+            let originHouse = society.houses[originHouseId] || society.houses[knownHousesByDynasty[dynastyId][0]] || {}
+            record.id = dynastyId
+            record.name = record.name || this.houseName(gameDynasty, dynastyId)
+            record.originHouseId = record.originHouseId || (society.houses[originHouseId] ? originHouseId : originHouse.id)
+            record.headHouseId = record.headHouseId || record.originHouseId
+            record.houseIds = knownHousesByDynasty[dynastyId].slice().sort((a, b) => {
+              let first = society.houses[a] || {}
+              let second = society.houses[b] || {}
+              if (!!second.originHouse !== !!first.originHouse) {
+                return first.originHouse ? -1 : 1
+              }
+              return String(first.name || '').localeCompare(String(second.name || ''))
+            })
+            record.stratum = originHouse.stratum || record.stratum || 'plebeian'
+            record.prestige = Math.max(parseFloat(record.prestige || 0), parseFloat(originHouse.prestige || gameDynasty.prestige || 0))
+            record.heritage = record.heritage || originHouse.heritage || gameDynasty.heritage || 'unknown'
+            record.lastSeen = this.monthKey(state || daapi.getState())
+            if (!society.houses[record.headHouseId]) {
+              record.headHouseId = record.originHouseId
+            }
+            society.dynasties[dynastyId] = record
+          }
+          return society
+        },
+        societyDynastyForHouse(society, house) {
+          if (!society || !house) {
+            return false
+          }
+          let dynastyId = this.gameDynastyIdForHouse(house)
+          return dynastyId && society.dynasties ? society.dynasties[dynastyId] : false
+        },
+        sortedDynasties(society) {
+          society = society || this.load()
+          let dynasties = Object.keys(society.dynasties || {}).map((id) => society.dynasties[id]).filter(Boolean)
+          return dynasties.sort((a, b) => {
+            let firstHouse = society.houses && society.houses[a.originHouseId]
+            let secondHouse = society.houses && society.houses[b.originHouseId]
+            let firstStrength = firstHouse ? firstHouse.strength || 0 : 0
+            let secondStrength = secondHouse ? secondHouse.strength || 0 : 0
+            if (secondStrength !== firstStrength) {
+              return secondStrength - firstStrength
+            }
+            return String(a.name || '').localeCompare(String(b.name || ''))
+          })
+        },
+        housesForDynasty(society, dynastyId) {
+          society = society || this.load()
+          let record = society.dynasties && society.dynasties[dynastyId]
+          let ids = record && record.houseIds ? record.houseIds.slice() : []
+          if (!ids.length) {
+            ids = Object.keys(society.houses || {}).filter((houseId) => {
+              let house = society.houses[houseId]
+              return house && String(this.gameDynastyIdForHouse(house)) === String(dynastyId)
+            })
+          }
+          return ids.map((houseId) => society.houses[houseId]).filter(Boolean)
+        },
+        primaryHouseForDynasty(society, dynastyId) {
+          let houses = this.housesForDynasty(society, dynastyId)
+          return houses.find((house) => house.originHouse) || houses[0] || false
+        },
+        memberIdsForDynasty(society, state, dynastyId) {
+          let seen = {}
+          let ids = []
+          this.housesForDynasty(society, dynastyId).forEach((house) => {
+            ;((house && house.memberIds) || []).concat((house && house.slaveIds) || []).forEach((characterId) => {
+              if (!characterId || seen[characterId]) {
+                return
+              }
+              let character = state && state.characters && state.characters[characterId]
+              if (!character || character.isDead) {
+                return
+              }
+              seen[characterId] = true
+              ids.push(characterId)
+            })
+          })
+          for (let characterId in (state && state.characters) || {}) {
+            if (!state.characters.hasOwnProperty(characterId) || seen[characterId]) {
+              continue
+            }
+            let character = state.characters[characterId]
+            if (character && !character.isDead && character.dynastyId && String(character.dynastyId) === String(dynastyId)) {
+              seen[characterId] = true
+              ids.push(characterId)
+            }
+          }
+          return ids
+        },
+        branchHouseId(dynastyId, seed) {
+          return this.originHouseIdForDynasty(dynastyId) + '_branch_' + this.safeId(seed || Date.now() + '_' + this.randomInt(1000, 9999))
+        },
+        cadetHouseLimitForStratum(stratum) {
+          if (stratum === 'senatorial') return 5
+          if (stratum === 'equestrian') return 4
+          if (stratum === 'civic') return 3
+          if (stratum === 'plebeian') return 2
+          if (stratum === 'freedmen') return 2
+          return 1
+        },
+        playerCadetHouseInfo(society, state, dynasty) {
+          let currentId = this.currentCharacterId(state)
+          let player = state.characters && state.characters[currentId]
+          let visible = !!(dynasty && player && player.dynastyId && String(player.dynastyId) === String(dynasty.id))
+          if (!visible) {
+            return { visible: false, available: false, reason: 'not your dynasty', tooltip: '' }
+          }
+          let houses = this.housesForDynasty(society, dynasty.id)
+          let headHouse = society.houses[dynasty.headHouseId] || this.primaryHouseForDynasty(society, dynasty.id) || {}
+          let limit = this.cadetHouseLimitForStratum(headHouse.stratum || dynasty.stratum)
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          let prestige = parseFloat(((state || {}).current || {}).prestige || 0)
+          let influence = parseFloat(((state || {}).current || {}).influence || 0)
+          let cost = this.playerCadetHouseCost(headHouse)
+          let candidate = this.cadetFounderCandidate(society, state, dynasty.id, true)
+          let reason = ''
+          if (houses.length >= limit) reason = 'branch limit'
+          else if (!candidate) reason = 'no adult branch'
+          else if (cash < cost.cash) reason = 'need ' + cost.cash + ' cash'
+          else if (prestige < cost.prestige) reason = 'need ' + cost.prestige + ' prestige'
+          else if (influence < cost.influence) reason = 'need ' + cost.influence + ' influence'
+          return {
+            visible,
+            available: !reason,
+            reason,
+            cost,
+            candidate,
+            tooltip: [
+              'Creates a secondary house inside your dynasty. The dynasty name stays unchanged.',
+              'Requires an adult married or landed branch member.',
+              'Cost: ' + cost.cash + ' cash, ' + cost.prestige + ' prestige, ' + cost.influence + ' influence.',
+              'Current houses: ' + houses.length + '/' + limit + '.',
+              reason ? 'Unavailable: ' + reason + '.' : 'The new house may one day contest the dynasty headship.'
+            ].join('\n')
+          }
+        },
+        playerCadetHouseCost(house) {
+          let level = this.socialLevel((house && house.stratum) || 'plebeian')
+          return {
+            cash: [90, 140, 220, 420, 800, 1400][level] || 220,
+            prestige: [3, 5, 8, 14, 25, 45][level] || 8,
+            influence: [5, 8, 14, 24, 42, 75][level] || 14
+          }
+        },
+        cadetFounderCandidate(society, state, dynastyId, playerOnly) {
+          let currentId = this.currentCharacterId(state)
+          let ids = playerOnly ? this.playerFamilyMemberIds(state) : this.memberIdsForDynasty(society, state, dynastyId)
+          let candidates = ids.map((id) => {
+            let character = state.characters && state.characters[id]
+            if (character) character.id = character.id || id
+            return character
+          }).filter((character) => {
+            if (!character || character.isDead || character.corSocietySlave || character.corSocietySlaveActive) return false
+            if (!character.dynastyId || String(character.dynastyId) !== String(dynastyId)) return false
+            if (character.corSocietyHouseId && !String(character.corSocietyHouseId).endsWith(String(dynastyId))) return false
+            if (playerOnly && this.sameCharacterId(character.id, currentId)) return false
+            let age = this.age(character, state)
+            return age >= 18 && (character.spouseId || (character.childrenIds || []).length || this.characterScore(character, state) >= 35)
+          })
+          return candidates.sort((a, b) => this.characterScore(b, state) - this.characterScore(a, state))[0] || false
+        },
+        createCadetHouse(society, state, dynastyId, founder, reason) {
+          if (!society || !state || !dynastyId || !founder) {
+            return false
+          }
+          let dynasty = society.dynasties[dynastyId] || {}
+          let originHouse = this.primaryHouseForDynasty(society, dynastyId)
+          if (!originHouse) {
+            return false
+          }
+          let houses = this.housesForDynasty(society, dynastyId)
+          let limit = this.cadetHouseLimitForStratum(originHouse.stratum || dynasty.stratum)
+          if (houses.length >= limit) {
+            return false
+          }
+          let houseId = this.branchHouseId(dynastyId, founder.id + '_' + houses.length + '_' + this.monthKey(state))
+          let house = this.createHouseRecord(houseId, dynastyId)
+          house.name = 'House of ' + (founder.praenomen || 'Cadet') + ' ' + (dynasty.name || originHouse.name || '')
+          house.branchName = 'Cadet branch of ' + (dynasty.name || originHouse.name || 'the dynasty')
+          house.originHouse = false
+          house.houseKind = 'cadet'
+          house.stratum = originHouse.stratum || dynasty.stratum || 'plebeian'
+          house.generated = true
+          house.cadetHouse = true
+          house.foundedByCharacterId = founder.id
+          house.foundedReason = reason || 'cadet branch'
+          house.relation = this.clamp((originHouse.relation || 0) - this.randomInt(3, 12), -100, 100)
+          house.wealth = Math.max(20, Math.round((originHouse.wealth || 60) * 0.35))
+          house.power = Math.max(5, Math.round((originHouse.power || 15) * 0.35 + this.characterScore(founder, state) / 5))
+          house.strength = Math.max(10, Math.round((originHouse.strength || 30) * 0.30 + this.characterScore(founder, state) / 3))
+          house.prestige = Math.max(100, Math.round((originHouse.prestige || dynasty.prestige || 500) * 0.20))
+          house.heritage = originHouse.heritage || dynasty.heritage || 'unknown'
+          house.citizenRank = this.rankFromStrength(house.strength)
+          house.agenda = this.pick(['wealth', 'marriage', 'office', 'security'])
+          house.memberIds = []
+          house.notableIds = []
+          society.houses[houseId] = house
+          let moveIds = this.cadetBranchMemberIds(state, founder)
+          moveIds.forEach((characterId) => {
+            try {
+              daapi.updateCharacter({ characterId, character: { corSocietyHouseId: houseId, dynastyId } })
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+          state = daapi.getState()
+          this.refreshHouseMemberLists(society, state, originHouse)
+          this.refreshHouseMemberLists(society, state, house)
+          this.normalizeDynastyHouseModel(society, state)
+          this.log(society, house.name + ' is founded as a cadet house of ' + (dynasty.name || originHouse.name) + '.', 'familyTree', house.id)
+          return house
+        },
+        cadetBranchMemberIds(state, founder) {
+          let seen = {}
+          let ids = []
+          let add = (id) => {
+            if (!id || seen[id] || !state.characters || !state.characters[id]) return
+            seen[id] = true
+            ids.push(id)
+          }
+          add(founder.id)
+          add(founder.spouseId)
+          ;(founder.childrenIds || []).forEach(add)
+          for (let characterId in (state.characters || {})) {
+            if (!state.characters.hasOwnProperty(characterId)) continue
+            let character = state.characters[characterId]
+            if (!character || character.isDead) continue
+            if (this.sameCharacterId(character.fatherId, founder.id) || this.sameCharacterId(character.motherId, founder.id)) add(characterId)
+            if (founder.spouseId && (this.sameCharacterId(character.fatherId, founder.spouseId) || this.sameCharacterId(character.motherId, founder.spouseId))) add(characterId)
+          }
+          return ids.slice(0, 8)
+        },
+        updateDynastyHeadship(society, state) {
+          society = society || this.load()
+          let changed = false
+          this.normalizeDynastyHouseModel(society, state || daapi.getState())
+          for (let dynastyId in society.dynasties) {
+            if (!society.dynasties.hasOwnProperty(dynastyId)) continue
+            let dynasty = society.dynasties[dynastyId]
+            let houses = this.housesForDynasty(society, dynastyId)
+            if (houses.length < 2) continue
+            let currentHead = society.houses[dynasty.headHouseId] || this.primaryHouseForDynasty(society, dynastyId)
+            let challenger = houses.slice().sort((a, b) => this.houseHeadshipScore(b) - this.houseHeadshipScore(a))[0]
+            if (!currentHead || !challenger || challenger.id === currentHead.id) continue
+            let lead = this.houseHeadshipScore(challenger) - this.houseHeadshipScore(currentHead)
+            if (lead >= 35 && (challenger.power || 0) >= (currentHead.power || 0) + 8) {
+              dynasty.headHouseId = challenger.id
+              challenger.lastFamilyEvent = 'Claims leadership of the dynasty.'
+              currentHead.lastFamilyEvent = 'Loses dynasty leadership to a cadet house.'
+              this.log(society, challenger.name + ' becomes head house of ' + (dynasty.name || dynastyId) + ' without changing any house names.', 'familyTree', challenger.id)
+              changed = true
+            }
+          }
+          return changed
+        },
+        houseHeadshipScore(house) {
+          if (!house) return 0
+          return Math.round((house.strength || 0) + (house.power || 0) * 1.4 + (house.wealth || 0) / 12 + (house.prestige || 0) / 900 + (house.stability || 0) / 3)
+        },
         changeText(label, value) {
           value = Math.round(parseFloat(value || 0))
           if (!value) {
@@ -1130,18 +1622,22 @@
           return (value > 0 ? '+' : '') + value + ' ' + label
         },
         syncWithGame(society, state) {
-          let members = this.collectHouseMembers(state)
-          for (let dynastyId in members) {
-            if (!members.hasOwnProperty(dynastyId)) {
+          let members = this.collectHouseMembers(state, society)
+          for (let houseId in members) {
+            if (!members.hasOwnProperty(houseId)) {
               continue
             }
-            let house = society.houses[dynastyId] || this.createHouseRecord(dynastyId)
-            let summary = this.summarizeHouse(dynastyId, members[dynastyId], state)
+            let firstMember = members[houseId][0] || {}
+            let dynastyId = (society.houses[houseId] && this.gameDynastyIdForHouse(society.houses[houseId])) || firstMember.dynastyId || houseId
+            let house = society.houses[houseId] || this.createHouseRecord(houseId, dynastyId)
+            let summary = this.summarizeHouse(dynastyId, members[houseId], state)
             let previousMembers = {}
             ;(house.memberIds || []).forEach((characterId) => {
               previousMembers[characterId] = true
             })
-            house.name = summary.name
+            if (house.originHouse || !house.name) {
+              house.name = summary.name
+            }
             house.stratum = summary.stratum
             house.strength = summary.strength
             house.memberIds = summary.memberIds
@@ -1161,17 +1657,19 @@
             summary.memberIds.forEach((characterId) => {
               let character = state.characters[characterId]
               if (!previousMembers[characterId] && character && (character.fatherId || character.motherId) && this.age(character, state) <= 1) {
-                this.log(society, 'A child is born into ' + summary.name + ': ' + this.characterName(character, state) + '.', 'birth', dynastyId)
+                this.log(society, 'A child is born into ' + summary.name + ': ' + this.characterName(character, state) + '.', 'birth', house.id)
               }
             })
             house.lastSeen = this.monthKey(state)
-            society.houses[dynastyId] = house
+            society.houses[house.id] = house
           }
+          this.normalizeDynastyHouseModel(society, state)
           if (society.settings.autoGenerate) {
             this.ensureMinimumHouses(society, state)
+            this.normalizeDynastyHouseModel(society, daapi.getState())
           }
         },
-        collectHouseMembers(state) {
+        collectHouseMembers(state, society) {
           let result = {}
           let current = state.current || {}
           let player = state.characters[this.currentCharacterId(state)] || {}
@@ -1188,18 +1686,30 @@
             if (!character || character.isDead || !character.dynastyId || character.dynastyId === playerDynastyId) {
               continue
             }
+            if (character.corSocietySlaveMarket && character.corSocietySlaveActive === false) {
+              continue
+            }
             if (household[characterId] && character.dynastyId === playerDynastyId) {
               continue
             }
             character.id = character.id || characterId
-            result[character.dynastyId] = result[character.dynastyId] || []
-            result[character.dynastyId].push(character)
+            let houseId = character.corSocietyHouseId && society && society.houses && society.houses[character.corSocietyHouseId]
+              ? character.corSocietyHouseId
+              : character.dynastyId
+            result[houseId] = result[houseId] || []
+            result[houseId].push(character)
           }
           return result
         },
-        createHouseRecord(dynastyId) {
+        createHouseRecord(houseId, dynastyId) {
+          dynastyId = dynastyId || houseId
           return {
-            id: dynastyId,
+            id: houseId,
+            dynastyId,
+            gameDynastyId: dynastyId,
+            originHouse: String(houseId) === String(dynastyId),
+            houseKind: String(houseId) === String(dynastyId) ? 'origin' : 'cadet',
+            branchName: String(houseId) === String(dynastyId) ? 'House of origin' : 'Cadet house',
             relation: this.randomInt(-12, 16),
             favor: 0,
             heat: 0,
@@ -1387,6 +1897,13 @@
               spouseId,
               isMatrilineal: !this.characterIsMale(head)
             })
+            daapi.updateCharacter({
+              characterId: spouseId,
+              character: {
+                dynastyId: this.gameDynastyIdForHouse(house),
+                corSocietyHouseId: house.id
+              }
+            })
             daapi.forceUpdateCharacterDisplay({ characterId: head.id })
             daapi.forceUpdateCharacterDisplay({ characterId: spouseId })
           } catch (err) {
@@ -1423,7 +1940,8 @@
           daapi.updateCharacter({
             characterId: childId,
             character: {
-              dynastyId: house.id,
+              dynastyId: this.gameDynastyIdForHouse(house),
+              corSocietyHouseId: house.id,
               fatherId: father.id || null,
               motherId: mother.id || null,
               childrenIds: []
@@ -1491,7 +2009,8 @@
           daapi.updateCharacter({
             characterId: relativeId,
             character: {
-              dynastyId: house.id,
+              dynastyId: this.gameDynastyIdForHouse(house),
+              corSocietyHouseId: house.id,
               fatherId: canBeChild && head.isMale ? head.id : null,
               motherId: canBeChild && !head.isMale ? head.id : null
             }
@@ -1980,7 +2499,8 @@
           daapi.updateCharacter({
             characterId: siblingId,
             character: {
-              dynastyId: house.id,
+              dynastyId: this.gameDynastyIdForHouse(house),
+              corSocietyHouseId: house.id,
               fatherId: anchor.fatherId,
               motherId: anchor.motherId,
               childrenIds: []
@@ -2420,12 +2940,21 @@
         },
         countByStratum(society) {
           let counts = {}
-          for (let houseId in society.houses) {
-            if (!society.houses.hasOwnProperty(houseId)) {
-              continue
+          let dynasties = this.sortedDynasties(society)
+          if (dynasties.length) {
+            dynasties.forEach((dynasty) => {
+              let house = this.primaryHouseForDynasty(society, dynasty.id) || {}
+              let stratum = dynasty.stratum || house.stratum || 'plebeian'
+              counts[stratum] = (counts[stratum] || 0) + 1
+            })
+          } else {
+            for (let houseId in society.houses) {
+              if (!society.houses.hasOwnProperty(houseId)) {
+                continue
+              }
+              let stratum = society.houses[houseId].stratum || 'plebeian'
+              counts[stratum] = (counts[stratum] || 0) + 1
             }
-            let stratum = society.houses[houseId].stratum || 'plebeian'
-            counts[stratum] = (counts[stratum] || 0) + 1
           }
           return counts
         },
@@ -2435,19 +2964,18 @@
           if (!society || !society.settings.enabled) {
             return
           }
+          this.installDebtSaleModalPatch()
           let monthKey = this.monthKey(state)
           if (society.lastProcessedMonth === monthKey) {
             return
           }
           society.lastProcessedMonth = monthKey
           this.syncPlayerWorldEffects(society, state)
-          if (this.queueBankDebtReliefEvent(society, state)) {
-            this.save(society)
-            return
-          }
           this.processBankYear(society, state)
           this.processPlayerSlaves(society, state)
           this.simulateHouseTurns(society, state)
+          this.maybeCreateNpcCadetHouses(society, state)
+          this.updateDynastyHeadship(society, state)
           this.simulateInterHouseAffairs(society, state)
           this.maybeStartNpcRomance(society, state)
           this.simulateRomances(society, state)
@@ -2593,6 +3121,32 @@
             house.strength = Math.max(1, Math.round((house.strength || 0) * 0.85 + (house.power || 0) * 0.25 + (house.wealth || 0) / 160 + (house.stability || 0) / 8))
             this.updateHouseStratumFromAI(society, house)
           })
+        },
+        maybeCreateNpcCadetHouses(society, state) {
+          if (!society || !society.dynasties || !state || !state.characters) {
+            return false
+          }
+          let created = false
+          for (let dynastyId in society.dynasties) {
+            if (!society.dynasties.hasOwnProperty(dynastyId)) continue
+            let dynasty = society.dynasties[dynastyId]
+            let originHouse = this.primaryHouseForDynasty(society, dynastyId)
+            if (!originHouse || originHouse.stratum === 'poor') continue
+            let houses = this.housesForDynasty(society, dynastyId)
+            let limit = this.cadetHouseLimitForStratum(originHouse.stratum || dynasty.stratum)
+            if (houses.length >= limit) continue
+            let score = this.houseHeadshipScore(originHouse)
+            let threshold = originHouse.stratum === 'senatorial' ? 180 : originHouse.stratum === 'equestrian' ? 135 : originHouse.stratum === 'civic' ? 95 : 70
+            let chance = originHouse.stratum === 'senatorial' ? 0.018 : originHouse.stratum === 'equestrian' ? 0.014 : 0.008
+            if (score < threshold || Math.random() >= chance) continue
+            let founder = this.cadetFounderCandidate(society, state, dynastyId, false)
+            if (!founder) continue
+            if (this.createCadetHouse(society, state, dynastyId, founder, 'npc cadet foundation')) {
+              created = true
+              state = daapi.getState()
+            }
+          }
+          return created
         },
         updateHouseStratumFromAI(society, house) {
           let previous = house.stratum || 'plebeian'
@@ -3440,16 +3994,101 @@
             'Judean',
             'Illyrian',
             'Anatolian',
+            'Roman debt-bond',
+            'Roman condemned',
             'Roman renegade'
           ]
+        },
+        slaveForeignNamePools() {
+          return {
+            Gallic: {
+              male: ['Ategnatos Arverno', 'Commius Remus', 'Litaviccos Aeduus', 'Ambiorix Treverus', 'Catugnatus Helvetios', 'Brennos Biturix'],
+              female: ['Ategnata Arverna', 'Eponina Remia', 'Litavica Aedua', 'Camma Trevera', 'Nantosuelta Helvetia', 'Bricta Bituriga']
+            },
+            Egyptian: {
+              male: ['Amenmose sa Panehesy', 'Hori sa Iset', 'Nesamun sa Hapu', 'Paser sa Ramose', 'Panehsy sa Minmose', 'Wennefer sa Nakht'],
+              female: ['Tiaa ta Beketaten', 'Merit ta Hori', 'Tanetnefer ta Hapu', 'Iset ta Panehsy', 'Henut ta Nakht', 'Tabubu ta Pahemnetjer']
+            },
+            Greek: {
+              male: ['Kleon Nikandrou', 'Diodoros Menandrou', 'Sostratos Philonidou', 'Menon Theodorou', 'Nikon Alexandrou', 'Herakleides Timonidou'],
+              female: ['Phila Timonidou', 'Nikaia Dorotheou', 'Eirene Menandrou', 'Damaris Kleandrou', 'Thais Nikandrou', 'Melitta Alexandrou']
+            },
+            Numidian: {
+              male: ['Idir Massylus', 'Tacfarinas Numida', 'Mastanabal Gaetulus', 'Aderbal Masaesyli', 'Iarbas Massylus', 'Micipsa Numida'],
+              female: ['Tinhinan Masaesyli', 'Dihya Gaetula', 'Salwa Massyla', 'Tafat Numida', 'Ayla Masaesyli', 'Tamella Gaetula']
+            },
+            Syrian: {
+              male: ['Barates Palmyrenos', 'Malchos Damasenos', 'Abdashtart Arados', 'Iamblichos Emesenos', 'Sampsigeramos Apamenos', 'Aglibol Palmyrenos'],
+              female: ['Zenobia Emesene', 'Berenike Damasene', 'Martha Palmyrene', 'Atargatis Aradene', 'Salome Apamene', 'Noora Emesene']
+            },
+            Thracian: {
+              male: ['Seuthes Odrysian', 'Kotys Bessos', 'Rhescuporis Triballos', 'Dromichaetes Getic', 'Sadalas Dentheletae', 'Teres Odrysian'],
+              female: ['Bendis Dentheletae', 'Medopa Bessa', 'Thraike Odrysia', 'Rheskypora Triballa', 'Kotyla Getica', 'Sadalina Bessa']
+            },
+            Iberian: {
+              male: ['Indibilis Ilergetes', 'Edeco Turdetan', 'Tautalos Celtiber', 'Mandonius Ausetan', 'Corbis Lusitanus', 'Culchas Bastetan'],
+              female: ['Ausetana Laietana', 'Iliturgi Turdetana', 'Tautala Celtibera', 'Mandona Ilergeta', 'Aunia Lusitana', 'Orissia Bastetana']
+            },
+            Germanic: {
+              male: ['Armin Cherusker', 'Segimerus Suebus', 'Hariulf Marcomann', 'Inguiomer Bructer', 'Chariovalda Batavus', 'Gannascus Chaucan'],
+              female: ['Thusnelda Bructera', 'Ganna Sueba', 'Albruna Cherusca', 'Hilde Marcomanna', 'Swanhild Batava', 'Brunhild Chauca']
+            },
+            Dacian: {
+              male: ['Decebalus Dacus', 'Cotiso Geta', 'Duras Costobocus', 'Comosicus Dacus', 'Dicomes Geta', 'Bastiza Carpic'],
+              female: ['Zia Dacica', 'Medopa Getica', 'Dacina Costoboca', 'Bendis Dacica', 'Cotisa Getica', 'Carpia Bastarna']
+            },
+            Punic: {
+              male: ['Hanno Barcid', 'Bomilcar Sufet', 'Abdeshmun Motyan', 'Bostar Qartadast', 'Mago Gadirite', 'Himilco Carthaginian'],
+              female: ['Sophonisba Qartadast', 'Elissa Motyan', 'Tanitbaal Gadirite', 'Abibaal Punic', 'Arishat Carthaginian', 'Salambo Motyan']
+            },
+            Judean: {
+              male: ['Eleazar ben Mattathias', 'Yosef ben Hanan', 'Yehuda ben Azariah', 'Simon ben Onias', 'Nathan ben Levi', 'Hanan ben Eleazar'],
+              female: ['Miriam bat Yonatan', 'Salome bat Azariah', 'Hannah bat Eleazar', 'Judith bat Hanan', 'Rachel bat Levi', 'Martha bat Simon']
+            },
+            Illyrian: {
+              male: ['Gentius Labeatan', 'Bato Daesitiates', 'Plator Delmata', 'Pinnes Ardiaean', 'Monunius Taulantian', 'Skerdilaidas Illyrian'],
+              female: ['Teuta Ardiaea', 'Etuta Labeata', 'Batoia Delmata', 'Pinnia Taulantia', 'Daita Daesitiata', 'Triteuta Illyria']
+            },
+            Anatolian: {
+              male: ['Attalos Phrygios', 'Mithridates Pontikos', 'Ariobarzanes Kappadokian', 'Menandros Lydios', 'Tarkondimotos Kilikian', 'Midas Galatian'],
+              female: ['Artemisia Karia', 'Nysa Galatia', 'Amastris Pontike', 'Laodike Lydian', 'Aryenis Kappadokian', 'Myrina Phrygia']
+            },
+            'Roman renegade': {
+              male: ['Publius Exsul', 'Marcus Profugus', 'Gaius Infamis', 'Titus Fugitivus', 'Lucius Perditus', 'Sextus Abiectus'],
+              female: ['Livia Exsul', 'Aelia Profuga', 'Julia Infamis', 'Marcia Fugitiva', 'Claudia Perdita', 'Fabia Abiecta']
+            },
+            'Roman debt-bond': {
+              male: ['Aulus Nexarius', 'Spurius Debitor', 'Numerius Obligatus', 'Manius Addictus', 'Tiberius Egenus', 'Postumus Nummarius'],
+              female: ['Aula Nexaria', 'Spuria Debita', 'Numeria Obligata', 'Mania Addicta', 'Tiberia Egena', 'Postuma Nummaria']
+            },
+            'Roman condemned': {
+              male: ['Gaius Damnatus', 'Lucius Noxius', 'Marcus Poenalis', 'Quintus Relegatus', 'Servius Infamis', 'Titus Ferratus'],
+              female: ['Gaia Damnata', 'Lucia Noxia', 'Marcia Poenalis', 'Quinta Relegata', 'Servia Infamis', 'Titia Ferrata']
+            }
+          }
         },
         randomSlaveOrigin() {
           return this.pick(this.slaveOrigins())
         },
+        randomSlaveFullName(origin, isMale) {
+          let pools = this.slaveForeignNamePools()
+          let pool = pools[origin] || pools.Greek
+          return this.pick(isMale ? pool.male : pool.female) || this.pick(this.slaveNames())
+        },
+        shortSlaveName(fullName) {
+          let parts = String(fullName || '').replace(/,/g, '').split(/\s+/).filter(Boolean)
+          return parts[0] || this.pick(this.slaveNames())
+        },
         slaveOriginDescription(origin) {
           origin = origin || 'unknown origin'
+          if (origin === 'Roman debt-bond') {
+            return 'Roman debt-bond; enslaved after household debt and legal disgrace. This note is cleared after manumission.'
+          }
+          if (origin === 'Roman condemned') {
+            return 'Roman condemned; enslaved by sentence or civic punishment. This note is cleared after manumission.'
+          }
           if (origin === 'Roman renegade') {
-            return 'Roman renegade; treated as an outsider by Society.'
+            return 'Roman renegade; treated as an outsider by Society. This note is cleared after manumission.'
           }
           return origin + ' origin; not counted as a Roman citizen household by Society.'
         },
@@ -3457,10 +4096,15 @@
           let level = this.clamp(this.randomInt(1, 4) + (levelBias || 0), 1, 8)
           let type = this.pick(this.slaveTypes())
           let profile = this.slaveTypeProfile(type)
+          let origin = this.randomSlaveOrigin()
+          let isMale = Math.random() > 0.45
+          let fullName = this.randomSlaveFullName(origin, isMale)
           return {
             key: 'slave_' + this.safeId(ownerHouse && ownerHouse.id ? ownerHouse.id : 'player') + '_' + Date.now() + '_' + this.randomInt(1000, 9999),
-            name: this.pick(this.slaveNames()),
-            origin: this.randomSlaveOrigin(),
+            name: this.shortSlaveName(fullName),
+            fullName,
+            isMale,
+            origin,
             type,
             level,
             age: this.randomInt(15, 46),
@@ -3500,13 +4144,15 @@
         generateSlaveCharacter(society, state, ownerHouse, template) {
           template = template || this.randomSlaveTemplate(ownerHouse)
           let ownerDynastyId = ownerHouse && ownerHouse.id
-          if (!ownerDynastyId) {
+          if (!ownerDynastyId && !template.market) {
             let currentId = this.currentCharacterId(state)
             let current = state.characters && state.characters[currentId]
             ownerDynastyId = current && current.dynastyId
           }
-          let isMale = Math.random() > 0.45
+          let isMale = template.isMale !== undefined ? !!template.isMale : Math.random() > 0.45
           template.origin = template.origin || this.randomSlaveOrigin()
+          template.fullName = template.fullName || this.randomSlaveFullName(template.origin, isMale)
+          template.name = template.name || this.shortSlaveName(template.fullName)
           let profile = this.slaveTypeProfile(template.type)
           let traits = ['content'].concat(profile.traits || [])
           traits = traits.filter((trait, index, list) => trait && list.indexOf(trait) === index)
@@ -3524,11 +4170,13 @@
               skills: this.slaveSkills(template.type, template.level),
               corSocietyGenerated: true,
               corSocietySlave: true,
-              corSocietySlaveActive: true,
+              corSocietySlaveActive: !template.market,
+              corSocietySlaveMarket: !!template.market,
               corSocietySlaveType: template.type,
               corSocietySlaveLevel: template.level,
               corSocietySlaveOwnerHouseId: ownerDynastyId || '',
               corSocietySlaveOrigin: template.origin,
+              corSocietySlaveFullName: template.fullName,
               corSocietySlaveTask: template.task || profile.task || template.type || 'labor',
               corSocietySlaveSavings: Math.max(0, parseFloat(template.savings || 0)),
               corSocietyOrigin: 'enslaved_dependant',
@@ -3539,13 +4187,15 @@
             dynastyFeatures: {}
           })
           let patch = {
-            dynastyId: ownerDynastyId || undefined,
+            dynastyId: template.market ? '' : (ownerDynastyId || undefined),
             corSocietySlave: true,
-            corSocietySlaveActive: true,
+            corSocietySlaveActive: !template.market,
+            corSocietySlaveMarket: !!template.market,
             corSocietySlaveType: template.type,
             corSocietySlaveLevel: template.level,
             corSocietySlaveOwnerHouseId: ownerDynastyId || '',
             corSocietySlaveOrigin: template.origin,
+            corSocietySlaveFullName: template.fullName,
             corSocietySlaveTask: template.task || profile.task || template.type || 'labor',
             corSocietySlaveSavings: Math.max(0, parseFloat(template.savings || 0)),
             corSocietyOrigin: 'enslaved_dependant',
@@ -3560,7 +4210,7 @@
           }
           template.characterId = characterId
           template.ownerHouseId = ownerDynastyId || ''
-          template.active = true
+          template.active = !template.market
           society.generatedCharacterIds = society.generatedCharacterIds || []
           if (society.generatedCharacterIds.indexOf(characterId) < 0) {
             society.generatedCharacterIds.push(characterId)
@@ -3586,6 +4236,278 @@
             return !!(slave && slave.active !== false && character && !character.isDead)
           })
           return society.playerSlaves
+        },
+        currentPlayerSlaveRecord(society, state) {
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          if (!character || !this.isSlaveCharacter(character)) {
+            return false
+          }
+          let existing = (society.playerSlaves || []).find((slave) => this.sameCharacterId(slave.characterId, characterId))
+          if (existing) {
+            return existing
+          }
+          return this.playerSlaveRecordFromCharacter({
+            key: 'slave_' + this.safeId(characterId),
+            characterId,
+            originHouseId: character.corSocietyOriginHouseId || '',
+            previousOwnerHouseId: character.corSocietyPreviousOwnerHouseId || '',
+            origin: character.corSocietySlaveOrigin || this.randomSlaveOrigin(),
+            type: character.corSocietySlaveType || this.slaveTypeFromCharacter(character),
+            level: character.corSocietySlaveLevel || 1,
+            savings: character.corSocietySlaveSavings || 0
+          }, { ...character, id: characterId }, state)
+        },
+        openPlayerSlavePath() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          let record = this.currentPlayerSlaveRecord(society, state)
+          if (!character || !record) {
+            this.openHub()
+            return
+          }
+          let freedomPrice = this.slaveFreedomPrice(record)
+          let savings = Math.round(parseFloat(record.savings || character.corSocietySlaveSavings || 0))
+          let ownerHouse = society.houses[character.corSocietySlaveOwnerHouseId] || society.houses[character.corSocietyHouseId] || false
+          let cooldown = character.corSocietySlaveNextFreedomActionMonth && !this.monthKeyReached(character.corSocietySlaveNextFreedomActionMonth, state)
+          let options = [
+            {
+              variant: 'info',
+              text: 'Work extra for savings',
+              disabled: !!cooldown,
+              showDisabledWithTooltip: true,
+              tooltip: cooldown ? 'Available after ' + character.corSocietySlaveNextFreedomActionMonth + '.' : 'Gain savings toward self-purchase; small risk of stress or injury.',
+              icons: [this.slaveTypeIcon(record.type), this.affairIcon('coins')],
+              action: { event: this.event, method: 'playerSlaveWorkExtra' }
+            },
+            {
+              variant: 'info',
+              text: 'Petition for freedom',
+              disabled: !!cooldown || savings < Math.round(freedomPrice * 0.45),
+              showDisabledWithTooltip: true,
+              tooltip: savings < Math.round(freedomPrice * 0.45) ? 'You need at least 45% of the freedom price saved.' : cooldown ? 'Available after ' + character.corSocietySlaveNextFreedomActionMonth + '.' : 'Ask the owner or controlling house to accept partial payment and goodwill.',
+              icons: [this.affairIcon('support'), this.affairIcon('coins')],
+              action: { event: this.event, method: 'playerSlavePetitionFreedom' }
+            },
+            {
+              variant: 'info',
+              text: 'Seek a patron',
+              disabled: !!cooldown,
+              showDisabledWithTooltip: true,
+              tooltip: cooldown ? 'Available after ' + character.corSocietySlaveNextFreedomActionMonth + '.' : 'Try to gain outside support. Can add savings or improve chance of manumission.',
+              icons: [this.affairIcon('prestige')],
+              action: { event: this.event, method: 'playerSlaveSeekPatron' }
+            },
+            {
+              variant: 'danger',
+              text: 'Attempt escape',
+              disabled: !!cooldown,
+              showDisabledWithTooltip: true,
+              tooltip: cooldown ? 'Available after ' + character.corSocietySlaveNextFreedomActionMonth + '.' : 'Risky. Success creates a freedman house; failure hurts relations and may wound you.',
+              icons: [this.affairIcon('rivalry')],
+              action: { event: this.event, method: 'playerSlaveEscape' }
+            },
+            {
+              text: 'Back',
+              action: { event: this.event, method: 'openHub' }
+            }
+          ]
+          this.pushModal({
+            societyMenu: true,
+            title: 'Path to Freedom',
+            message: 'Slave-focused Society actions for ' + this.characterName({ ...character, id: characterId }, state) + '.',
+            societySummaryOptions: [
+              this.summaryOption('Status', 'Enslaved; owner ' + (ownerHouse ? ownerHouse.name : 'unknown'), [this.slaveTypeIcon(record.type)], 'These mechanics are available when playing as an enslaved character through Play As.'),
+              this.summaryOption('Freedom fund', savings + '/' + freedomPrice, [this.affairIcon('coins')], 'Savings are stored on the real character.'),
+              this.summaryOption('Origin', this.slaveOriginDescription(record.origin || character.corSocietySlaveOrigin || 'unknown'), [this.affairIcon('log')], 'Roman slavery notes are removed when the character becomes free.'),
+              this.summaryOption('Work', this.slaveTaskLabel(record) + ', level ' + Math.round(record.level || 1), [this.slaveTypeIcon(record.type)], 'Skill and task affect savings and success chances.')
+            ],
+            image: this.characterPortrait({ ...character, id: characterId }, state),
+            options
+          })
+        },
+        setPlayerSlaveActionCooldown(characterId, months) {
+          try {
+            daapi.updateCharacter({
+              characterId,
+              character: {
+                corSocietySlaveNextFreedomActionMonth: this.futureMonthKey(months || 3)
+              }
+            })
+          } catch (err) {
+            console.warn(err)
+          }
+        },
+        playerSlaveWorkExtra() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          let record = this.currentPlayerSlaveRecord(society, state)
+          if (!character || !record) {
+            this.openHub()
+            return
+          }
+          let gain = Math.max(4, Math.round((record.level || 1) * 3 + this.characterScore(character, state) / 18))
+          let savings = Math.max(0, parseFloat(record.savings || character.corSocietySlaveSavings || 0)) + gain
+          record.savings = savings
+          this.setPlayerSlaveActionCooldown(characterId, 2)
+          try {
+            daapi.updateCharacter({ characterId, character: { corSocietySlaveSavings: savings } })
+            if (Math.random() < 0.16) daapi.addTrait({ characterId, trait: Math.random() < 0.5 ? 'stressed' : 'wounded' })
+          } catch (err) {
+            console.warn(err)
+          }
+          this.log(society, this.characterName({ ...character, id: characterId }, state) + ' works extra and saves ' + gain + ' toward freedom.', 'slaves')
+          this.save(society)
+          this.openPlayerSlavePath()
+        },
+        playerSlaveSeekPatron() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          let record = this.currentPlayerSlaveRecord(society, state)
+          if (!character || !record) {
+            this.openHub()
+            return
+          }
+          let success = Math.random() < this.clamp(0.30 + this.characterScore(character, state) / 180, 0.18, 0.72)
+          let gain = success ? Math.max(8, Math.round((record.level || 1) * 5 + 8)) : Math.max(1, Math.round((record.level || 1) * 2))
+          let savings = Math.max(0, parseFloat(record.savings || character.corSocietySlaveSavings || 0)) + gain
+          record.savings = savings
+          this.setPlayerSlaveActionCooldown(characterId, success ? 3 : 4)
+          try {
+            daapi.updateCharacter({ characterId, character: { corSocietySlaveSavings: savings } })
+          } catch (err) {
+            console.warn(err)
+          }
+          this.log(society, success ? 'A patron quietly supports an enslaved dependant seeking freedom.' : 'A search for patronage gains only a little sympathy.', 'slaves')
+          this.save(society)
+          this.openPlayerSlavePath()
+        },
+        playerSlavePetitionFreedom() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          let record = this.currentPlayerSlaveRecord(society, state)
+          if (!character || !record) {
+            this.openHub()
+            return
+          }
+          let ownerHouse = society.houses[character.corSocietySlaveOwnerHouseId] || society.houses[character.corSocietyHouseId] || false
+          let savings = Math.max(0, parseFloat(record.savings || character.corSocietySlaveSavings || 0))
+          let price = this.slaveFreedomPrice(record)
+          let chance = this.clamp(0.18 + savings / Math.max(1, price) * 0.55 + this.characterScore(character, state) / 250, 0.12, 0.86)
+          if (ownerHouse && (ownerHouse.relation || 0) < -20) chance -= 0.12
+          this.setPlayerSlaveActionCooldown(characterId, 5)
+          if (Math.random() < chance) {
+            this.manumitCurrentSlaveCharacter(society, state, record, 'self_petition')
+            this.save(society)
+            this.pushModal({
+              societyMenu: true,
+              title: 'Freedom granted',
+              message: 'The petition is accepted. The character enters a freedman house and the slavery origin note is cleared.',
+              image: this.affairIcon('freedmen'),
+              options: [{ text: 'Open Society', action: { event: this.event, method: 'openHub' } }]
+            })
+            return
+          }
+          if (ownerHouse) {
+            ownerHouse.relation = this.clamp((ownerHouse.relation || 0) - 4, -100, 100)
+            ownerHouse.heat = (ownerHouse.heat || 0) + 1
+          }
+          this.log(society, 'A slave petition for freedom is refused.', 'slaves', ownerHouse ? ownerHouse.id : '')
+          this.save(society)
+          this.openPlayerSlavePath()
+        },
+        playerSlaveEscape() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let characterId = this.currentCharacterId(state)
+          let character = state.characters && state.characters[characterId]
+          let record = this.currentPlayerSlaveRecord(society, state)
+          if (!character || !record) {
+            this.openHub()
+            return
+          }
+          let ownerHouse = society.houses[character.corSocietySlaveOwnerHouseId] || society.houses[character.corSocietyHouseId] || false
+          let skills = character.skills || {}
+          let chance = this.clamp(0.20 + parseFloat(skills.combat || 0) / 120 + parseFloat(skills.intelligence || 0) / 180 - ((ownerHouse && ownerHouse.power) || 0) / 350, 0.08, 0.62)
+          this.setPlayerSlaveActionCooldown(characterId, 8)
+          if (Math.random() < chance) {
+            this.manumitCurrentSlaveCharacter(society, state, record, 'escaped_freedman')
+            this.save(society)
+            this.pushModal({
+              societyMenu: true,
+              title: 'Escape succeeds',
+              message: 'The escape succeeds. The character survives as a freedman and starts a precarious free house.',
+              image: this.affairIcon('freedmen'),
+              options: [{ text: 'Open Society', action: { event: this.event, method: 'openHub' } }]
+            })
+            return
+          }
+          if (ownerHouse) {
+            ownerHouse.relation = this.clamp((ownerHouse.relation || 0) - 12, -100, 100)
+            ownerHouse.heat = (ownerHouse.heat || 0) + 2
+          }
+          try {
+            daapi.addTrait({ characterId, trait: Math.random() < 0.55 ? 'wounded' : 'stressed' })
+          } catch (err) {
+            console.warn(err)
+          }
+          this.log(society, 'An escape attempt fails and the owner house tightens control.', 'slaves', ownerHouse ? ownerHouse.id : '')
+          this.save(society)
+          this.openPlayerSlavePath()
+        },
+        manumitCurrentSlaveCharacter(society, state, record, reason) {
+          let characterId = record && record.characterId
+          let character = characterId && state.characters && state.characters[characterId]
+          if (!character) {
+            return false
+          }
+          character.id = character.id || characterId
+          let ownerHouseId = character.corSocietySlaveOwnerHouseId || character.corSocietyHouseId || ''
+          let ownerHouse = society.houses[ownerHouseId]
+          let freedHouse = this.freedmanHouseForCharacter(society, state, record, character)
+          try {
+            daapi.updateCharacter({
+              characterId,
+              character: {
+                dynastyId: freedHouse ? this.gameDynastyIdForHouse(freedHouse) : character.dynastyId,
+                corSocietyHouseId: freedHouse ? freedHouse.id : '',
+                corSocietySlave: false,
+                corSocietySlaveActive: false,
+                corSocietySlaveMarket: false,
+                corSocietySlaveOrigin: '',
+                corSocietyFreedman: true,
+                corSocietyOrigin: reason || 'manumitted_freedman',
+                corSocietySlaveOwnerHouseId: '',
+                flagCannotMarry: false,
+                flagDoNotCull: true
+              }
+            })
+            daapi.forceUpdateCharacterDisplay({ characterId })
+          } catch (err) {
+            console.warn(err)
+          }
+          if (ownerHouse) {
+            ownerHouse.slaveIds = (ownerHouse.slaveIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+            ownerHouse.memberIds = (ownerHouse.memberIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+          }
+          if (freedHouse) {
+            freedHouse.memberIds = freedHouse.memberIds || []
+            if (freedHouse.memberIds.indexOf(characterId) < 0) freedHouse.memberIds.push(characterId)
+          }
+          society.playerSlaves = (society.playerSlaves || []).filter((slave) => !this.sameCharacterId(slave.characterId, characterId))
+          state = daapi.getState()
+          if (ownerHouse) this.refreshHouseMemberLists(society, state, ownerHouse)
+          if (freedHouse) this.refreshHouseMemberLists(society, state, freedHouse)
+          this.log(society, this.characterName(character, state) + ' becomes free and enters the freedmen order.', 'slaves', freedHouse ? freedHouse.id : '')
+          return true
         },
         processPlayerSlaves(society, state) {
           this.syncOwnedSlaveChildren(society, state)
@@ -3769,7 +4691,7 @@
               discovered: false
             })
           }
-          this.log(society, this.characterName(slave, state) + ', a household slave, is expecting a child with ' + this.characterName(owner, state) + '.', 'birth')
+          this.log(society, this.slaveDisplayName(slave, record, state) + ', a household slave, is expecting a child with ' + this.characterName(owner, state) + '.', 'birth')
           return true
         },
         tryOwnedSlavePregnancies(society, state) {
@@ -3810,7 +4732,7 @@
             console.warn(err)
             return false
           }
-          this.log(society, this.characterName(couple.mother, state) + ', a household slave, is expecting a child with spouse ' + this.characterName(couple.father, state) + '.', 'birth')
+          this.log(society, this.slaveDisplayName(couple.mother, null, state) + ', a household slave, is expecting a child with spouse ' + this.slaveDisplayName(couple.father, null, state) + '.', 'birth')
           return true
         },
         processBankYear(society, state) {
@@ -3877,44 +4799,8 @@
           return true
         },
         queueBankDebtReliefEvent(society, state) {
-          let cash = parseFloat(((state || {}).current || {}).cash || 0)
-          let month = this.monthKey(state || daapi.getState())
-          if (cash >= 0 || society.lastBankDebtReliefMonth === month) {
-            return false
-          }
-          society.bank = society.bank || {}
-          society.lastBankDebtReliefMonth = month
-          let amount = Math.max(50, Math.ceil(Math.abs(cash) + 25))
-          this.pushModal({
-            corTranslatorPretranslateNow: true,
-            disableSocietyClose: true,
-            title: 'Bank of Rome emergency credit',
-            message: 'Your household cash is negative. The Bank of Rome can extend emergency credit before forced sales become unavoidable.\nCurrent cash: ' + Math.round(cash) + '\nSuggested loan: ' + amount,
-            image: this.bundledIcon('bank_of_rome', 'money'),
-            options: [
-              {
-                variant: 'danger',
-                text: 'Borrow ' + amount,
-                tooltip: 'Covers current negative cash with a little margin. Consequences: principal increases and annual interest applies.',
-                statChanges: { cash: amount },
-                icons: [this.bundledIcon('bank_of_rome', 'money')],
-                action: {
-                  event: this.event,
-                  method: 'takeEmergencyDebtLoan',
-                  context: { amount }
-                }
-              },
-              {
-                text: 'No loan',
-                tooltip: 'Decline emergency credit. The base game may still force asset sales if debt remains.',
-                action: {
-                  event: this.event,
-                  method: 'openHub'
-                }
-              }
-            ]
-          })
-          return true
+          this.installDebtSaleModalPatch()
+          return false
         },
         bankInterest(society) {
           society = society || this.load()
@@ -4122,10 +5008,12 @@
             daapi.updateCharacter({
               characterId: target.character.id,
               character: {
-                dynastyId: house.id,
+                dynastyId: this.gameDynastyIdForHouse(house),
+                corSocietyHouseId: house.id,
                 corSocietySlave: false,
                 corSocietySlaveActive: false,
                 corSocietySlaveMarket: false,
+                corSocietySlaveOrigin: '',
                 corSocietyFreedman: true,
                 corSocietyOrigin: 'rescued_freedman',
                 corSocietyFreedByHouseId: house.id,
@@ -4194,7 +5082,8 @@
             daapi.updateCharacter({
               characterId: character.id,
               character: {
-                dynastyId: buyerHouse.id,
+                dynastyId: this.gameDynastyIdForHouse(buyerHouse),
+                corSocietyHouseId: buyerHouse.id,
                 corSocietySlave: true,
                 corSocietySlaveActive: true,
                 corSocietySlaveMarket: false,
@@ -4301,6 +5190,15 @@
           if (stratum === 'civic' || stratum === 'plebeian') return 4
           return 3
         },
+        characterBelongsToHouse(character, house) {
+          if (!character || !house) {
+            return false
+          }
+          if (character.corSocietyHouseId) {
+            return String(character.corSocietyHouseId) === String(house.id)
+          }
+          return !!(house.originHouse && character.dynastyId && String(character.dynastyId) === String(this.gameDynastyIdForHouse(house)))
+        },
         refreshHouseMemberLists(society, state, house) {
           if (!house || !house.id || !state || !state.characters) {
             return
@@ -4312,7 +5210,7 @@
               return
             }
             let character = state.characters[characterId]
-            if (!character || character.isDead || character.dynastyId !== house.id) {
+            if (!character || character.isDead || !this.characterBelongsToHouse(character, house)) {
               return
             }
             character.id = character.id || characterId
@@ -4361,7 +5259,8 @@
           daapi.updateCharacter({
             characterId,
             character: {
-              dynastyId: house.id,
+              dynastyId: this.gameDynastyIdForHouse(house),
+              corSocietyHouseId: house.id,
               spouseId: null,
               childrenIds: []
             }
@@ -4414,7 +5313,8 @@
           daapi.updateCharacter({
             characterId: prospectId,
             character: {
-              dynastyId: house.id,
+              dynastyId: this.gameDynastyIdForHouse(house),
+              corSocietyHouseId: house.id,
               spouseId: null,
               corSocietyGenerated: true
             }
@@ -4456,6 +5356,12 @@
               if (!character.corSocietyOrigin || character.corSocietyOrigin !== 'enslaved_dependant') patch.corSocietyOrigin = 'enslaved_dependant'
               if (!character.corSocietySlaveMarket) patch.corSocietySlaveMarket = true
               if (!character.corSocietySlaveOrigin) patch.corSocietySlaveOrigin = this.randomSlaveOrigin()
+              if (!character.corSocietySlaveFullName) {
+                let origin = patch.corSocietySlaveOrigin || character.corSocietySlaveOrigin || this.randomSlaveOrigin()
+                let fullName = this.randomSlaveFullName(origin, this.characterIsMale(character))
+                patch.corSocietySlaveFullName = fullName
+                patch.praenomen = this.shortSlaveName(fullName)
+              }
               if (!character.corSocietySlaveType) patch.corSocietySlaveType = this.slaveTypeFromCharacter(character)
               if (!character.corSocietySlaveLevel) patch.corSocietySlaveLevel = Math.max(1, Math.round(this.characterScore(character, state) / 24))
               if (Object.keys(patch).length) {
@@ -5332,7 +6238,7 @@
             corTranslatorPretranslateNow: true,
             disableSocietyClose: true,
             title: 'Slave capture opportunity',
-            message: 'House: ' + item.house.name + '\nBrokers and retainers report that ' + this.characterName(item.character, state) + ' can be seized from a vulnerable slave kin group.\nOrigin: ' + this.slaveOriginDescription(item.character.corSocietySlaveOrigin || 'unknown') + '\nThis is not a polite purchase; the origin house will resent it.',
+            message: 'House: ' + item.house.name + '\nBrokers and retainers report that ' + this.slaveDisplayName(item.character, null, state) + ' can be seized from a vulnerable slave kin group.\nOrigin: ' + this.slaveOriginDescription(item.character.corSocietySlaveOrigin || 'unknown') + '\nThis is not a polite purchase; the origin house will resent it.',
             image: this.characterPortrait(item.character, state, item.house),
             options: [
               {
@@ -5502,23 +6408,27 @@
           let society = this.ensure()
           let state = daapi.getState()
           page = parseInt(page || 0, 10)
-          let houses = this.sortedHouses(society).filter((house) => house.stratum === stratum)
+          let dynasties = this.sortedDynasties(society).filter((dynasty) => {
+            let house = this.primaryHouseForDynasty(society, dynasty.id) || {}
+            return (dynasty.stratum || house.stratum || 'plebeian') === stratum
+          })
           let pageSize = 8
           let start = page * pageSize
-          let shown = houses.slice(start, start + pageSize)
-          let options = shown.map((house) => {
+          let shown = dynasties.slice(start, start + pageSize)
+          let options = shown.map((dynasty) => {
+            let house = this.primaryHouseForDynasty(society, dynasty.id) || {}
             return {
-              text: this.houseOptionText(house),
-              tooltip: this.houseTooltip(house),
+              text: this.dynastyOptionText(society, dynasty),
+              tooltip: this.dynastyTooltip(society, dynasty),
               icons: [this.houseCrestIcon(society, house), this.housePortrait(house, state)],
               action: {
                 event: this.event,
-                method: 'openHouse',
-                context: { houseId: house.id }
+                method: 'openDynasty',
+                context: { dynastyId: dynasty.id, stratum, page }
               }
             }
           })
-          if (start + pageSize < houses.length) {
+          if (start + pageSize < dynasties.length) {
             options.push({
               text: 'Next page',
               action: {
@@ -5548,10 +6458,92 @@
           this.pushModal({
             societyMenu: true,
             title: this.strata[stratum].title,
-            message: shown.length ? 'Choose a house to inspect.' : 'No houses are known in this order yet.',
+            message: shown.length ? 'Choose a dynasty to inspect. Each dynasty can contain one or more houses.' : 'No dynasties are known in this order yet.',
             image: this.stratumIcon(stratum),
             options
           })
+        },
+        openDynasty({ dynastyId, stratum, page } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let dynasty = society.dynasties && society.dynasties[dynastyId]
+          if (!dynasty) {
+            this.openHub()
+            return
+          }
+          let houses = this.housesForDynasty(society, dynastyId)
+          let headHouse = society.houses[dynasty.headHouseId] || this.primaryHouseForDynasty(society, dynastyId)
+          let originHouse = society.houses[dynasty.originHouseId] || this.primaryHouseForDynasty(society, dynastyId)
+          let rootId = this.dynastyTreeFocusId(society, state, dynastyId)
+          let options = []
+          if (rootId) {
+            options.push({
+              variant: 'info',
+              text: 'Full dynasty tree',
+              tooltip: 'Opens the total graphical tree for this dynasty, across all known houses.',
+              icons: [this.affairIcon('familyTree')],
+              action: { event: this.event, method: 'openDynastyTree', context: { dynastyId, stratum, page: page || 0 } }
+            })
+          }
+          options.push(...houses.map((house) => {
+            let labels = []
+            if (originHouse && house.id === originHouse.id) labels.push('origin')
+            if (headHouse && house.id === headHouse.id) labels.push('dynasty head')
+            return {
+              text: house.name + (labels.length ? ' (' + labels.join(', ') + ')' : ''),
+              tooltip: this.houseTooltip(house) + '\nBranch: ' + (house.branchName || 'House branch'),
+              icons: [this.houseCrestIcon(society, house), this.housePortrait(house, state)],
+              action: { event: this.event, method: 'openHouse', context: { houseId: house.id, returnTo: 'dynasty', returnPage: page || 0 } }
+            }
+          }))
+          let createInfo = this.playerCadetHouseInfo(society, state, dynasty)
+          if (createInfo.visible) {
+            options.push({
+              variant: 'info',
+              text: 'Found cadet house' + (createInfo.available ? '' : ' (' + createInfo.reason + ')'),
+              disabled: !createInfo.available,
+              showDisabledWithTooltip: true,
+              tooltip: createInfo.tooltip,
+              icons: [this.affairIcon('familyTree'), this.affairIcon('prestige')],
+              action: { event: this.event, method: 'createPlayerCadetHouse', context: { dynastyId } }
+            })
+          }
+          options.push({
+            text: 'Back',
+            action: { event: this.event, method: 'openEstate', context: { stratum: stratum || (headHouse && headHouse.stratum) || dynasty.stratum || 'plebeian', page: page || 0 } }
+          })
+          this.pushModal({
+            societyMenu: true,
+            title: dynasty.name,
+            message: 'Dynasty overview.',
+            societySummaryOptions: this.dynastySummaryOptions(society, state, dynasty, houses, headHouse, originHouse),
+            image: headHouse ? this.houseCrestIcon(society, headHouse) : this.affairIcon('familyTree'),
+            options
+          })
+        },
+        createPlayerCadetHouse({ dynastyId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let dynasty = society.dynasties && society.dynasties[dynastyId]
+          let info = this.playerCadetHouseInfo(society, state, dynasty)
+          if (!info.available) {
+            this.pushModal({
+              societyMenu: true,
+              title: 'Cadet house unavailable',
+              message: info.tooltip || 'This dynasty cannot create a cadet house right now.',
+              image: this.affairIcon('familyTree'),
+              options: [{ text: 'Back', action: { event: this.event, method: 'openDynasty', context: { dynastyId } } }]
+            })
+            return
+          }
+          this.applyStats({ cash: -info.cost.cash, prestige: -info.cost.prestige, influence: -info.cost.influence })
+          let house = this.createCadetHouse(society, state, dynastyId, info.candidate, 'player branch foundation')
+          this.save(society)
+          if (house) {
+            this.openHouse({ houseId: house.id, returnTo: 'dynasty' })
+          } else {
+            this.openDynasty({ dynastyId })
+          }
         },
         openRelations() {
           this.openAllies()
@@ -6008,6 +7000,28 @@
               },
               {
                 variant: 'info',
+                text: 'House tree',
+                tooltip: 'Open the graphical tree for this house branch only.',
+                icons: [this.affairIcon('familyTree'), this.houseCrestIcon(society, house)],
+                action: {
+                  event: this.event,
+                  method: 'openHouseFamilyTree',
+                  context: { houseId, ...nav }
+                }
+              },
+              {
+                variant: 'info',
+                text: 'Full dynasty tree',
+                tooltip: 'Open the total graphical tree for the whole dynasty.',
+                icons: [this.affairIcon('familyTree')],
+                action: {
+                  event: this.event,
+                  method: 'openDynastyTree',
+                  context: { dynastyId: this.gameDynastyIdForHouse(house), ...nav }
+                }
+              },
+              {
+                variant: 'info',
                 text: 'Arrange marriage' + (marriageInfo.note ? ' (' + marriageInfo.note + ')' : ''),
                 disabled: !marriageInfo.available,
                 showDisabledWithTooltip: true,
@@ -6101,6 +7115,9 @@
           }
           if (returnTo === 'hub') {
             return { event: this.event, method: 'openHub' }
+          }
+          if (returnTo === 'dynasty') {
+            return { event: this.event, method: 'openDynasty', context: { dynastyId: this.gameDynastyIdForHouse(house), stratum: house.stratum, page: returnPage || 0 } }
           }
           return { event: this.event, method: 'openEstate', context: { stratum: house.stratum, page: 0 } }
         },
@@ -6507,6 +7524,67 @@
             this.openFamilyTree({ houseId, characterId, group, page, mode: 'full', returnTo, returnPage })
           }
         },
+        dynastyTreeFocusId(society, state, dynastyId) {
+          let ids = this.memberIdsForDynasty(society, state, dynastyId)
+          if (!ids.length) {
+            return ''
+          }
+          return ids.slice().sort((a, b) => {
+            let first = state.characters[a] || {}
+            let second = state.characters[b] || {}
+            return this.characterScore(second, state) - this.characterScore(first, state)
+          })[0]
+        },
+        openDynastyTree({ dynastyId, stratum, page, returnTo, returnPage } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let dynasty = society.dynasties && society.dynasties[dynastyId]
+          let house = this.primaryHouseForDynasty(society, dynastyId)
+          let characterId = this.dynastyTreeFocusId(society, state, dynastyId)
+          if (!dynasty || !house || !characterId) {
+            this.openDynasty({ dynastyId, stratum, page })
+            return
+          }
+          this.openGraphicalFamilyTree({
+            society,
+            state,
+            house,
+            houseId: house.id,
+            characterId,
+            group: '',
+            page: 0,
+            mode: 'dynasty',
+            returnTo: returnTo || 'dynasty',
+            returnPage: returnPage !== undefined ? returnPage : (page || 0)
+          })
+        },
+        openHouseFamilyTree({ houseId, returnTo, returnPage } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let house = society.houses[houseId]
+          if (!house) {
+            this.openHub()
+            return
+          }
+          this.refreshHouseMemberLists(society, state, house)
+          let characterId = (house.notableIds || house.memberIds || []).find((id) => state.characters && state.characters[id])
+          if (!characterId) {
+            this.openHouse({ houseId, returnTo, returnPage })
+            return
+          }
+          this.openGraphicalFamilyTree({
+            society,
+            state,
+            house,
+            houseId,
+            characterId,
+            group: '',
+            page: 0,
+            mode: 'house',
+            returnTo: returnTo || 'dynasty',
+            returnPage
+          })
+        },
         ensurePlayerDynastyTreeForCurrent(society, state) {
           try {
             society = society || this.load()
@@ -6852,7 +7930,13 @@
           backButton.title = 'Return to the selected Society character.'
           backButton.addEventListener('click', () => {
             this.closeFamilyTreeOverlay()
-            this.openPerson({ houseId, characterId, group, page: page || 0, returnTo, returnPage })
+            if (mode === 'dynasty' && house) {
+              this.openDynasty({ dynastyId: this.gameDynastyIdForHouse(house), stratum: house.stratum, page: returnPage || 0 })
+            } else if (mode === 'house') {
+              this.openHouse({ houseId, returnTo, returnPage })
+            } else {
+              this.openPerson({ houseId, characterId, group, page: page || 0, returnTo, returnPage })
+            }
           })
           header.appendChild(backButton)
 
@@ -6924,6 +8008,7 @@
             fallbackHouse: house,
             depth: 0,
             depthLimit,
+            mode,
             visited: {},
             returnTo,
             returnPage
@@ -6934,7 +8019,11 @@
           note.className = 'cor-society-family-tree-note'
           note.textContent = mode === 'known'
             ? 'Known family view: parents, siblings, spouse, and near descendants.'
-            : 'Full tree view: the branch starts from the oldest known ancestor Society can resolve.'
+            : mode === 'house'
+              ? 'House tree view: this branch follows members assigned to the same Society house.'
+              : mode === 'dynasty'
+                ? 'Full dynasty view: all known houses share the same larger lineage.'
+                : 'Full tree view: the branch starts from the oldest known ancestor Society can resolve.'
           zoomTarget.appendChild(note)
 
           let setZoom = () => {
@@ -7008,6 +8097,8 @@
         },
         familyTreeTitle(mode) {
           if (mode === 'known') return 'Known Family Tree'
+          if (mode === 'house') return 'House Family Tree'
+          if (mode === 'dynasty') return 'Full Dynasty Tree'
           if (mode === 'full') return 'Full Family Tree'
           return 'Society Family Tree'
         },
@@ -7044,7 +8135,7 @@
           }
           return current && current.id ? current.id : characterId
         },
-        createFamilyTreeBranch({ rootId, focusId, state, society, fallbackHouse, depth, depthLimit, visited, returnTo, returnPage }) {
+        createFamilyTreeBranch({ rootId, focusId, state, society, fallbackHouse, depth, depthLimit, mode, visited, returnTo, returnPage }) {
           let character = state.characters[rootId]
           let branch = document.createElement('div')
           branch.className = 'cor-society-tree-family'
@@ -7063,6 +8154,9 @@
             spouse.id = spouse.id || spouseId
           }
           let children = alreadyVisited ? [] : this.treeChildrenIds(character, state)
+          if (mode === 'house' && fallbackHouse) {
+            children = children.filter((childId) => this.characterBelongsToHouse(state.characters[childId], fallbackHouse))
+          }
           if (depth >= depthLimit) {
             children = []
           }
@@ -7087,6 +8181,7 @@
                 fallbackHouse,
                 depth: depth + 1,
                 depthLimit,
+                mode,
                 visited,
                 returnTo,
                 returnPage
@@ -7110,7 +8205,7 @@
           }
           card.title = this.characterTooltip(character, state)
           card.addEventListener('click', () => {
-            let nextHouseId = character.dynastyId && society.houses[character.dynastyId] ? character.dynastyId : (house && house.id) || ''
+            let nextHouseId = this.houseIdForCharacter(character, state, society) || (house && house.id) || ''
             this.openGraphicalFamilyTree({
               society,
               state: daapi.getState(),
@@ -7158,6 +8253,9 @@
           return card
         },
         treeHouseForCharacter(character, society, fallbackHouse) {
+          if (character && character.corSocietyHouseId && society.houses[character.corSocietyHouseId]) {
+            return society.houses[character.corSocietyHouseId]
+          }
           if (character && character.dynastyId && society.houses[character.dynastyId]) {
             return society.houses[character.dynastyId]
           }
@@ -7753,7 +8851,7 @@
           let slaves = this.playerSlaveRecords(society, state)
           let options = slaves.map((slave) => {
             let character = slave.characterId && state.characters && state.characters[slave.characterId]
-            let fullName = character ? this.characterName({ ...character, id: slave.characterId }, state) : slave.name
+            let fullName = character ? this.slaveDisplayName({ ...character, id: slave.characterId }, slave, state) : slave.name
             return {
               text: fullName + ' - ' + this.slaveTypeLabel(slave.type) + ' L' + Math.round(slave.level || 1),
               tooltip: 'Owned household slave.\nOrigin: ' + this.slaveOriginDescription(slave.origin || (character && character.corSocietySlaveOrigin) || 'unknown') + '\nOpen for full name, origin, house links, sale, or manumission.',
@@ -7811,6 +8909,114 @@
           })
           return candidates.sort((a, b) => a.info.cost - b.info.cost)
         },
+        ensureSlaveMarketOffers(society, state, count) {
+          count = count || 6
+          society.slaveMarketOffers = society.slaveMarketOffers || []
+          let active = []
+          society.slaveMarketOffers.forEach((offer) => {
+            let character = offer && offer.characterId && state.characters && state.characters[offer.characterId]
+            if (!offer || offer.active === false || !character || character.isDead) {
+              return
+            }
+            if (character.corSocietySlaveActive && !character.corSocietySlaveMarket) {
+              return
+            }
+            active.push(offer)
+          })
+          society.slaveMarketOffers = active.slice(-count)
+          let biases = [0, 0, 1, 1, 2, 3]
+          while (society.slaveMarketOffers.length < count) {
+            let template = this.randomSlaveTemplate(false, biases[society.slaveMarketOffers.length] || 0)
+            template.market = true
+            template.ownerHouseId = ''
+            let record = this.generateSlaveCharacter(society, state, false, template)
+            state = daapi.getState()
+            let character = record.characterId && state.characters && state.characters[record.characterId]
+            if (!character) {
+              break
+            }
+            let cost = this.slaveCost(record)
+            let offerId = 'market_' + this.safeId(record.characterId)
+            try {
+              daapi.updateCharacter({
+                characterId: record.characterId,
+                character: {
+                  dynastyId: '',
+                  corSocietySlaveMarket: true,
+                  corSocietySlaveActive: false,
+                  corSocietyMarketOfferId: offerId,
+                  corSocietySlaveFullName: record.fullName,
+                  corSocietySlaveOrigin: record.origin,
+                  flagDoNotCull: true,
+                  flagCannotMarry: true
+                }
+              })
+            } catch (err) {
+              console.warn(err)
+            }
+            society.slaveMarketOffers.push({
+              offerId,
+              characterId: record.characterId,
+              template: record,
+              cost,
+              createdMonth: this.monthKey(state),
+              active: true
+            })
+          }
+          return society.slaveMarketOffers.slice(0, count)
+        },
+        transferMarketSlaveToPlayer(society, state, offer, template, cost) {
+          template = template || {}
+          let characterId = template.characterId || (offer && offer.characterId)
+          let character = characterId && state.characters && state.characters[characterId]
+          if (!character) {
+            return false
+          }
+          let playerDynastyId = this.currentCharacterDynastyId(state)
+          let type = template.type || character.corSocietySlaveType || 'labor'
+          let level = Math.max(1, Math.round(template.level || character.corSocietySlaveLevel || 1))
+          let task = template.task || character.corSocietySlaveTask || this.slaveTypeProfile(type).task || type
+          let origin = template.origin || character.corSocietySlaveOrigin || this.randomSlaveOrigin()
+          let fullName = template.fullName || character.corSocietySlaveFullName || this.slaveDisplayName(character, template, state)
+          try {
+            daapi.updateCharacter({
+              characterId,
+              character: {
+                dynastyId: playerDynastyId || character.dynastyId,
+                corSocietySlave: true,
+                corSocietySlaveActive: true,
+                corSocietySlaveMarket: false,
+                corSocietySlaveType: type,
+                corSocietySlaveLevel: level,
+                corSocietySlaveOwnerHouseId: playerDynastyId || '',
+                corSocietySlaveOrigin: origin,
+                corSocietySlaveFullName: fullName,
+                corSocietySlaveTask: task,
+                corSocietySlaveSavings: Math.max(0, parseFloat(template.savings || character.corSocietySlaveSavings || 0)),
+                corSocietyOrigin: 'enslaved_dependant',
+                flagCannotMarry: true,
+                flagDoNotCull: true
+              }
+            })
+            daapi.forceUpdateCharacterDisplay({ characterId })
+          } catch (err) {
+            console.warn(err)
+          }
+          state = daapi.getState()
+          let updated = (state.characters && state.characters[characterId]) || character
+          return this.playerSlaveRecordFromCharacter({
+            key: template.key || ('slave_' + this.safeId(characterId)),
+            characterId,
+            name: fullName,
+            fullName,
+            type,
+            level,
+            age: this.age(updated, state),
+            origin,
+            task,
+            savings: Math.max(0, parseFloat(template.savings || updated.corSocietySlaveSavings || 0))
+          }, updated, state)
+        },
         openSlaveMarket({ page } = {}) {
           let society = this.ensure()
           let state = daapi.getState()
@@ -7819,8 +9025,11 @@
           let pageSize = 7
           let shown = known.slice(page * pageSize, page * pageSize + pageSize)
           let options = shown.map((item) => {
+            let name = this.slaveDisplayName(item.character, null, state)
+            let houseName = item.house && item.house.name || ''
+            let suffix = !item.character.corSocietySlaveFullName && houseName && name.toLowerCase().indexOf(houseName.toLowerCase()) < 0 ? ' of ' + houseName : ''
             return {
-              text: this.characterName(item.character, state) + ' of ' + item.house.name + ' (' + item.info.cost + ')',
+              text: name + suffix + ' (' + item.info.cost + ')',
               disabled: !item.info.available,
               showDisabledWithTooltip: true,
               tooltip: item.info.tooltip,
@@ -7845,22 +9054,32 @@
             })
           }
           if (page === 0) {
-            ;[1, 1, 2, 2, 3, 4].forEach((bias) => {
-              let template = this.randomSlaveTemplate(false, bias - 1)
-              let cost = this.slaveCost(template)
+            let offers = this.ensureSlaveMarketOffers(society, state, 6)
+            state = daapi.getState()
+            offers.forEach((offer) => {
+              let template = offer.template || {}
+              let character = offer.characterId && state.characters && state.characters[offer.characterId]
+              let cost = Math.max(1, Math.round(parseFloat(offer.cost || this.slaveCost(template))))
+              if (!character) {
+                return
+              }
+              character.id = character.id || offer.characterId
+              let label = this.slaveTypeLabel(template.type || character.corSocietySlaveType)
+              let level = Math.max(1, Math.round(template.level || character.corSocietySlaveLevel || 1))
               options.push({
-                text: 'Market offer: ' + template.name + ', ' + this.slaveTypeLabel(template.type) + ' L' + template.level + ' (' + cost + ')',
-                tooltip: 'A new market slave.\nOrigin: ' + this.slaveOriginDescription(template.origin) + '\nDefault work: ' + this.slaveTaskInfo(template).label + '.\nBuying creates a real game character in your household.',
+                text: this.slaveDisplayName(character, template, state) + ' - ' + label + ' L' + level + ' (' + cost + ')',
+                tooltip: 'Market slave already generated as a real character.\nOrigin: ' + this.slaveOriginDescription(template.origin || character.corSocietySlaveOrigin) + '\nDefault work: ' + this.slaveTaskInfo(template).label + '.\nBuying transfers this character into your household.',
                 disabled: parseFloat(((state || {}).current || {}).cash || 0) < cost,
                 showDisabledWithTooltip: true,
-                icons: [this.slaveTypeIcon(template.type), this.slaveTypeIcon(this.slaveTaskInfo(template).icon), this.affairIcon('coins')],
+                icons: [this.characterPortrait(character, state), this.slaveTypeIcon(template.type || character.corSocietySlaveType), this.affairIcon('coins')],
                 action: {
                   event: this.event,
                   method: 'buySlave',
-                  context: { template, cost }
+                  context: { offerId: offer.offerId, template, cost }
                 }
               })
             })
+            this.save(society)
           }
           options.push({
             text: 'Back',
@@ -7874,9 +9093,14 @@
             options
           })
         },
-        buySlave({ template, cost } = {}) {
+        buySlave({ offerId, template, cost } = {}) {
           let society = this.ensure()
           let state = daapi.getState()
+          let offer = offerId && (society.slaveMarketOffers || []).find((item) => item && item.offerId === offerId)
+          if (offer) {
+            template = { ...(offer.template || {}), ...(template || {}), characterId: offer.characterId }
+            cost = offer.cost || cost
+          }
           template = template || this.randomSlaveTemplate(false)
           cost = Math.max(1, Math.round(parseFloat(cost || this.slaveCost(template))))
           if (parseFloat(((state || {}).current || {}).cash || 0) < cost) {
@@ -7884,12 +9108,22 @@
             return
           }
           this.applyStats({ cash: -cost })
-          let record = this.generateSlaveCharacter(society, state, false, template)
+          let playerRecord = false
+          if (template.characterId && state.characters && state.characters[template.characterId]) {
+            playerRecord = this.transferMarketSlaveToPlayer(society, state, offer, template, cost)
+          }
+          let record = playerRecord ? template : this.generateSlaveCharacter(society, state, false, template)
           state = daapi.getState()
           let character = state.characters && state.characters[record.characterId]
-          let playerRecord = this.playerSlaveRecordFromCharacter(record, character, state)
+          if (!playerRecord) {
+            playerRecord = this.playerSlaveRecordFromCharacter(record, character, state)
+          }
           society.playerSlaves = society.playerSlaves || []
+          society.playerSlaves = society.playerSlaves.filter((slave) => !this.sameCharacterId(slave.characterId, playerRecord.characterId))
           society.playerSlaves.push(playerRecord)
+          if (offerId) {
+            society.slaveMarketOffers = (society.slaveMarketOffers || []).filter((item) => item && item.offerId !== offerId)
+          }
           this.log(society, 'You purchase ' + playerRecord.name + ', an enslaved ' + this.slaveTypeLabel(playerRecord.type).toLowerCase() + '.', 'slaves')
           this.save(society)
           this.openManageSlave({ slaveKey: playerRecord.key, characterId: playerRecord.characterId })
@@ -7905,7 +9139,7 @@
             return
           }
           let character = record.characterId && state.characters && state.characters[record.characterId]
-          let fullName = character ? this.characterName({ ...character, id: record.characterId }, state) : record.name
+          let fullName = character ? this.slaveDisplayName({ ...character, id: record.characterId }, record, state) : record.name
           let originHouseId = record.originHouseId || (character && character.corSocietyOriginHouseId) || ''
           let previousOwnerHouseId = record.previousOwnerHouseId || (character && character.corSocietyPreviousOwnerHouseId) || ''
           let origin = record.origin || (character && character.corSocietySlaveOrigin) || 'unknown'
@@ -8254,6 +9488,7 @@
             corSocietySlave: false,
             corSocietySlaveActive: false,
             corSocietySlaveMarket: false,
+            corSocietySlaveOrigin: '',
             corSocietyFreedman: false,
             corSocietyLegitimizedBastard: true,
             corSocietyIllegitimate: false,
@@ -8450,10 +9685,12 @@
               daapi.updateCharacter({
                 characterId: record.characterId,
                 character: {
-                  dynastyId: freedHouse ? freedHouse.id : undefined,
+                  dynastyId: freedHouse ? this.gameDynastyIdForHouse(freedHouse) : undefined,
+                  corSocietyHouseId: freedHouse ? freedHouse.id : '',
                   corSocietySlave: false,
                   corSocietySlaveActive: false,
                   corSocietySlaveMarket: false,
+                  corSocietySlaveOrigin: '',
                   corSocietyFreedman: true,
                   corSocietyOrigin: 'manumitted_freedman',
                   corSocietyFreedFromHouseId: this.currentCharacterDynastyId(state) || '',
@@ -8575,7 +9812,8 @@
           return {
             key: record.key || ('slave_' + this.safeId(characterId || Date.now())),
             characterId,
-            name: characterId && state && state.characters && state.characters[characterId] ? this.characterName({ ...state.characters[characterId], id: characterId }, state) : (record.name || character.praenomen || 'Servus'),
+            name: characterId && state && state.characters && state.characters[characterId] ? this.slaveDisplayName({ ...state.characters[characterId], id: characterId }, record, state) : (record.fullName || record.name || character.corSocietySlaveFullName || character.praenomen || 'Servus'),
+            fullName: record.fullName || character.corSocietySlaveFullName || '',
             type: record.type || character.corSocietySlaveType || 'manager',
             level: Math.max(1, Math.round(record.level || character.corSocietySlaveLevel || 1)),
             age: record.age || (character.birthYear !== undefined && state ? this.age(character, state) : 20),
@@ -8610,7 +9848,7 @@
             cost,
             type,
             tooltip: [
-              'Negotiates purchase of ' + this.characterName(character, state) + '.',
+              'Negotiates purchase of ' + this.slaveDisplayName(character, null, state) + '.',
               'Origin: ' + this.slaveOriginDescription(character.corSocietySlaveOrigin || 'unknown') + '.',
               'Current house: ' + ((house && house.name) || 'unknown') + '.',
               'Cost: ' + cost + '.',
@@ -9699,6 +10937,8 @@
           }
           let venture = society.pendingVentures[index]
           let house = society.houses[venture.houseId]
+          let title = 'Venture settled'
+          let message = ''
           if (venture.success && venture.payout) {
             this.applyStats({ cash: venture.payout })
             if (house) {
@@ -9706,19 +10946,37 @@
               house.wealth = (house.wealth || 0) + Math.round(venture.payout / 2)
             }
             this.log(society, 'A trade venture pays your household ' + venture.payout + ' cash.', 'tradeVenture', venture.houseId)
+            message = 'The trade venture pays your household ' + venture.payout + ' cash.'
           } else {
             if (house) {
               house.stability = this.clamp((house.stability || 50) - 2, 0, 100)
             }
             this.log(society, 'A trade venture closes without profit.', 'tradeVenture', venture.houseId)
+            message = 'The trade venture closes without profit.'
           }
           society.pendingVentures.splice(index, 1)
           this.save(society)
-          if (house) {
-            this.openHouse({ houseId: house.id })
-          } else {
-            this.openHub()
-          }
+          this.pushModal({
+            societyMenu: true,
+            title,
+            message: message + (house ? '\nHouse: ' + house.name + '.' : ''),
+            image: this.affairIcon('tradeVenture'),
+            options: [
+              house ? {
+                variant: 'info',
+                text: 'View house',
+                icons: [this.houseCrestIcon(society, house)],
+                action: { event: this.event, method: 'openHouse', context: { houseId: house.id, returnTo: 'hub' } }
+              } : false,
+              {
+                text: 'Back to Society',
+                action: { event: this.event, method: 'openHub' }
+              },
+              {
+                text: 'Close'
+              }
+            ].filter(Boolean)
+          })
         },
         shieldScandal({ houseId }) {
           this.withHouse(houseId, (society, house) => {
@@ -9847,6 +11105,43 @@
         },
         isRivalHouse(house) {
           return !!(house && ((house.relation || 0) <= -35 || house.rivalry))
+        },
+        dynastyOptionText(society, dynasty) {
+          let houses = this.housesForDynasty(society, dynasty.id)
+          let head = society.houses && society.houses[dynasty.headHouseId]
+          return (dynasty.name || 'Unknown Dynasty') + ' (' + houses.length + ' ' + (houses.length === 1 ? 'house' : 'houses') + (head ? ', head: ' + head.name : '') + ')'
+        },
+        dynastyTooltip(society, dynasty) {
+          let houses = this.housesForDynasty(society, dynasty.id)
+          let head = society.houses && society.houses[dynasty.headHouseId]
+          let origin = society.houses && society.houses[dynasty.originHouseId]
+          let totalStrength = houses.reduce((sum, house) => sum + Math.round(house.strength || 0), 0)
+          let totalWealth = houses.reduce((sum, house) => sum + Math.round(house.wealth || 0), 0)
+          return [
+            'Dynasty: ' + (dynasty.name || dynasty.id),
+            'Head house: ' + ((head && head.name) || 'unknown'),
+            'Origin house: ' + ((origin && origin.name) || 'unknown'),
+            'Houses: ' + houses.length,
+            'Total strength: ' + totalStrength,
+            'Total wealth: ' + totalWealth,
+            'Heritage: ' + (dynasty.heritage || 'unknown')
+          ].join('\n')
+        },
+        dynastySummaryOptions(society, state, dynasty, houses, headHouse, originHouse) {
+          houses = houses || this.housesForDynasty(society, dynasty.id)
+          let members = this.memberIdsForDynasty(society, state, dynasty.id)
+          let totalStrength = houses.reduce((sum, house) => sum + Math.round(house.strength || 0), 0)
+          let totalWealth = houses.reduce((sum, house) => sum + Math.round(house.wealth || 0), 0)
+          let totalPower = houses.reduce((sum, house) => sum + Math.round(house.power || 0), 0)
+          let rivals = houses.filter((house) => this.isRivalHouse(house)).length
+          return [
+            this.summaryOption('Dynasty', dynasty.name || dynasty.id, [this.affairIcon('familyTree')], 'A dynasty can contain multiple houses. The name does not change when leadership changes.'),
+            this.summaryOption('Head house', headHouse ? headHouse.name : 'unknown', [headHouse ? this.houseCrestIcon(society, headHouse) : this.affairIcon('prestige')], 'The current leading house of the dynasty. Cadet houses can usurp this role without renaming any house.'),
+            this.summaryOption('Origin house', originHouse ? originHouse.name : 'unknown', [originHouse ? this.houseCrestIcon(society, originHouse) : this.affairIcon('familyTree')], 'The original house of the dynasty. It keeps its name even if it loses leadership.'),
+            this.summaryOption('Branches', houses.length + ' houses, ' + members.length + ' visible members', [this.affairIcon('support')], 'Known living members are connected to houses through Society house IDs.'),
+            this.summaryOption('Power bloc', 'Strength ' + totalStrength + ', wealth ' + totalWealth + ', power ' + totalPower, [this.affairIcon('senator'), this.affairIcon('coins')], 'Aggregated dynasty position across all houses.'),
+            this.summaryOption('Tension', rivals + ' hostile branches / relations', [this.affairIcon(rivals ? 'rivalry' : 'support')], 'Internal and external hostility can let a cadet house become dynasty head.')
+          ]
         },
         houseOptionText(house) {
           let marker = house.rivalry ? 'Rival ' : (house.relation >= 55 ? 'Ally ' : '')
@@ -10487,6 +11782,19 @@
         characterName(character, state) {
           let dynasty = state.dynasties[character.dynastyId] || {}
           return (character.praenomen || 'Unknown') + ', ' + this.houseName(dynasty, character.dynastyId)
+        },
+        slaveDisplayName(character, record, state) {
+          let name = (record && record.fullName) ||
+            (character && (character.corSocietySlaveFullName || character.corSocietyForeignName)) ||
+            (record && record.name) ||
+            ''
+          if (name) {
+            return name
+          }
+          if (character) {
+            return this.characterName(character, state || daapi.getState())
+          }
+          return 'Servus'
         },
         characterTooltip(character, state) {
           let skills = character.skills || {}
@@ -11506,6 +12814,26 @@
               }
             })
           }
+          if (!isCurrent && !character.isDead) {
+            let society = this.load()
+            this.normalizeDynastyHouseModel(society, state)
+            let stealInfo = this.stealingFromInfo(society, state, character)
+            items.push({
+              key: 'cor_society_stealing_from',
+              action: {
+                title: 'Steal from household',
+                tooltip: stealInfo.tooltip,
+                icon: daapi.requireImage('/cor_society/bundled/stealingFrom/animalPen.svg'),
+                isAvailable: stealInfo.available,
+                hideWhenBusy: false,
+                process: {
+                  event: this.event,
+                  method: 'startStealingFromCharacter',
+                  context: { characterId, houseId: stealInfo.houseId }
+                }
+              }
+            })
+          }
           if (isCurrent && currentPlotTarget) {
             items.push({
               key: 'mod_murder_cancelPlot',
@@ -11556,6 +12884,167 @@
             })
           }
           return items
+        },
+        stealingCooldownKey(firstId, secondId) {
+          return 'steal_' + this.relationKey(firstId, secondId)
+        },
+        stealingFromInfo(society, state, target) {
+          let currentId = this.currentCharacterId(state)
+          let current = state.characters && state.characters[currentId]
+          let targetId = target && target.id
+          let houseId = target ? this.houseIdForCharacter(target, state, society) : ''
+          let house = society.houses && society.houses[houseId]
+          let reason = ''
+          if (!current || !target || !targetId) reason = 'missing character'
+          else if (this.age(current, state) < 16) reason = 'too young'
+          else if (this.sameCharacterId(currentId, targetId)) reason = 'same character'
+          else if (target.isDead) reason = 'dead'
+          else if (!house) reason = 'no target house'
+          else if (target.corSocietySlave || target.corSocietySlaveActive) reason = 'target enslaved'
+          else if (current.dynastyId && target.dynastyId && String(current.dynastyId) === String(target.dynastyId)) reason = 'same dynasty'
+          let cooldown = society.pendingSteals && society.pendingSteals[this.stealingCooldownKey(currentId, targetId)]
+          if (!reason && cooldown && !this.monthKeyReached(cooldown, state)) {
+            reason = 'cooldown until ' + cooldown
+          }
+          let loot = house ? this.stealingLootEstimate(house, target, state) : { label: 'small goods', value: 0 }
+          return {
+            available: !reason,
+            reason,
+            houseId,
+            loot,
+            tooltip: [
+              'Attempt to steal from this character\'s household.',
+              house ? 'Target house: ' + house.name + '.' : '',
+              'Possible gain: ' + loot.label + ', about ' + loot.value + ' cash value.',
+              'If caught: personal relation, house relation, prestige, and influence suffer.',
+              reason ? 'Unavailable: ' + reason + '.' : 'Success depends on stealth, stewardship, combat, target house power, and chosen approach.'
+            ].filter(Boolean).join('\n')
+          }
+        },
+        stealingLootEstimate(house, target, state) {
+          let property = (house && house.ai && house.ai.property) || {}
+          let score = Math.max(1, Math.round(this.characterScore(target || {}, state) / 12))
+          if ((property.animals || 0) > 0) return { label: 'livestock and tack', value: Math.max(12, Math.round((property.animals || 1) * 18 + score * 4)) }
+          if ((property.trade || 0) > 0) return { label: 'trade goods', value: Math.max(18, Math.round((property.trade || 1) * 45 + score * 5)) }
+          if ((property.land || 0) > 0) return { label: 'estate stores', value: Math.max(15, Math.round((property.land || 1) * 28 + score * 4)) }
+          return { label: 'portable valuables', value: Math.max(8, Math.round((house.wealth || 20) / 20 + score * 4)) }
+        },
+        startStealingFromCharacter({ houseId, characterId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let character = state.characters && state.characters[characterId]
+          if (character) character.id = character.id || characterId
+          let info = this.stealingFromInfo(society, state, character)
+          let house = society.houses[houseId || info.houseId]
+          if (!info.available || !house) {
+            this.pushModal({
+              societyMenu: true,
+              title: 'Steal unavailable',
+              message: info.tooltip || 'This target is not available.',
+              image: this.bundledIcon('stealingFrom', 'animalPen'),
+              options: [{ text: 'Back', action: { event: this.event, method: 'openPerson', context: { houseId: houseId || info.houseId, characterId } } }]
+            })
+            return
+          }
+          this.pushModal({
+            societyMenu: true,
+            title: 'Steal from ' + house.name + '?',
+            message: 'Target: ' + this.characterName(character, state) + '\nPossible gain: ' + info.loot.label + ' worth about ' + info.loot.value + ' cash.\nIf you are caught, both the person and the house will remember it.',
+            image: this.bundledIcon('stealingFrom', 'animalPen'),
+            options: [
+              {
+                variant: 'info',
+                text: 'Sneak into stores',
+                tooltip: 'Balanced risk. Better with stewardship and a quiet target house.',
+                icons: [this.affairIcon('trade')],
+                action: { event: this.event, method: 'resolveStealingFromCharacter', context: { houseId: house.id, characterId, approach: 'stores' } }
+              },
+              {
+                variant: 'info',
+                text: 'Take livestock',
+                tooltip: 'Higher gain if the house has animals, but easier to notice.',
+                icons: [this.bundledIcon('stealingFrom', 'animalPen')],
+                action: { event: this.event, method: 'resolveStealingFromCharacter', context: { houseId: house.id, characterId, approach: 'livestock' } }
+              },
+              {
+                variant: 'info',
+                text: 'Bribe a worker',
+                tooltip: 'Lower gain, lower risk, small cash preparation cost.',
+                icons: [this.affairIcon('coins')],
+                action: { event: this.event, method: 'resolveStealingFromCharacter', context: { houseId: house.id, characterId, approach: 'bribe' } }
+              },
+              {
+                text: 'Leave it',
+                action: { event: this.event, method: 'openPerson', context: { houseId: house.id, characterId } }
+              }
+            ]
+          })
+        },
+        resolveStealingFromCharacter({ houseId, characterId, approach } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let house = society.houses[houseId]
+          let target = state.characters && state.characters[characterId]
+          if (target) target.id = target.id || characterId
+          let info = this.stealingFromInfo(society, state, target)
+          if (!house || !info.available) {
+            this.openPerson({ houseId, characterId })
+            return
+          }
+          let currentId = this.currentCharacterId(state)
+          let current = state.characters && state.characters[currentId]
+          let skills = (current && current.skills) || {}
+          let stealth = parseFloat(skills.stewardship || 0) + parseFloat(skills.combat || 0) * 0.6 + parseFloat(skills.intelligence || 0) * 0.4
+          let difficulty = 28 + Math.max(0, house.power || 0) * 0.35 + Math.max(0, house.stability || 0) * 0.12
+          let value = info.loot.value
+          if (approach === 'livestock') {
+            value = Math.round(value * 1.25)
+            difficulty += 10
+          } else if (approach === 'bribe') {
+            value = Math.round(value * 0.70)
+            difficulty -= 9
+            this.applyStats({ cash: -Math.max(3, Math.round(value * 0.18)) })
+          }
+          let successChance = this.clamp(0.48 + (stealth - difficulty) / 120, 0.12, 0.82)
+          let success = Math.random() < successChance
+          society.pendingSteals[this.stealingCooldownKey(currentId, characterId)] = this.futureMonthKey(success ? 6 : 9)
+          let caught = !success || Math.random() < (approach === 'livestock' ? 0.28 : approach === 'bribe' ? 0.12 : 0.20)
+          if (success && !caught) {
+            this.applyStats({ cash: value })
+            house.wealth = Math.max(0, (house.wealth || 0) - Math.round(value * 0.45))
+            this.log(society, 'You steal ' + info.loot.label + ' from ' + house.name + ' without being caught.', 'rivalry', house.id)
+            this.save(society)
+            this.pushModal({
+              societyMenu: true,
+              title: 'Theft succeeds',
+              message: 'You get away with ' + info.loot.label + ' worth ' + value + ' cash. No one can prove it was you.',
+              image: this.bundledIcon('stealingFrom', 'animalPen'),
+              options: [{ text: 'Close' }]
+            })
+            return
+          }
+          let personalLoss = caught ? this.randomInt(18, 34) : this.randomInt(8, 16)
+          let houseLoss = caught ? this.randomInt(14, 30) : this.randomInt(4, 10)
+          house.relation = this.clamp((house.relation || 0) - houseLoss, -100, 100)
+          house.heat = (house.heat || 0) + (caught ? 2 : 1)
+          this.changePersonalRelation(society, currentId, characterId, -personalLoss, caught ? 'enemy' : 'resentful')
+          let playerHouseId = this.currentCharacterDynastyId(state)
+          if (playerHouseId && society.houses[playerHouseId]) {
+            this.changeHouseRelation(society, playerHouseId, house.id, -Math.round(houseLoss / 2))
+          }
+          this.applyStats({ prestige: -Math.max(2, Math.round(houseLoss / 3)), influence: -Math.max(3, Math.round(houseLoss / 2)) })
+          this.log(society, 'A theft against ' + house.name + ' is exposed; relations with ' + this.characterName(target, state) + ' worsen.', 'rivalry', house.id)
+          this.save(society)
+          this.pushModal({
+            societyMenu: true,
+            title: 'Caught stealing',
+            message: 'The attempt is traced back to you.\nHouse relation: -' + houseLoss + '. Personal relation: -' + personalLoss + '. Prestige and influence fall.',
+            image: this.bundledIcon('stealingFrom', 'wounded'),
+            options: [
+              { text: 'Back to person', action: { event: this.event, method: 'openPerson', context: { houseId: house.id, characterId } } },
+              { text: 'Close' }
+            ]
+          })
         },
         safeCharacterFlag(characterId, flag) {
           try {
@@ -11614,6 +13103,9 @@
         houseIdForCharacter(character, state, society) {
           if (!character) {
             return ''
+          }
+          if (character.corSocietyHouseId && society.houses[character.corSocietyHouseId]) {
+            return character.corSocietyHouseId
           }
           if (character.dynastyId && society.houses[character.dynastyId]) {
             return character.dynastyId
@@ -12225,6 +13717,8 @@
       }
 
       window.corSociety.ensure()
+      window.corSociety.installDebtSaleModalPatch()
+      window.corSociety.registerPlayerEntryActions()
       window.corSociety.startPlayerCrestOverlay()
       window.corSociety.startPlayerStatusOverlay()
     },
@@ -12248,6 +13742,12 @@
     },
     openEstate(args) {
       window.corSociety.openEstate(args || {})
+    },
+    openDynasty(args) {
+      window.corSociety.openDynasty(args || {})
+    },
+    createPlayerCadetHouse(args) {
+      window.corSociety.createPlayerCadetHouse(args || {})
     },
     openRelations() {
       window.corSociety.openRelations()
@@ -12312,6 +13812,12 @@
     openFamilyTree(args) {
       window.corSociety.openFamilyTree(args || {})
     },
+    openDynastyTree(args) {
+      window.corSociety.openDynastyTree(args || {})
+    },
+    openHouseFamilyTree(args) {
+      window.corSociety.openHouseFamilyTree(args || {})
+    },
     openPlayerFamilyTree() {
       window.corSociety.openPlayerFamilyTree()
     },
@@ -12356,6 +13862,21 @@
     },
     openHouseholdSlaves(args) {
       window.corSociety.openHouseholdSlaves(args || {})
+    },
+    openPlayerSlavePath(args) {
+      window.corSociety.openPlayerSlavePath(args || {})
+    },
+    playerSlaveWorkExtra(args) {
+      window.corSociety.playerSlaveWorkExtra(args || {})
+    },
+    playerSlavePetitionFreedom(args) {
+      window.corSociety.playerSlavePetitionFreedom(args || {})
+    },
+    playerSlaveSeekPatron(args) {
+      window.corSociety.playerSlaveSeekPatron(args || {})
+    },
+    playerSlaveEscape(args) {
+      window.corSociety.playerSlaveEscape(args || {})
     },
     openSlaveMarket(args) {
       window.corSociety.openSlaveMarket(args || {})
@@ -12455,6 +13976,12 @@
     },
     spreadRumor(args) {
       window.corSociety.spreadRumor(args || {})
+    },
+    startStealingFromCharacter(args) {
+      window.corSociety.startStealingFromCharacter(args || {})
+    },
+    resolveStealingFromCharacter(args) {
+      window.corSociety.resolveStealingFromCharacter(args || {})
     },
     answerSlander(args) {
       window.corSociety.answerSlander(args || {})
