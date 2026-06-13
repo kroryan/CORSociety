@@ -31,25 +31,6 @@ The archive is intentionally built with `engine.js`, `main.js`, `monthly.js`, `s
 
 Performance, stability, Android safety, and visual quality take priority over compatibility with old internal Society save formats. When old Society-only data conflicts with clean integration or causes loading risk, the mod should repair, migrate, or discard that data instead of preserving unstable behavior.
 
-## Development
-
-Source folder:
-
-```powershell
-cor_society
-```
-
-Build release zip from the repository root:
-
-```powershell
-Compress-Archive -Path 'cor_society\*' -DestinationPath 'Releases\CORSociety-v1.1.23.zip' -Force
-```
-
-Validate the DAAPI object-literal scripts:
-
-```powershell
-node -e "const fs=require('fs'); for (const f of ['cor_society/engine.js','cor_society/main.js']) { const s=fs.readFileSync(f,'utf8'); new Function('return ('+s+'\n)'); console.log(f+' ok'); }"
-```
 
 ## Credits
 
