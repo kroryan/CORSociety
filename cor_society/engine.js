@@ -2225,7 +2225,12 @@
             return
           }
           let definitions = this.societyTraitDefinitions()
-          Object.keys(state.characters).forEach((characterId) => {
+          let candidateIds = Object.keys(society.socialRecords || {})
+          let currentId = this.currentCharacterId(state)
+          if (currentId && candidateIds.indexOf(currentId) < 0) {
+            candidateIds.push(currentId)
+          }
+          candidateIds.forEach((characterId) => {
             let character = state.characters[characterId]
             if (!character) {
               return
@@ -2706,6 +2711,10 @@
           if (!state || !state.characters) {
             return
           }
+          if (state._corSocietyWardrobeRepaired) {
+            return
+          }
+          state._corSocietyWardrobeRepaired = true
           for (let characterId in state.characters) {
             if (!state.characters.hasOwnProperty(characterId)) {
               continue
@@ -3411,19 +3420,21 @@
         },
         childrenCountForCouple(state, firstId, secondId) {
           let count = 0
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) {
-              continue
-            }
-            let child = state.characters[characterId]
-            if (!child || child.isDead) {
-              continue
-            }
+          let first = state.characters[firstId]
+          let second = state.characters[secondId]
+          if (!first || !second) return 0
+          let ids = (first.childrenIds || []).concat(second.childrenIds || [])
+          let seen = {}
+          ids.forEach((id) => {
+            if (seen[id]) return
+            seen[id] = true
+            let child = state.characters[id]
+            if (!child || child.isDead) return
             let parents = [child.fatherId, child.motherId]
             if (parents.indexOf(firstId) >= 0 && parents.indexOf(secondId) >= 0) {
               count += 1
             }
-          }
+          })
           return count
         },
         maybeStartNpcRomance(society, state) {
@@ -8303,19 +8314,6 @@
             ids.push(id)
           }
           ;(character.childrenIds || []).forEach(add)
-          for (let id in state.characters) {
-            if (!state.characters.hasOwnProperty(id)) {
-              continue
-            }
-            let other = state.characters[id]
-            if (!other) {
-              continue
-            }
-            other.id = other.id || id
-            if (this.sameCharacterId(other.fatherId, character.id) || this.sameCharacterId(other.motherId, character.id)) {
-              add(other.id)
-            }
-          }
           return ids.sort((a, b) => {
             let first = state.characters[a] || {}
             let second = state.characters[b] || {}
@@ -13363,17 +13361,9 @@
           add(current.spouseId)
           add(current.fatherId)
           add(current.motherId)
-          for (let characterId in state.characters) {
-            if (!state.characters.hasOwnProperty(characterId)) {
-              continue
-            }
-            let character = state.characters[characterId]
-            if (!character) {
-              continue
-            }
-            if (current.dynastyId && character.dynastyId === current.dynastyId) {
-              add(characterId)
-            }
+          if (current.dynastyId && state.dynasties && state.dynasties[current.dynastyId]) {
+            let dynasty = state.dynasties[current.dynastyId]
+            ;(dynasty.memberIds || []).forEach(add)
           }
           return ids.slice(0, 120)
         },
