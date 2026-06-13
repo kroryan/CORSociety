@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.27.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.28.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.27.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.28.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -28,7 +28,8 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 - Custom Roman house shields for the player and NPC houses, including a configurable player shield.
 - Bundled vanilla-style and other-mod actions so Roman Society can be installed as one package instead of requiring several separate mods.
 - Integrated Bank of Rome, Coemptio matchmaking, and Household Slaves systems adapted into Society instead of requiring separate legacy installs.
-- Real slave characters in the Society slave order, with origins, owners, portraits, household tasks, market purchases, capture opportunities, NPC house ownership, self-purchase savings, family rescue attempts, slave-to-slave marriages, children, and manumission into their own Freedmen house.
+- Real slave characters in the Society slave order, with origins, owners, portraits, cooldown-limited household tasks, directed child education, market purchases, capture opportunities, NPC house ownership, self-purchase savings, family rescue attempts, slave-to-slave marriages, children, and manumission into their own Freedmen house.
+- Bank of Rome emergency credit can appear when the household cash goes negative, giving the player a loan route before forced sales become unavoidable.
 - NPC houses can borrow from the bank, buy and manage slaves, seek marriages, and suffer consequences from hostile social actions; cheat-style systems are not used for NPC simulation.
 - Android-focused safety rules: old unstable Society-only data can be repaired, migrated, or discarded when needed to protect loading performance and save stability.
 
@@ -41,7 +42,7 @@ Performance, stability, Android safety, and visual quality take priority over co
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.27.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.28.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.

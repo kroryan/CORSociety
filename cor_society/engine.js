@@ -100,7 +100,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.27') {
+      if (window.corSociety && window.corSociety.version === '1.1.28') {
         window.corSociety.ensure()
         window.corSociety.startPlayerCrestOverlay()
         window.corSociety.startPlayerStatusOverlay()
@@ -108,7 +108,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.27',
+        version: '1.1.28',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -1012,6 +1012,7 @@
             return this.effectLine(['+' + amount + ' monthly revenue for 12 months', '+5 house relation'])
           }
           if (method === 'takeBankLoan') return this.effectLine(['cash now', 'annual interest payment', 'loan principal remains until repaid'])
+          if (method === 'takeEmergencyDebtLoan') return this.effectLine(['cash enough to cover current debt', 'annual interest payment', 'loan principal remains until repaid'])
           if (method === 'payBankLoan') return this.effectLine(['cash payment', 'reduces or clears loan principal'])
           if (method === 'buySlave') return this.effectLine(['cash cost', 'adds one household slave', 'monthly task may improve cash, prestige, influence, education, health, or labor output'])
           if (method === 'buyEnslavedCharacter') return this.effectLine(['cash cost', 'moves this real Society character into your household as a slave', 'origin and previous owner are preserved'])
@@ -1022,6 +1023,9 @@
           if (method === 'openManageSlave') return 'Consequences: opens this slave management view; no stats change yet.'
           if (method === 'openAssignSlaveTask') return 'Consequences: opens task choices; no stats change yet.'
           if (method === 'assignSlaveTask') return this.effectLine(['changes future household slave output', 'no immediate stats change'])
+          if (method === 'openSlaveEducationTargets') return 'Consequences: selects a child under 13 for future education ticks; no immediate stats change.'
+          if (method === 'setSlaveEducationTarget') return this.effectLine(['sets pupil for education task', 'future ticks improve skills and may add education traits'])
+          if (method === 'domesticCompanionSlave') return this.effectLine(['+1 prestige', '+small personal relation', '+2 slave savings', '5 month cooldown', 'no pregnancy'])
           if (method === 'openSlaveMarriageCandidates') return 'Consequences: chooses another owned household slave; no stats change yet.'
           if (method === 'marryOwnedSlaves') return this.effectLine(['creates spouse link between two owned slaves', 'future slave-spouse pregnancy may occur', 'no family alliance'])
           if (method === 'acceptSlaveSelfPurchase') return this.effectLine(['cash payment to your household', 'manumits slave into their own Freedmen house'])
@@ -2419,6 +2423,10 @@
           }
           society.lastProcessedMonth = monthKey
           this.syncPlayerWorldEffects(society, state)
+          if (this.queueBankDebtReliefEvent(society, state)) {
+            this.save(society)
+            return
+          }
           this.processBankYear(society, state)
           this.processPlayerSlaves(society, state)
           this.simulateHouseTurns(society, state)
@@ -3314,6 +3322,21 @@
         slaveTaskLabel(slave) {
           return this.slaveTaskInfo(slave).label
         },
+        slaveTaskCooldownMonths() {
+          return 4
+        },
+        slaveTaskCooldownActive(slave, state) {
+          return !!(slave && slave.nextTaskChangeMonth && !this.monthKeyReached(slave.nextTaskChangeMonth, state || daapi.getState()))
+        },
+        householdChildrenUnder13(state) {
+          return ((state.current && state.current.householdCharacterIds) || [])
+            .map((characterId) => {
+              let character = state.characters && state.characters[characterId]
+              if (character) character.id = character.id || characterId
+              return character
+            })
+            .filter((character) => character && !character.isDead && this.age(character, state) >= 3 && this.age(character, state) < 13)
+        },
         slaveNames() {
           return ['Ada', 'Aelia', 'Afer', 'Amalric', 'Bato', 'Brennus', 'Cleon', 'Dama', 'Daphnis', 'Eirene', 'Felix', 'Germanus', 'Hanno', 'Idir', 'Iris', 'Kleon', 'Lydus', 'Mago', 'Nysa', 'Philo', 'Rufus', 'Sabina', 'Siro', 'Tajeddigt', 'Thrax', 'Tiro', 'Vera', 'Zeno']
         },
@@ -3539,7 +3562,7 @@
               this.applyStats({ influence: gain * 3 })
               this.log(society, slave.name + ' trains guards and retainers: +' + (gain * 3) + ' influence.', 'slaves')
             } else if (workType === 'educator') {
-              this.educateRandomHouseholdChild(state, gain, slave)
+              this.educateAssignedHouseholdChild(society, state, gain, slave)
             } else if (workType === 'doctor') {
               this.treatRandomHouseholdMember(state, gain, slave)
             } else {
@@ -3715,29 +3738,98 @@
           })
           return true
         },
+        queueBankDebtReliefEvent(society, state) {
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          let month = this.monthKey(state || daapi.getState())
+          if (cash >= 0 || society.lastBankDebtReliefMonth === month) {
+            return false
+          }
+          society.bank = society.bank || {}
+          society.lastBankDebtReliefMonth = month
+          let amount = Math.max(50, Math.ceil(Math.abs(cash) + 25))
+          this.pushModal({
+            corTranslatorPretranslateNow: true,
+            disableSocietyClose: true,
+            title: 'Bank of Rome emergency credit',
+            message: 'Your household cash is negative. The Bank of Rome can extend emergency credit before forced sales become unavoidable.\nCurrent cash: ' + Math.round(cash) + '\nSuggested loan: ' + amount,
+            image: this.bundledIcon('bank_of_rome', 'money'),
+            options: [
+              {
+                variant: 'danger',
+                text: 'Borrow ' + amount,
+                tooltip: 'Covers current negative cash with a little margin. Consequences: principal increases and annual interest applies.',
+                statChanges: { cash: amount },
+                icons: [this.bundledIcon('bank_of_rome', 'money')],
+                action: {
+                  event: this.event,
+                  method: 'takeEmergencyDebtLoan',
+                  context: { amount }
+                }
+              },
+              {
+                text: 'No loan',
+                tooltip: 'Decline emergency credit. The base game may still force asset sales if debt remains.',
+                action: {
+                  event: this.event,
+                  method: 'openHub'
+                }
+              }
+            ]
+          })
+          return true
+        },
         bankInterest(society) {
           society = society || this.load()
           let bank = society.bank || {}
           return Math.max(1, Math.ceil(parseFloat(bank.principal || 0) * parseFloat(bank.interestRate || 0.083)))
         },
-        educateRandomHouseholdChild(state, gain, slave) {
-          let ids = ((state.current && state.current.householdCharacterIds) || []).filter((characterId) => {
-            let character = state.characters && state.characters[characterId]
-            return character && !character.isDead && this.age(character, state) >= 5 && this.age(character, state) <= 16
-          })
-          if (!ids.length) return false
-          let characterId = this.pick(ids)
+        educationSkillForSlave(slave) {
+          let type = (slave && (slave.type || slave.task)) || 'educator'
+          if (type === 'doctor') return 'intelligence'
+          if (type === 'manager') return 'stewardship'
+          if (type === 'entertainer') return 'eloquence'
+          if (type === 'warrior') return 'combat'
+          if (type === 'labor') return 'stewardship'
+          return this.pick(['intelligence', 'stewardship', 'eloquence'])
+        },
+        educateAssignedHouseholdChild(society, state, gain, slave) {
+          let children = this.householdChildrenUnder13(state)
+          if (!children.length) return false
+          let child = slave.educationTargetId && state.characters && state.characters[slave.educationTargetId]
+          if (!child || child.isDead || this.age(child, state) >= 13) {
+            child = children[0]
+            slave.educationTargetId = child.id
+          }
+          let characterId = child.id
           let character = state.characters[characterId]
-          let skill = this.pick(['intelligence', 'stewardship', 'eloquence'])
+          let skill = this.educationSkillForSlave(slave)
           let skills = { ...(character.skills || {}) }
-          skills[skill] = parseFloat(skills[skill] || 0) + gain
+          skills[skill] = parseFloat(skills[skill] || 0) + Math.max(1, gain)
+          skills.intelligence = parseFloat(skills.intelligence || 0) + (skill === 'intelligence' ? 0 : 0.35)
           try {
-            daapi.updateCharacter({ characterId, character: { skills } })
-            this.log(this.load(), slave.name + ' educates ' + this.characterName(character, state) + ': +' + gain + ' ' + skill + '.', 'slaves')
+            daapi.updateCharacter({
+              characterId,
+              character: {
+                skills,
+                corSocietyApprenticeship: slave.type || 'educator',
+                corSocietyApprenticeTeacherId: slave.characterId || ''
+              }
+            })
+            if (Math.random() < 0.28) {
+              try {
+                daapi.addTrait({ characterId, trait: skill === 'combat' ? 'strong' : 'educated' })
+              } catch (traitErr) {
+                console.warn(traitErr)
+              }
+            }
+            this.log(society || this.load(), slave.name + ' teaches ' + this.characterName(character, state) + ': +' + gain + ' ' + skill + '.', 'slaves')
           } catch (err) {
             console.warn(err)
           }
           return true
+        },
+        educateRandomHouseholdChild(state, gain, slave) {
+          return this.educateAssignedHouseholdChild(this.load(), state, gain, slave)
         },
         treatRandomHouseholdMember(state, gain, slave) {
           let maladies = ['stress', 'highlyStress', 'depression', 'cripplingDepression', 'illness', 'wounded', 'greviouslyWounded', 'malnourished']
@@ -7365,6 +7457,7 @@
           let principal = Math.round(parseFloat(bank.principal || 0))
           let interest = principal ? this.bankInterest(society) : 0
           let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          let debtRelief = cash < 0 ? Math.max(50, Math.ceil(Math.abs(cash) + 25)) : 0
           let loanAmounts = [250, 600, 1200, 2500].map((amount) => {
             return {
               text: 'Borrow ' + amount,
@@ -7379,6 +7472,20 @@
             }
           })
           let options = []
+          if (debtRelief) {
+            options.push({
+              variant: 'danger',
+              text: 'Borrow to cover debt (' + debtRelief + ')',
+              tooltip: 'Emergency loan sized around your current negative cash. This can help before the game forces sales, but annual interest still applies.',
+              statChanges: { cash: debtRelief },
+              icons: [this.bundledIcon('bank_of_rome', 'money'), this.affairIcon('coins')],
+              action: {
+                event: this.event,
+                method: 'takeEmergencyDebtLoan',
+                context: { amount: debtRelief }
+              }
+            })
+          }
           if (principal) {
             let payChunk = Math.min(principal, Math.max(50, Math.round(principal * 0.25)))
             options.push({
@@ -7430,15 +7537,19 @@
               method: 'openHub'
             }
           })
+          let summaryOptions = [
+            this.summaryOption('Principal', principal + ' cash owed', [this.bundledIcon('bank_of_rome', 'money')], 'Outstanding loan principal.'),
+            this.summaryOption('Annual interest', interest + ' cash', [this.affairIcon('coins')], 'Interest is checked at the start of each year.'),
+            this.summaryOption('Payments', 'Loans taken ' + Math.round(bank.loansTaken || 0) + '; last paid ' + (bank.lastPaymentYear || 'never') + '.', [this.affairIcon('log')], 'Bank memory kept inside Society state.')
+          ]
+          if (cash < 0) {
+            summaryOptions.push(this.summaryOption('Debt pressure', Math.round(cash) + ' cash', [this.affairIcon('rivalry')], 'Emergency borrowing is available while your household is in negative cash.'))
+          }
           this.pushModal({
             societyMenu: true,
             title: 'Bank of Rome',
             message: 'Bank summary.',
-            societySummaryOptions: [
-              this.summaryOption('Principal', principal + ' cash owed', [this.bundledIcon('bank_of_rome', 'money')], 'Outstanding loan principal.'),
-              this.summaryOption('Annual interest', interest + ' cash', [this.affairIcon('coins')], 'Interest is checked at the start of each year.'),
-              this.summaryOption('Payments', 'Loans taken ' + Math.round(bank.loansTaken || 0) + '; last paid ' + (bank.lastPaymentYear || 'never') + '.', [this.affairIcon('log')], 'Bank memory kept inside Society state.')
-            ],
+            societySummaryOptions: summaryOptions,
             image: this.bundledIcon('bank_of_rome', 'money'),
             options
           })
@@ -7453,6 +7564,12 @@
           this.log(society, 'You borrow ' + amount + ' from the Bank of Rome.', 'bank')
           this.save(society)
           this.openBankOfRome()
+        },
+        takeEmergencyDebtLoan({ amount } = {}) {
+          let state = daapi.getState()
+          let cash = parseFloat(((state || {}).current || {}).cash || 0)
+          amount = Math.max(Math.ceil(Math.abs(Math.min(0, cash)) + 25), Math.round(parseFloat(amount || 0)), 50)
+          this.takeBankLoan({ amount })
         },
         payBankLoan({ amount, interestOnly } = {}) {
           let society = this.ensure()
@@ -7662,6 +7779,7 @@
           let previousOwnerHouseId = record.previousOwnerHouseId || (character && character.corSocietyPreviousOwnerHouseId) || ''
           let origin = record.origin || (character && character.corSocietySlaveOrigin) || 'unknown'
           let marriageCandidates = this.ownedSlaveMarriageCandidates(society, state, record)
+          let childrenUnder13 = this.householdChildrenUnder13(state)
           let freedomPrice = this.slaveFreedomPrice(record)
           let savings = Math.round(parseFloat(record.savings || 0))
           let options = []
@@ -7686,9 +7804,29 @@
           options.push({
             variant: 'info',
             text: 'Assign task',
-            tooltip: 'Choose this slave\'s household task. Tasks affect modest periodic outputs and savings.',
+            disabled: this.slaveTaskCooldownActive(record, state),
+            showDisabledWithTooltip: true,
+            tooltip: this.slaveTaskCooldownActive(record, state) ? 'Task changes are cooling down until ' + record.nextTaskChangeMonth + '.' : 'Choose this slave\'s household task. Tasks affect modest periodic outputs and savings.',
             icons: [this.slaveTypeIcon(this.slaveTaskInfo(record).icon)],
             action: { event: this.event, method: 'openAssignSlaveTask', context: { slaveKey: record.key, characterId: record.characterId } }
+          })
+          options.push({
+            variant: 'info',
+            text: 'Choose pupil' + (childrenUnder13.length ? '' : ' (no child)'),
+            disabled: !childrenUnder13.length || this.slaveTaskInfo(record).type !== 'educator',
+            showDisabledWithTooltip: true,
+            tooltip: !childrenUnder13.length ? 'No household child under 13 is available.' : this.slaveTaskInfo(record).type !== 'educator' ? 'Assign this slave to Educate children before selecting a pupil.' : 'Choose which household child under 13 this slave will teach.',
+            icons: [this.slaveTypeIcon('educator')],
+            action: { event: this.event, method: 'openSlaveEducationTargets', context: { slaveKey: record.key, characterId: record.characterId } }
+          })
+          options.push({
+            variant: 'info',
+            text: 'Domestic company',
+            disabled: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state),
+            showDisabledWithTooltip: true,
+            tooltip: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state) ? 'Available again after ' + record.nextCompanionMonth + '.' : 'A non-explicit household companionship action. Consequences: small morale/prestige effect, relation softening, no pregnancy.',
+            icons: [this.slaveTypeIcon('entertainer')],
+            action: { event: this.event, method: 'domesticCompanionSlave', context: { slaveKey: record.key, characterId: record.characterId } }
           })
           options.push({
             variant: 'info',
@@ -7733,7 +7871,8 @@
             societySummaryOptions: [
               this.summaryOption('Identity', fullName + '; ' + this.slaveTypeLabel(record.type) + ' level ' + Math.round(record.level || 1) + '; age ' + Math.round(record.age || (character ? this.age(character, state) : 0)) + '.', [this.slaveTypeIcon(record.type)], 'This is a real character record, not a loose modifier.'),
               this.summaryOption('Origin', this.slaveOriginDescription(origin), [this.affairIcon('log')], 'Slave origin is stored by Society. Roman slaves here are treated as renegades/outcasts, not normal citizens.'),
-              this.summaryOption('Freedom fund', savings + '/' + freedomPrice + ' saved; task: ' + this.slaveTaskLabel(record) + '.', [this.affairIcon('coins'), this.slaveTypeIcon(this.slaveTaskInfo(record).icon)], 'Owned slaves slowly save toward buying freedom.'),
+              this.summaryOption('Freedom fund', savings + '/' + freedomPrice + ' saved; task: ' + this.slaveTaskLabel(record) + '.', [this.affairIcon('coins'), this.slaveTypeIcon(this.slaveTaskInfo(record).icon)], 'Owned slaves slowly save toward buying freedom. Task changes cool down for ' + this.slaveTaskCooldownMonths() + ' months.'),
+              this.summaryOption('Education', this.slaveTaskInfo(record).type === 'educator' ? (record.educationTargetId && state.characters[record.educationTargetId] ? 'Teaching ' + this.characterName({ ...state.characters[record.educationTargetId], id: record.educationTargetId }, state) + '.' : 'No pupil selected.') : 'Not assigned to education.', [this.slaveTypeIcon('educator')], 'Only children under 13 can be selected as pupils.'),
               this.summaryOption('Family / origin', 'Origin ' + (originHouseId && society.houses[originHouseId] ? society.houses[originHouseId].name : 'unknown') + '; previous owner ' + (previousOwnerHouseId && society.houses[previousOwnerHouseId] ? society.houses[previousOwnerHouseId].name : 'none') + '.', [this.affairIcon('familyTree')], 'Use the house buttons to navigate when origin data is known.'),
               this.summaryOption('Work', this.slaveTypeLabel(record.type) + ' effects are checked periodically and capped for balance.', [this.slaveTypeIcon(record.type)], 'Owned slaves do not stack infinite modifiers.')
             ],
@@ -7749,10 +7888,17 @@
             this.openHouseholdSlaves()
             return
           }
+          if (this.slaveTaskCooldownActive(record, state)) {
+            this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
+          let hasChild = this.householdChildrenUnder13(state).length > 0
           let options = Object.keys(this.slaveTasks()).map((taskKey) => {
             let task = this.slaveTasks()[taskKey]
             return {
               text: task.label,
+              disabled: taskKey === 'educator' && !hasChild,
+              showDisabledWithTooltip: true,
               tooltip: 'Assign this household task. ' + task.effect,
               icons: [this.slaveTypeIcon(task.icon)],
               action: {
@@ -7776,19 +7922,33 @@
         },
         assignSlaveTask({ slaveKey, characterId, task } = {}) {
           let society = this.ensure()
+          let state = daapi.getState()
           let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
           let taskInfo = this.slaveTasks()[task]
-          if (!record || !taskInfo) {
+          if (!record || !taskInfo || this.slaveTaskCooldownActive(record, state)) {
             this.openHouseholdSlaves()
             return
           }
+          if (task === 'educator' && !this.householdChildrenUnder13(state).length) {
+            this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
           record.task = task
+          record.nextTaskChangeMonth = this.futureMonthKey(this.slaveTaskCooldownMonths())
+          if (task !== 'educator') {
+            record.educationTargetId = ''
+          } else if (!record.educationTargetId) {
+            let children = this.householdChildrenUnder13(state)
+            record.educationTargetId = children[0] && children[0].id
+          }
           try {
             if (record.characterId) {
               daapi.updateCharacter({
                 characterId: record.characterId,
                 character: {
-                  corSocietySlaveTask: task
+                  corSocietySlaveTask: task,
+                  corSocietySlaveNextTaskChangeMonth: record.nextTaskChangeMonth,
+                  corSocietySlaveEducationTargetId: record.educationTargetId || ''
                 }
               })
             }
@@ -7796,6 +7956,98 @@
             console.warn(err)
           }
           this.log(society, record.name + ' is assigned to ' + taskInfo.label.toLowerCase() + '.', 'slaves')
+          this.save(society)
+          if (task === 'educator') {
+            this.openSlaveEducationTargets({ slaveKey: record.key, characterId: record.characterId })
+            return
+          }
+          this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+        },
+        openSlaveEducationTargets({ slaveKey, characterId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
+          if (!record || this.slaveTaskInfo(record).type !== 'educator') {
+            this.openHouseholdSlaves()
+            return
+          }
+          let children = this.householdChildrenUnder13(state)
+          let options = children.map((child) => {
+            let skill = this.educationSkillForSlave(record)
+            return {
+              text: this.characterName(child, state),
+              tooltip: 'Set as pupil. Consequences: future education ticks improve ' + skill + ' and may add an education-related trait.',
+              icons: [this.characterPortrait(child, state), this.slaveTypeIcon('educator')],
+              action: {
+                event: this.event,
+                method: 'setSlaveEducationTarget',
+                context: { slaveKey: record.key, characterId: record.characterId, targetId: child.id }
+              }
+            }
+          })
+          options.push({
+            text: 'Back',
+            action: { event: this.event, method: 'openManageSlave', context: { slaveKey: record.key, characterId: record.characterId } }
+          })
+          this.pushModal({
+            societyMenu: true,
+            title: 'Choose pupil',
+            message: children.length ? 'Select a household child under 13.' : 'No household child under 13 is available.',
+            image: this.slaveTypeIcon('educator'),
+            options
+          })
+        },
+        setSlaveEducationTarget({ slaveKey, characterId, targetId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
+          let target = targetId && state.characters && state.characters[targetId]
+          if (!record || !target || target.isDead || this.age(target, state) >= 13 || this.slaveTaskInfo(record).type !== 'educator') {
+            this.openManageSlave({ slaveKey, characterId })
+            return
+          }
+          record.educationTargetId = targetId
+          try {
+            daapi.updateCharacter({
+              characterId: record.characterId,
+              character: {
+                corSocietySlaveEducationTargetId: targetId
+              }
+            })
+          } catch (err) {
+            console.warn(err)
+          }
+          this.log(society, record.name + ' will educate ' + this.characterName({ ...target, id: targetId }, state) + '.', 'slaves')
+          this.save(society)
+          this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
+        },
+        domesticCompanionSlave({ slaveKey, characterId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
+          if (!record || (record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state))) {
+            this.openHouseholdSlaves()
+            return
+          }
+          record.nextCompanionMonth = this.futureMonthKey(5)
+          record.savings = Math.max(0, parseFloat(record.savings || 0) + 2)
+          this.applyStats({ prestige: 1 })
+          let currentId = this.currentCharacterId(state)
+          if (record.characterId) {
+            this.changePersonalRelation(society, currentId, record.characterId, 4, 'admirer')
+            try {
+              daapi.updateCharacter({
+                characterId: record.characterId,
+                character: {
+                  corSocietySlaveSavings: record.savings,
+                  corSocietySlaveNextCompanionMonth: record.nextCompanionMonth
+                }
+              })
+            } catch (err) {
+              console.warn(err)
+            }
+          }
+          this.log(society, record.name + ' provides domestic company; household mood improves slightly.', 'slaves')
           this.save(society)
           this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
         },
@@ -8092,7 +8344,10 @@
             previousOwnerHouseId: record.previousOwnerHouseId || character.corSocietyPreviousOwnerHouseId || '',
             origin: record.origin || character.corSocietySlaveOrigin || this.randomSlaveOrigin(),
             task: record.task || character.corSocietySlaveTask || record.type || character.corSocietySlaveType || 'labor',
-            savings: Math.max(0, parseFloat(record.savings || character.corSocietySlaveSavings || 0))
+            savings: Math.max(0, parseFloat(record.savings || character.corSocietySlaveSavings || 0)),
+            nextTaskChangeMonth: record.nextTaskChangeMonth || character.corSocietySlaveNextTaskChangeMonth || '',
+            educationTargetId: record.educationTargetId || character.corSocietySlaveEducationTargetId || '',
+            nextCompanionMonth: record.nextCompanionMonth || character.corSocietySlaveNextCompanionMonth || ''
           }
         },
         enslavedPurchaseInfo(society, state, house, character) {
@@ -10004,35 +10259,14 @@
           return this.vanillaPortraitAssets[path] || ''
         },
         characterPortrait(character, state, house) {
-          let shouldFrameSlave = this.isSlaveCharacter(character, house)
-          let frame = (portrait) => shouldFrameSlave ? this.slavePortraitFrame(portrait, character, state) : portrait
           if (character && character.corSocietyOutfit) {
-            return frame(this.characterPortraitWithOutfit(character, state, character.corSocietyOutfit))
+            return this.characterPortraitWithOutfit(character, state, character.corSocietyOutfit)
           }
           let portrait = this.vanillaCharacterPortrait(character, state)
           if (this.isImageData(portrait)) {
-            return frame(portrait)
-          }
-          return frame(this.genericVanillaCharacterPortrait(character, state))
-        },
-        slavePortraitFrame(portrait, character, state) {
-          if (!portrait) {
             return portrait
           }
-          let origin = this.escapeSvg((character && character.corSocietySlaveOrigin) || 'slave')
-          let href = this.escapeSvg(portrait)
-          return this.svgDataUri('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 128 128">' +
-            '<defs><clipPath id="portraitClip"><rect x="7" y="7" width="114" height="114" rx="12"/></clipPath></defs>' +
-            '<rect width="128" height="128" rx="12" fill="#262a2d"/>' +
-            '<image href="' + href + '" xlink:href="' + href + '" x="6" y="4" width="116" height="116" preserveAspectRatio="xMidYMid meet" clip-path="url(#portraitClip)"/>' +
-            '<rect x="6" y="6" width="116" height="116" rx="12" fill="none" stroke="#aeb6bd" stroke-width="4"/>' +
-            '<path d="M17 104 C25 96 37 96 45 104 M83 104 C91 96 103 96 111 104" fill="none" stroke="#d1d7dc" stroke-width="5" stroke-linecap="round"/>' +
-            '<path d="M44 104 H84" stroke="#d1d7dc" stroke-width="5" stroke-linecap="round"/>' +
-            '<circle cx="17" cy="104" r="6" fill="#69727a" stroke="#f2f4f5" stroke-width="2"/><circle cx="45" cy="104" r="6" fill="#69727a" stroke="#f2f4f5" stroke-width="2"/><circle cx="83" cy="104" r="6" fill="#69727a" stroke="#f2f4f5" stroke-width="2"/><circle cx="111" cy="104" r="6" fill="#69727a" stroke="#f2f4f5" stroke-width="2"/>' +
-            '<rect x="9" y="8" width="30" height="15" rx="7" fill="#1f2326" opacity=".82"/>' +
-            '<text x="24" y="19" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="800" fill="#eef2f3">SLAVE</text>' +
-            '<title>' + origin + '</title>' +
-            '</svg>')
+          return this.genericVanillaCharacterPortrait(character, state)
         },
         isSlaveCharacter(character, house) {
           return !!(
@@ -11855,6 +12089,9 @@
     takeBankLoan(args) {
       window.corSociety.takeBankLoan(args || {})
     },
+    takeEmergencyDebtLoan(args) {
+      window.corSociety.takeEmergencyDebtLoan(args || {})
+    },
     payBankLoan(args) {
       window.corSociety.payBankLoan(args || {})
     },
@@ -11878,6 +12115,15 @@
     },
     assignSlaveTask(args) {
       window.corSociety.assignSlaveTask(args || {})
+    },
+    openSlaveEducationTargets(args) {
+      window.corSociety.openSlaveEducationTargets(args || {})
+    },
+    setSlaveEducationTarget(args) {
+      window.corSociety.setSlaveEducationTarget(args || {})
+    },
+    domesticCompanionSlave(args) {
+      window.corSociety.domesticCompanionSlave(args || {})
     },
     openSlaveMarriageCandidates(args) {
       window.corSociety.openSlaveMarriageCandidates(args || {})
