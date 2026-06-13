@@ -307,18 +307,23 @@
           this.repairUnsafeWardrobeLooks(state)
           let society = this.load()
           this.normalizeDynastyHouseModel(society, state)
+          let monthKey = this.monthKey(state)
           let ensureKey = this.ensureKey(society, state)
+          let monthChanged = society.lastProcessedStatusMonth !== monthKey
           if (!options || !options.force) {
             if (society.lastEnsureKey === ensureKey) {
               this.registerPlayerEntryActions(state)
               this.ensurePlayerDynastyTreeForCurrent(society, state)
               this.registerSocietyTraitDefinitions()
-              this.ensureSlaveOrderPeople(society, state)
-              state = daapi.getState()
-              this.syncSocietyTraitsWithVanilla(society, state)
-              this.syncFamilyRelationStatuses(society, state)
-              this.syncSlaveStatuses(society, state)
-              this.save(society)
+              if (monthChanged) {
+                this.ensureSlaveOrderPeople(society, state)
+                state = daapi.getState()
+                this.syncSocietyTraitsWithVanilla(society, state)
+                this.syncFamilyRelationStatuses(society, state)
+                this.syncSlaveStatuses(society, state)
+                society.lastProcessedStatusMonth = monthKey
+                this.save(society)
+              }
               return society
             }
           }
@@ -342,6 +347,7 @@
           this.syncSocietyTraitsWithVanilla(society, state)
           this.syncFamilyRelationStatuses(society, state)
           this.syncSlaveStatuses(society, state)
+          society.lastProcessedStatusMonth = monthKey
           this.restoreSocietyPortraitLooks(state)
           this.allowAchievementsWithSociety(state)
           society.lastEnsureKey = this.ensureKey(society, state)
@@ -353,7 +359,6 @@
           let houseCount = society && society.houses ? Object.keys(society.houses).length : 0
           let currentId = state && state.current ? state.current.id : 'none'
           return [
-            this.monthKey(state || {}),
             currentId,
             societyDynastyCount,
             houseCount,
@@ -1576,12 +1581,9 @@
           add(founder.id)
           add(founder.spouseId)
           ;(founder.childrenIds || []).forEach(add)
-          for (let characterId in (state.characters || {})) {
-            if (!state.characters.hasOwnProperty(characterId)) continue
-            let character = state.characters[characterId]
-            if (!character || character.isDead) continue
-            if (this.sameCharacterId(character.fatherId, founder.id) || this.sameCharacterId(character.motherId, founder.id)) add(characterId)
-            if (founder.spouseId && (this.sameCharacterId(character.fatherId, founder.spouseId) || this.sameCharacterId(character.motherId, founder.spouseId))) add(characterId)
+          let spouse = state.characters[founder.spouseId]
+          if (spouse && spouse.childrenIds) {
+            spouse.childrenIds.forEach(add)
           }
           return ids.slice(0, 8)
         },
@@ -2318,18 +2320,23 @@
         },
         ensureGeneratedParents(society, state) {
           let ids = (society.generatedCharacterIds || []).slice()
-          ids.forEach((characterId) => {
+          let generatedThisTick = 0
+          for (let i = 0; i < ids.length; i++) {
+            if (generatedThisTick >= 10) break
+            let characterId = ids[i]
             let character = state.characters[characterId]
             if (!character || character.isDead || character.corSocietyGhostParent) {
-              return
+              continue
             }
             character.id = character.id || characterId
             let patch = {}
             if (!character.fatherId) {
               patch.fatherId = this.generateGhostParent(society, state, character, true)
+              generatedThisTick++
             }
-            if (!character.motherId) {
+            if (!character.motherId && generatedThisTick < 10) {
               patch.motherId = this.generateGhostParent(society, state, character, false)
+              generatedThisTick++
             }
             if (patch.fatherId || patch.motherId) {
               try {
@@ -2341,7 +2348,7 @@
                 console.warn(err)
               }
             }
-          })
+          }
         },
         ensureGeneratedDynastyTrees(society, state) {
           if (!society || !society.houses || !state || !state.characters) {
@@ -3056,11 +3063,20 @@
         simulateHouseTurns(society, state) {
           let houses = this.sortedHouses(society)
           houses.forEach((house) => {
+            this.refreshHouseMemberLists(society, state, house)
+          })
+          let allSlaveCandidates = false
+          houses.forEach((house) => {
             this.initHouseAI(house)
             this.runHouseEconomy(house)
             this.simulateHouseBanking(society, state, house)
-            this.simulateHouseSlaves(society, state, house)
-            this.simulateFreedmanRescueAttempts(society, state, house)
+            
+            if (house.stratum !== 'poor' && house.ai.cash > 180) {
+              if (!allSlaveCandidates) allSlaveCandidates = this.npcEnslavedCandidates(society, state)
+              this.simulateHouseSlaves(society, state, house, allSlaveCandidates)
+            }
+            this.simulateFreedmanRescueAttempts(society, state, house, allSlaveCandidates)
+            
             let profile = this.strata[house.stratum] || this.strata.plebeian
             let event = ''
             if (house.agenda === 'office') {
@@ -4922,7 +4938,7 @@
             }
           }
         },
-        simulateHouseSlaves(society, state, house) {
+        simulateHouseSlaves(society, state, house, candidates) {
           if (!house || !house.ai) return
           house.slaveIds = (house.slaveIds || []).filter((characterId) => {
             let character = state.characters && state.characters[characterId]
@@ -4931,7 +4947,7 @@
           let slaves = this.activeSlavesForHouse(house, state)
           let maxSlaves = this.clamp(1 + this.socialLevel(house.stratum), 1, 6)
           if (slaves.length < maxSlaves && house.ai.cash > 180 && Math.random() < (house.agenda === 'wealth' ? 0.08 : 0.035)) {
-            let marketCandidate = this.npcEnslavedCandidates(society, state, house)[0]
+            let marketCandidate = (candidates || this.npcEnslavedCandidates(society, state, house)).filter(c => c.sellerHouse.id !== house.id)[0]
             if (marketCandidate && house.ai.cash >= marketCandidate.cost && Math.random() < 0.72) {
               this.npcPurchaseEnslavedCharacter(society, state, house, marketCandidate)
               state = daapi.getState()
@@ -5051,12 +5067,10 @@
           return true
         },
         npcEnslavedCandidates(society, state, buyerHouse) {
-          if (!buyerHouse) {
-            return []
-          }
           let candidates = []
+          let buyerHouseId = buyerHouse ? buyerHouse.id : false
           this.sortedHouses(society).forEach((house) => {
-            if (!house || house.id === buyerHouse.id || house.stratum !== 'poor') {
+            if (!house || house.id === buyerHouseId || house.stratum !== 'poor') {
               return
             }
             this.visibleHousePeople(house, state).forEach((characterId) => {
@@ -5170,6 +5184,7 @@
           return true
         },
         ensureVisibleHouseMembers(society, state) {
+          let totalGeneratedThisTick = 0
           for (let houseId in society.houses) {
             if (!society.houses.hasOwnProperty(houseId)) {
               continue
@@ -5177,18 +5192,20 @@
             let house = society.houses[houseId]
             this.refreshHouseMemberLists(society, state, house)
             let visible = this.visibleHousePeople(house, state)
-            if (!visible.length) {
+            if (!visible.length && totalGeneratedThisTick < 6) {
               this.generateHouseSeedMember(society, state, house)
               state = daapi.getState()
               this.refreshHouseMemberLists(society, state, house)
               visible = this.visibleHousePeople(house, state)
+              totalGeneratedThisTick++
             }
-            while (visible.length < this.minimumVisibleMembers(house) && (society.generatedCharacterIds || []).length < 260) {
-              let head = state.characters[visible[0]]
+            while (visible.length < this.minimumVisibleMembers(house) && (society.generatedCharacterIds || []).length < 260 && totalGeneratedThisTick < 6) {
+              let headId = visible[0]
+              let head = state.characters[headId]
               if (!head) {
                 break
               }
-              head.id = head.id || visible[0]
+              head.id = head.id || headId
               if (!head.spouseId && this.age(head, state) >= 20 && Math.random() < 0.35) {
                 this.generateHouseSpouse(society, state, house, house.stratum || 'plebeian', head)
               } else {
@@ -5197,6 +5214,7 @@
               state = daapi.getState()
               this.refreshHouseMemberLists(society, state, house)
               visible = this.visibleHousePeople(house, state)
+              totalGeneratedThisTick++
             }
           }
         },
