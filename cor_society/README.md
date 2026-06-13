@@ -26,6 +26,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Replaces the old Society poor order presentation with a slave order: slave kin groups, market candidates, captured dependants, household slaves, and manumitted freedmen are all represented by real characters where possible.
 - Gives slaves cultural origins, owner links, Society status icons, household work roles, sale/manumission flow, and access from Society menus while keeping their vanilla portraits unobstructed.
 - Gives owned slaves assignable household tasks with cooldowns and capped owner benefits: accounts can produce cash, educators can improve selected children under 13, doctors can treat household conditions, entertainers can add prestige, warriors can add influence/security, and laborers can provide small cash.
+- Expands the slave market with more purchasable profiles, including tutors, scribes, nurses, midwives, musicians, dancers, stewards, accountants, couriers, bodyguards, gladiators, hunters, cooks, artisans, and stable hands. These profiles map back to balanced household tasks and existing icon assets.
 - Gives owned slaves slow personal savings and an explicit freedom objective. When savings reach the freedom price, the player can accept self-purchase and manumit them into their own Freedmen house.
 - Allows marriages only between owned household slaves of different gender. Your family cannot arrange marriages with enslaved characters through Society or Coemptio.
 - Allows married owned slave couples to have children through the game's pregnancy API; children born to household slaves are recorded as real household slave characters.
@@ -100,6 +101,8 @@ The base game blocks external platform achievements when `current.flagUsedMods` 
 The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gaulish, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Jewish, Carthaginian, Dacian, Germanic, Brittonic, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, become `roman_freedman` Society characters, and enter a new Freedmen house of their own. Freed slaves may later spend house resources to rescue close relatives who are still enslaved.
 
 Household slave tasks are intentionally modest for balance and have task-change cooldowns. They create useful owner benefits without infinite stacking: cash from accounts/labor, prestige from entertainment/private company, influence from guards, directed child skill improvement from educators, and possible treatment from doctors. Owned slaves also accumulate small savings toward self-purchase. Private company is adult-only; possible bastard children enter the household as slaves, can be manumitted, and can be legitimized into the free father's dynasty when the father belongs to the player's dynasty. Romance and extended bastard mechanics remain for free adult relationship systems and lovers.
+
+The integrated legacy animal-stealing event keeps the original event idea, but Society loads its large icon assets lazily to reduce Android startup pressure.
 
 ## Bundled Mod Credits
 

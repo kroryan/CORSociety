@@ -2,11 +2,9 @@
 (function() {
   const path = '/cor_society/bundled/stealingFrom/stealingFrom'
   let img, img2, img3
-  setTimeout(() => {
-    img = daapi.requireImage('/cor_society/bundled/stealingFrom/animalPen.svg')
-    img2 = daapi.requireImage('/cor_society/bundled/stealingFrom/wounded.svg')
-    img3 = daapi.requireImage('/cor_society/bundled/stealingFrom/barredFromSenate.svg')
-  }, 0)
+  const animalPenIcon = () => img || (img = daapi.requireImage('/cor_society/bundled/stealingFrom/animalPen.svg'))
+  const woundedIcon = () => img2 || (img2 = daapi.requireImage('/cor_society/bundled/stealingFrom/wounded.svg'))
+  const barredFromSenateIcon = () => img3 || (img3 = daapi.requireImage('/cor_society/bundled/stealingFrom/barredFromSenate.svg'))
 
   return {
     checkType: 'general',
@@ -32,12 +30,12 @@
       //event trigger
       if (Math.random() < mainRngesus && age > 18) {
         var property = {}
+        var propertyDetails = state.current.propertyDetails || {}
+        var availableAnimals = Math.max(0, parseFloat(propertyDetails[selectedAnimal] || 0))
         var animalCount =
           Math.min(
             10 + Math.round(Math.random() * 10),
-            Math.floor(
-              Math.random() * state.current.propertyDetails[selectedAnimal]
-            )
+            Math.floor(Math.random() * availableAnimals)
           ) || 1
         property[selectedAnimal] = animalCount
         daapi.pushInteractionModalQueue({
@@ -46,7 +44,7 @@
             'You happen to be walking past the property of a rivaling family when a thought hits you. The property is unusually quiet, the family must be away, and it would be easy for you to take something from them at this moment. You notice that the ' +
             selectedAnimal +
             ' are currently unattended, what do you do?',
-          image: img,
+          image: animalPenIcon(),
           requireChoice: true,
           options: [
             {
@@ -133,7 +131,7 @@
             options.push({
               text: 'It was risky but your gamble paid off!',
               statChanges: {
-                property: 10
+                property
               }
             })
           } else {
@@ -219,7 +217,7 @@
         daapi.pushInteractionModalQueue({
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message,
-          image: img,
+          image: animalPenIcon(),
           requireChoice: true,
           options: [...options]
         })
@@ -248,7 +246,7 @@
             message =
               'You were too slow! The farmhand caught up to you easily and you were forced to return the stolen property'
             daapi.addTrait({ characterId: state.current.id, trait: 'wounded' })
-            icons.push(img2)
+            icons.push(woundedIcon())
 
             options.push({
               text: 'Rats! I was so close!',
@@ -264,7 +262,7 @@
             message =
               'You were too slow! The farmhand caught up to you easily and you were forced to return the stolen property'
             daapi.addTrait({ characterId: state.current.id, trait: 'wounded' })
-            icons.push(img2)
+            icons.push(woundedIcon())
             options.push({
               text: 'Rats! I was so close!',
               icons,
@@ -281,7 +279,7 @@
         daapi.pushInteractionModalQueue({
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message,
-          image: img,
+          image: animalPenIcon(),
           options: [...options]
         })
       },
@@ -323,7 +321,7 @@
         daapi.pushInteractionModalQueue({
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message,
-          image: img,
+          image: animalPenIcon(),
           options: [...options]
         })
       },
@@ -341,7 +339,7 @@
           character.skills.eloquence / 100 + state.current.influence / 30000
         var currentClass = daapi.calculateCurrentClass()
 
-        if (rngesus <= 0 && rngesus <= 0.25 + rngesusFactor) {
+        if (rngesus <= 0.25 + rngesusFactor) {
           message =
             'You argue your case and managed to convince the judge that the ' +
             selectedAnimal +
@@ -397,7 +395,7 @@
               characterId: state.current.id,
               trait: 'barredFromSenate'
             })
-            icons.push(img3)
+            icons.push(barredFromSenateIcon())
             options.push({
               text:
                 'What an embarrassment to be caught doing such a petty crime! This was a horrible mistake!',
@@ -440,7 +438,7 @@
               characterId: state.current.id,
               trait: 'barredFromSenate'
             })
-            icons.push(img3)
+            icons.push(barredFromSenateIcon())
             options.push({
               text:
                 'What an embarrassment to be caught doing such a petty crime! This was a horrible mistake!',
@@ -480,7 +478,7 @@
         daapi.pushInteractionModalQueue({
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message,
-          image: img,
+          image: animalPenIcon(),
           options: [...options]
         })
       },
@@ -549,7 +547,7 @@
         daapi.pushInteractionModalQueue({
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message,
-          image: img,
+          image: animalPenIcon(),
           options: [...options]
         })
       },
@@ -558,7 +556,7 @@
           title: 'Nice ' + selectedAnimal + " you've got there...",
           message:
             'It was an interesting thought however, due to your better judgement, you decide that such actions would be too risky. You continue your walk without any further thought on the matter',
-          image: img,
+          image: animalPenIcon(),
           requireChoice: true,
           options: [
             {

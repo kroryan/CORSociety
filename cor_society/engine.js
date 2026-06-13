@@ -589,7 +589,24 @@
           }
         },
         slaveTypeIcon(type) {
-          return this.bundledIcon('household_slaves', type || 'household')
+          let icons = {
+            scribe: 'educator',
+            tutor: 'educator',
+            nurse: 'doctor',
+            midwife: 'doctor',
+            musician: 'entertainer',
+            dancer: 'entertainer',
+            cook: 'labor',
+            artisan: 'labor',
+            groom: 'labor',
+            courier: 'manager',
+            steward: 'manager',
+            accountant: 'manager',
+            bodyguard: 'warrior',
+            gladiator: 'warrior',
+            hunter: 'warrior'
+          }
+          return this.bundledIcon('household_slaves', icons[type] || type || 'household')
         },
         stratumIcon(stratum) {
           let icons = {
@@ -3336,18 +3353,39 @@
           return romance
         },
         slaveTypes() {
-          return ['educator', 'doctor', 'entertainer', 'manager', 'warrior']
+          return Object.keys(this.slaveTypeProfiles())
+        },
+        slaveTypeProfiles() {
+          return {
+            educator: { label: 'Educator', task: 'educator', icon: 'educator', cost: 1.18, job: 'rhetor', traits: ['literate'], skill: 'intelligence' },
+            tutor: { label: 'Greek Tutor', task: 'educator', icon: 'educator', cost: 1.32, job: 'rhetor', traits: ['literate', 'educated'], skill: 'intelligence' },
+            scribe: { label: 'Scribe', task: 'manager', icon: 'educator', cost: 1.22, job: 'rhetor', traits: ['literate'], skill: 'stewardship' },
+            doctor: { label: 'Doctor', task: 'doctor', icon: 'doctor', cost: 1.25, job: 'physician', traits: ['literate'], skill: 'intelligence' },
+            nurse: { label: 'Nurse', task: 'doctor', icon: 'doctor', cost: 1.05, job: 'physician', traits: ['content'], skill: 'intelligence' },
+            midwife: { label: 'Midwife', task: 'doctor', icon: 'doctor', cost: 1.16, job: 'physician', traits: ['content'], skill: 'intelligence' },
+            entertainer: { label: 'Entertainer', task: 'entertainer', icon: 'entertainer', cost: 0.92, job: 'labourer', traits: ['gregarious'], skill: 'eloquence' },
+            musician: { label: 'Musician', task: 'entertainer', icon: 'entertainer', cost: 1.02, job: 'labourer', traits: ['gregarious'], skill: 'eloquence' },
+            dancer: { label: 'Dancer', task: 'entertainer', icon: 'entertainer', cost: 0.98, job: 'labourer', traits: ['gregarious'], skill: 'eloquence' },
+            manager: { label: 'Manager', task: 'manager', icon: 'manager', cost: 1.35, job: 'labourer', traits: ['trusting'], skill: 'stewardship' },
+            steward: { label: 'Steward', task: 'manager', icon: 'manager', cost: 1.42, job: 'trader', traits: ['trusting'], skill: 'stewardship' },
+            accountant: { label: 'Accountant', task: 'manager', icon: 'manager', cost: 1.48, job: 'trader', traits: ['literate'], skill: 'stewardship' },
+            courier: { label: 'Courier', task: 'manager', icon: 'manager', cost: 0.95, job: 'labourer', traits: ['strong'], skill: 'stewardship' },
+            warrior: { label: 'Warrior', task: 'warrior', icon: 'warrior', cost: 1.08, job: 'labourer', traits: ['strong'], skill: 'combat' },
+            bodyguard: { label: 'Bodyguard', task: 'warrior', icon: 'warrior', cost: 1.28, job: 'labourer', traits: ['strong'], skill: 'combat' },
+            gladiator: { label: 'Gladiator', task: 'warrior', icon: 'warrior', cost: 1.36, job: 'labourer', traits: ['strong'], skill: 'combat' },
+            hunter: { label: 'Hunter', task: 'warrior', icon: 'warrior', cost: 1.02, job: 'labourer', traits: ['strong'], skill: 'combat' },
+            labor: { label: 'Laborer', task: 'labor', icon: 'labor', cost: 0.78, job: 'labourer', traits: ['content'], skill: 'stewardship' },
+            cook: { label: 'Cook', task: 'labor', icon: 'labor', cost: 0.86, job: 'labourer', traits: ['content'], skill: 'stewardship' },
+            artisan: { label: 'Artisan', task: 'labor', icon: 'labor', cost: 1.04, job: 'labourer', traits: ['educated'], skill: 'stewardship' },
+            groom: { label: 'Stable Hand', task: 'labor', icon: 'labor', cost: 0.84, job: 'labourer', traits: ['strong'], skill: 'stewardship' }
+          }
+        },
+        slaveTypeProfile(type) {
+          let profiles = this.slaveTypeProfiles()
+          return profiles[type] || profiles.labor
         },
         slaveTypeLabel(type) {
-          let labels = {
-            educator: 'Educator',
-            doctor: 'Doctor',
-            entertainer: 'Entertainer',
-            manager: 'Manager',
-            warrior: 'Warrior',
-            labor: 'Laborer'
-          }
-          return labels[type] || 'Servant'
+          return this.slaveTypeProfile(type).label || 'Servant'
         },
         slaveTasks() {
           return {
@@ -3364,7 +3402,7 @@
           let key = (slave && slave.task) || (slave && slave.type) || 'labor'
           let aliases = { accounts: 'manager', educate: 'educator', tend: 'doctor', entertain: 'entertainer', guard: 'warrior' }
           key = aliases[key] || key
-          return tasks[key] || tasks[slave && slave.type] || tasks.labor
+          return tasks[key] || tasks[this.slaveTypeProfile(slave && slave.type).task] || tasks.labor
         },
         slaveTaskLabel(slave) {
           return this.slaveTaskInfo(slave).label
@@ -3418,30 +3456,26 @@
         randomSlaveTemplate(ownerHouse, levelBias) {
           let level = this.clamp(this.randomInt(1, 4) + (levelBias || 0), 1, 8)
           let type = this.pick(this.slaveTypes())
+          let profile = this.slaveTypeProfile(type)
           return {
             key: 'slave_' + this.safeId(ownerHouse && ownerHouse.id ? ownerHouse.id : 'player') + '_' + Date.now() + '_' + this.randomInt(1000, 9999),
             name: this.pick(this.slaveNames()),
             origin: this.randomSlaveOrigin(),
             type,
             level,
-            age: this.randomInt(16, 40),
+            age: this.randomInt(15, 46),
             acquired: this.monthKey(daapi.getState()),
             characterId: '',
-            task: type,
+            task: profile.task || type,
             savings: 0
           }
         },
         slaveCost(slave) {
           slave = slave || {}
-          let typeFactor = {
-            educator: 1.18,
-            doctor: 1.25,
-            entertainer: 0.92,
-            manager: 1.35,
-            warrior: 1.08,
-            labor: 0.78
-          }
-          return Math.max(80, Math.round((110 + (slave.level || 1) * 95) * (typeFactor[slave.type] || 1)))
+          let profile = this.slaveTypeProfile(slave.type)
+          let age = parseFloat(slave.age || 24)
+          let ageFactor = age < 16 ? 0.72 : age > 42 ? 0.88 : 1
+          return Math.max(70, Math.round((105 + (slave.level || 1) * 92) * (profile.cost || 1) * ageFactor))
         },
         slaveFreedomPrice(slave) {
           return Math.max(120, Math.round(this.slaveCost(slave) * 1.35))
@@ -3454,11 +3488,13 @@
             eloquence: this.randomInt(2, 8),
             combat: this.randomInt(2, 8)
           }
-          if (type === 'educator') skills.intelligence += Math.round(level * 2)
-          if (type === 'doctor') skills.intelligence += Math.round(level * 1.5)
-          if (type === 'entertainer') skills.eloquence += Math.round(level * 2)
-          if (type === 'manager') skills.stewardship += Math.round(level * 2)
-          if (type === 'warrior') skills.combat += Math.round(level * 2)
+          let profile = this.slaveTypeProfile(type)
+          if (profile.skill && skills[profile.skill] !== undefined) {
+            skills[profile.skill] += Math.round(level * 2)
+          }
+          if (profile.task === 'doctor') skills.intelligence += Math.round(level * 0.5)
+          if (profile.task === 'educator') skills.eloquence += Math.round(level * 0.5)
+          if (profile.task === 'warrior') skills.combat += Math.round(level * 0.5)
           return skills
         },
         generateSlaveCharacter(society, state, ownerHouse, template) {
@@ -3471,10 +3507,9 @@
           }
           let isMale = Math.random() > 0.45
           template.origin = template.origin || this.randomSlaveOrigin()
-          let traits = ['content']
-          if (template.type === 'doctor' || template.type === 'educator') traits.push('literate')
-          if (template.type === 'warrior') traits.push('strong')
-          if (template.type === 'manager') traits.push('trusting')
+          let profile = this.slaveTypeProfile(template.type)
+          let traits = ['content'].concat(profile.traits || [])
+          traits = traits.filter((trait, index, list) => trait && list.indexOf(trait) === index)
           let characterId = daapi.generateCharacter({
             characterFeatures: {
               gender: isMale ? 'male' : 'female',
@@ -3483,7 +3518,7 @@
               birthMonth: this.randomInt(0, 11),
               birthYear: (state.year || 500) - Math.round(template.age || this.randomInt(16, 40)),
               look: this.generatedVanillaLook(isMale, 'slave-' + template.key),
-              job: template.type === 'doctor' ? 'physician' : template.type === 'educator' ? 'rhetor' : 'labourer',
+              job: profile.job || 'labourer',
               jobLevel: Math.max(0, Math.round((template.level || 1) / 2)),
               traits,
               skills: this.slaveSkills(template.type, template.level),
@@ -3494,7 +3529,7 @@
               corSocietySlaveLevel: template.level,
               corSocietySlaveOwnerHouseId: ownerDynastyId || '',
               corSocietySlaveOrigin: template.origin,
-              corSocietySlaveTask: template.task || template.type || 'labor',
+              corSocietySlaveTask: template.task || profile.task || template.type || 'labor',
               corSocietySlaveSavings: Math.max(0, parseFloat(template.savings || 0)),
               corSocietyOrigin: 'enslaved_dependant',
               flagDoNotCull: true,
@@ -3511,7 +3546,7 @@
             corSocietySlaveLevel: template.level,
             corSocietySlaveOwnerHouseId: ownerDynastyId || '',
             corSocietySlaveOrigin: template.origin,
-            corSocietySlaveTask: template.task || template.type || 'labor',
+            corSocietySlaveTask: template.task || profile.task || template.type || 'labor',
             corSocietySlaveSavings: Math.max(0, parseFloat(template.savings || 0)),
             corSocietyOrigin: 'enslaved_dependant',
             flagDoNotCull: true,
@@ -3573,7 +3608,7 @@
                   characterId: slave.characterId,
                   character: {
                     corSocietySlaveSavings: slave.savings,
-                    corSocietySlaveTask: slave.task || slave.type || 'labor'
+                    corSocietySlaveTask: taskInfo.type || slave.task || 'labor'
                   }
                 })
               }
@@ -3888,6 +3923,8 @@
         },
         educationSkillForSlave(slave) {
           let type = (slave && (slave.type || slave.task)) || 'educator'
+          let profile = this.slaveTypeProfile(type)
+          if (profile && profile.skill) return profile.skill
           if (type === 'doctor') return 'intelligence'
           if (type === 'manager') return 'stewardship'
           if (type === 'entertainer') return 'eloquence'
@@ -5874,6 +5911,7 @@
             }
           }
           try {
+            this.wardrobeOutfitCache = false
             this.applyPortraitOverlays()
           } catch (err) {
             console.warn(err)
@@ -6946,7 +6984,7 @@
             }
             let bg = this.firstOpaqueBackground(probes)
             if (bg) {
-              return this.colorLuminance(bg) < 115
+              return this.colorLuminance(bg) < 0.45
             }
           }
           if (typeof window !== 'undefined' && window.matchMedia) {
@@ -6967,16 +7005,6 @@
             }
           }
           return ''
-        },
-        colorLuminance(color) {
-          let match = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
-          if (!match) {
-            return 255
-          }
-          let r = parseInt(match[1], 10)
-          let g = parseInt(match[2], 10)
-          let b = parseInt(match[3], 10)
-          return (0.2126 * r) + (0.7152 * g) + (0.0722 * b)
         },
         familyTreeTitle(mode) {
           if (mode === 'known') return 'Known Family Tree'
@@ -7817,15 +7845,15 @@
             })
           }
           if (page === 0) {
-            ;[1, 2, 3].forEach((bias) => {
+            ;[1, 1, 2, 2, 3, 4].forEach((bias) => {
               let template = this.randomSlaveTemplate(false, bias - 1)
               let cost = this.slaveCost(template)
               options.push({
-              text: 'Market offer: ' + template.name + ', ' + this.slaveTypeLabel(template.type) + ' L' + template.level + ' (' + cost + ')',
-                tooltip: 'A new market slave.\nOrigin: ' + this.slaveOriginDescription(template.origin) + '\nBuying creates a real game character in your household.',
+                text: 'Market offer: ' + template.name + ', ' + this.slaveTypeLabel(template.type) + ' L' + template.level + ' (' + cost + ')',
+                tooltip: 'A new market slave.\nOrigin: ' + this.slaveOriginDescription(template.origin) + '\nDefault work: ' + this.slaveTaskInfo(template).label + '.\nBuying creates a real game character in your household.',
                 disabled: parseFloat(((state || {}).current || {}).cash || 0) < cost,
                 showDisabledWithTooltip: true,
-                icons: [this.slaveTypeIcon(template.type), this.affairIcon('coins')],
+                icons: [this.slaveTypeIcon(template.type), this.slaveTypeIcon(this.slaveTaskInfo(template).icon), this.affairIcon('coins')],
                 action: {
                   event: this.event,
                   method: 'buySlave',
@@ -8595,10 +8623,15 @@
           if (character.corSocietySlaveType) return character.corSocietySlaveType
           let job = String(character.job || '').toLowerCase()
           let skills = character.skills || {}
-          if (job.indexOf('physician') >= 0 || job.indexOf('doctor') >= 0) return 'doctor'
-          if (job.indexOf('rhetor') >= 0 || job.indexOf('teacher') >= 0) return 'educator'
-          if (job.indexOf('soldier') >= 0 || parseFloat(skills.combat || 0) >= 13) return 'warrior'
+          if (job.indexOf('physician') >= 0 || job.indexOf('doctor') >= 0) return parseFloat(skills.intelligence || 0) >= 14 ? 'doctor' : 'nurse'
+          if (job.indexOf('rhetor') >= 0 || job.indexOf('teacher') >= 0) return parseFloat(skills.intelligence || 0) >= 14 ? 'tutor' : 'educator'
+          if (job.indexOf('trader') >= 0 || job.indexOf('merchant') >= 0) return parseFloat(skills.stewardship || 0) >= 14 ? 'accountant' : 'steward'
+          if (job.indexOf('soldier') >= 0 || parseFloat(skills.combat || 0) >= 16) return parseFloat(skills.combat || 0) >= 20 ? 'gladiator' : 'warrior'
+          if (parseFloat(skills.combat || 0) >= 13) return 'bodyguard'
+          if (parseFloat(skills.eloquence || 0) >= 16) return 'musician'
           if (parseFloat(skills.eloquence || 0) >= 13) return 'entertainer'
+          if (parseFloat(skills.stewardship || 0) >= 15) return 'scribe'
+          if (job.indexOf('labour') >= 0 || job.indexOf('labor') >= 0) return 'labor'
           return 'manager'
         },
         enslavedCharacterCost(society, state, house, character) {
@@ -11268,7 +11301,10 @@
           return luminance > 0.42 && chroma < 44 && rgb.r - rgb.b >= 10 && rgb.r >= rgb.g && rgb.g >= rgb.b
         },
         colorLuminance(color) {
-          let rgb = this.hexToRgb(color)
+          let rgbMatch = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+          let rgb = rgbMatch
+            ? { r: parseInt(rgbMatch[1], 10), g: parseInt(rgbMatch[2], 10), b: parseInt(rgbMatch[3], 10) }
+            : this.hexToRgb(color)
           if (!rgb) {
             return 0.5
           }
@@ -11655,7 +11691,6 @@
                 if (window.corSociety) {
                   window.corSociety.applyPlayerStatusOverlay()
                   window.corSociety.applyPortraitOverlays()
-                  window.corSociety.clearRelationBadges()
                 }
               } catch (err) {
                 console.warn(err)
@@ -11722,12 +11757,20 @@
           if (!state || !state.characters) {
             return false
           }
+          let count = Object.keys(state.characters).length
+          let month = this.monthKey(state)
+          if (this.wardrobeOutfitCache && this.wardrobeOutfitCache.count === count && this.wardrobeOutfitCache.month === month) {
+            return !!this.wardrobeOutfitCache.active
+          }
+          let active = false
           for (let characterId in state.characters) {
             if (state.characters.hasOwnProperty(characterId) && state.characters[characterId] && state.characters[characterId].corSocietyOutfit) {
-              return true
+              active = true
+              break
             }
           }
-          return false
+          this.wardrobeOutfitCache = { count, month, active }
+          return active
         },
         restoreClearedPortraitOverlays(state) {
           let images = Array.prototype.slice.call(document.querySelectorAll('img[data-cor-society-original-src]'))
