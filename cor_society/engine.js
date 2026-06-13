@@ -1025,7 +1025,7 @@
           if (method === 'assignSlaveTask') return this.effectLine(['changes future household slave output', 'no immediate stats change'])
           if (method === 'openSlaveEducationTargets') return 'Consequences: selects a child under 13 for future education ticks; no immediate stats change.'
           if (method === 'setSlaveEducationTarget') return this.effectLine(['sets pupil for education task', 'future ticks improve skills and may add education traits'])
-          if (method === 'domesticCompanionSlave') return this.effectLine(['+1 prestige', '+small personal relation', '+2 slave savings', '5 month cooldown', 'no pregnancy'])
+          if (method === 'privateCompanySlave') return this.effectLine(['+1 prestige', '+small personal relation', '+2 slave savings', 'risk of illegitimate child (female, age 16-42)', '5 month cooldown if no pregnancy'])
           if (method === 'openSlaveMarriageCandidates') return 'Consequences: chooses another owned household slave; no stats change yet.'
           if (method === 'marryOwnedSlaves') return this.effectLine(['creates spouse link between two owned slaves', 'future slave-spouse pregnancy may occur', 'no family alliance'])
           if (method === 'acceptSlaveSelfPurchase') return this.effectLine(['cash payment to your household', 'manumits slave into their own Freedmen house'])
@@ -3634,6 +3634,57 @@
           }
           return added
         },
+        tryPrivateCompanyPregnancy(society, state, record, ownerId) {
+          if (!record || !record.characterId) {
+            return false
+          }
+          let slave = state.characters && state.characters[record.characterId]
+          if (!slave || slave.isDead) {
+            return false
+          }
+          let isFemale = !this.characterIsMale(slave)
+          if (!isFemale) {
+            return false
+          }
+          let age = this.age(slave, state)
+          if (age < 16 || age > 42 || slave.flagCannotGetPregnant || slave.startedPregnancyTime) {
+            return false
+          }
+          let owner = state.characters && state.characters[ownerId]
+          if (!owner || owner.isDead || !this.characterIsMale(owner)) {
+            return false
+          }
+          let chance = this.clamp(0.12, 0.12, 0.12)
+          if (Math.random() > chance) {
+            return false
+          }
+          try {
+            daapi.impregnate({
+              characterId: slave.id,
+              fatherId: owner.id
+            })
+            daapi.forceUpdateCharacterDisplay({ characterId: slave.id })
+          } catch (err) {
+            console.warn(err)
+            return false
+          }
+          society.pendingPaternities = society.pendingPaternities || []
+          let id = 'private_company_' + this.safeId(slave.id) + '_' + this.safeId(owner.id) + '_' + this.monthIndex(this.monthKey(state))
+          if (!society.pendingPaternities.some((item) => item && item.id === id)) {
+            society.pendingPaternities.push({
+              id,
+              motherId: slave.id,
+              biologicalFatherId: owner.id,
+              officialFatherId: owner.id,
+              isPrivateCompany: true,
+              startedIndex: this.monthIndex(this.monthKey(state)),
+              childId: '',
+              discovered: false
+            })
+          }
+          this.log(society, this.characterName(slave, state) + ', a household slave, is expecting a child with ' + this.characterName(owner, state) + '.', 'birth')
+          return true
+        },
         tryOwnedSlavePregnancies(society, state) {
           let records = this.playerSlaveRecords(society, state)
           if (!records.length || Math.random() > 0.055) {
@@ -3674,7 +3725,7 @@
           }
           this.log(society, this.characterName(couple.mother, state) + ', a household slave, is expecting a child with spouse ' + this.characterName(couple.father, state) + '.', 'birth')
           return true
-        },
+        }
         processBankYear(society, state) {
           society.bank = {
             principal: 0,
@@ -7821,12 +7872,12 @@
           })
           options.push({
             variant: 'info',
-            text: 'Domestic company',
+            text: 'Private company',
             disabled: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state),
             showDisabledWithTooltip: true,
-            tooltip: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state) ? 'Available again after ' + record.nextCompanionMonth + '.' : 'A non-explicit household companionship action. Consequences: small morale/prestige effect, relation softening, no pregnancy.',
+            tooltip: record.nextCompanionMonth && !this.monthKeyReached(record.nextCompanionMonth, state) ? 'Available again after ' + record.nextCompanionMonth + '.' : 'Private company action. Consequences: prestige effect, relation softening, risk of illegitimate child if female and fertile.',
             icons: [this.slaveTypeIcon('entertainer')],
-            action: { event: this.event, method: 'domesticCompanionSlave', context: { slaveKey: record.key, characterId: record.characterId } }
+            action: { event: this.event, method: 'privateCompanySlave', context: { slaveKey: record.key, characterId: record.characterId } }
           })
           options.push({
             variant: 'info',
@@ -8021,7 +8072,7 @@
           this.save(society)
           this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
         },
-        domesticCompanionSlave({ slaveKey, characterId } = {}) {
+        privateCompanySlave({ slaveKey, characterId } = {}) {
           let society = this.ensure()
           let state = daapi.getState()
           let record = (society.playerSlaves || []).find((slave) => (slaveKey && slave.key === slaveKey) || (characterId && this.sameCharacterId(slave.characterId, characterId)))
@@ -8029,7 +8080,6 @@
             this.openHouseholdSlaves()
             return
           }
-          record.nextCompanionMonth = this.futureMonthKey(5)
           record.savings = Math.max(0, parseFloat(record.savings || 0) + 2)
           this.applyStats({ prestige: 1 })
           let currentId = this.currentCharacterId(state)
@@ -8039,15 +8089,32 @@
               daapi.updateCharacter({
                 characterId: record.characterId,
                 character: {
-                  corSocietySlaveSavings: record.savings,
-                  corSocietySlaveNextCompanionMonth: record.nextCompanionMonth
+                  corSocietySlaveSavings: record.savings
                 }
               })
             } catch (err) {
               console.warn(err)
             }
           }
-          this.log(society, record.name + ' provides domestic company; household mood improves slightly.', 'slaves')
+          let hadPregnancy = this.tryPrivateCompanyPregnancy(society, state, record, currentId)
+          if (!hadPregnancy) {
+            record.nextCompanionMonth = this.futureMonthKey(5)
+            if (record.characterId) {
+              try {
+                daapi.updateCharacter({
+                  characterId: record.characterId,
+                  character: {
+                    corSocietySlaveNextCompanionMonth: record.nextCompanionMonth
+                  }
+                })
+              } catch (err) {
+                console.warn(err)
+              }
+            }
+            this.log(society, record.name + ' provides private company; household mood improves slightly.', 'slaves')
+          } else {
+            this.log(society, record.name + ' becomes pregnant; a bastard child will join the household.', 'slaves')
+          }
           this.save(society)
           this.openManageSlave({ slaveKey: record.key, characterId: record.characterId })
         },
