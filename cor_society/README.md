@@ -25,7 +25,12 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Bundles compatible standalone actions inside Society so they do not need separate installation: Play As, Attempt Murder, animal stealing events, Disinherit, Restore Inheritance, Bank of Rome, Coemptio matchmaking, Household Slaves, and optional desktop DevTools access. Society can also surface the bundled character actions from its `Vanilla / other mods actions` menu even if the base game has not injected them into that character yet.
 - Replaces the old Society poor order presentation with a slave order: slave kin groups, market candidates, captured dependants, household slaves, and manumitted freedmen are all represented by real characters where possible.
 - Gives slaves cultural origins, owner links, portrait framing, Society status icons, household work roles, sale/manumission flow, and access from Society menus.
+- Gives owned slaves assignable household tasks with capped owner benefits: accounts can produce cash, educators can improve children, doctors can treat household conditions, entertainers can add prestige, warriors can add influence/security, and laborers can provide small cash.
+- Gives owned slaves slow personal savings and an explicit freedom objective. When savings reach the freedom price, the player can accept self-purchase and manumit them into their own Freedmen house.
+- Allows marriages only between owned household slaves of different gender. Your family cannot arrange marriages with enslaved characters through Society or Coemptio.
+- Allows married owned slave couples to have children through the game's pregnancy API; children born to household slaves are recorded as real household slave characters.
 - Manumitted slaves become freed citizens/liberti in their own new Freedmen house, rather than being absorbed into the player's household or a shared reception house.
+- Lets manumitted freedmen houses occasionally try to buy and free enslaved close relatives when they can afford it.
 - Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
 - Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.
@@ -90,7 +95,9 @@ Roman Society does not use `setCurrentCharacter` and does not take control away 
 
 The base game blocks external platform achievements when `current.flagUsedMods` is true. Society clears that mod-used flag during its own tick so achievements can remain available while using this mod, but vanilla easy mode and sandbox mode still block achievements.
 
-The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gaulish, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Jewish, Carthaginian, Dacian, Germanic, Brittonic, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, become `roman_freedman` Society characters, and enter a new Freedmen house of their own.
+The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gaulish, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Jewish, Carthaginian, Dacian, Germanic, Brittonic, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, become `roman_freedman` Society characters, and enter a new Freedmen house of their own. Freed slaves may later spend house resources to rescue close relatives who are still enslaved.
+
+Household slave tasks are intentionally modest for balance. They create useful owner benefits without infinite stacking: cash from accounts/labor, prestige from entertainment, influence from guards, child skill improvement from educators, and possible treatment from doctors. Owned slaves also accumulate small savings toward self-purchase. Society does not implement owner-slave sexual coercion mechanics; slave family growth is handled through spouse links between owned slaves.
 
 ## Bundled Mod Credits
 
