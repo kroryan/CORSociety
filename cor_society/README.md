@@ -22,7 +22,11 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Generates persistent Roman-style house shields for the player and every known NPC house.
 - Adds a separate global `House Shield` action for editing the player's shield without cluttering the Society menus.
 - Adds a global `Family Wardrobe` action with its own wardrobe icon for changing safe vanilla-SVG clothing tint, with outfit availability tied to the player's Society order.
-- Bundles compatible standalone actions inside Society so they do not need separate installation: Play As, Attempt Murder, animal stealing events, Disinherit, Restore Inheritance, and optional desktop DevTools access. Society can also surface the bundled character actions from its `Vanilla / other mods actions` menu even if the base game has not injected them into that character yet.
+- Bundles compatible standalone actions inside Society so they do not need separate installation: Play As, Attempt Murder, animal stealing events, Disinherit, Restore Inheritance, Bank of Rome, Coemptio matchmaking, Household Slaves, and optional desktop DevTools access. Society can also surface the bundled character actions from its `Vanilla / other mods actions` menu even if the base game has not injected them into that character yet.
+- Replaces the old Society poor order presentation with a slave order: slave kin groups, market candidates, captured dependants, household slaves, and manumitted freedmen are all represented by real characters where possible.
+- Gives slaves cultural origins, owner links, portrait framing, Society status icons, household work roles, sale/manumission flow, and access from Society menus.
+- Manumitted slaves become freed citizens/liberti in their own new Freedmen house, rather than being absorbed into the player's household or a shared reception house.
+- Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
 - Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.
 - Splits allies/patrons and rivals into separate paged menus with matching overview counts and contextual Back navigation.
@@ -56,7 +60,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Civic citizens
 - Plebeian citizens
 - Freedmen
-- Urban poor
+- Slaves
 
 ## Notes
 
@@ -86,8 +90,12 @@ Roman Society does not use `setCurrentCharacter` and does not take control away 
 
 The base game blocks external platform achievements when `current.flagUsedMods` is true. Society clears that mod-used flag during its own tick so achievements can remain available while using this mod, but vanilla easy mode and sandbox mode still block achievements.
 
+The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gaulish, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Jewish, Carthaginian, Dacian, Germanic, Brittonic, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, become `roman_freedman` Society characters, and enter a new Freedmen house of their own.
+
 ## Bundled Mod Credits
 
 The bundled Play As, Murder, Stealing From, and Open DevTools snippets in `bundled/` are from `CitizenOfRomeDynastyAscendant` / the Citizen of Rome example mod ecosystem and are included here with route and asset paths adapted so Roman Society can ship as one installable package.
 
 The Disinheritance and Restore Inheritance actions are bundled from the local `CORmods` versions and adapted to run from inside Roman Society.
+
+Bank of Rome, Coemptio, and Household Slaves are based on the older open `peritiSumus/CoR-Mods` mods, with their mechanics and assets updated for the current Citizen of Rome codebase and integrated into Society's house, character, slave, banking, and matchmaking simulation.

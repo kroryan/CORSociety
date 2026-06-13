@@ -6,5 +6,8 @@
   '/cor_society/bundled/murder/attemptViaBandits',
   '/cor_society/bundled/stealingFrom/stealingFrom',
   '/cor_society/bundled/disinheritance/main',
-  '/cor_society/bundled/restoreInheritance/main'
+  '/cor_society/bundled/restoreInheritance/main',
+  '/cor_society/bundled/bank_of_rome/main',
+  '/cor_society/bundled/coemptio/main',
+  '/cor_society/bundled/household_slaves/main'
 ]

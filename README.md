@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.25.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.26.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.25.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.26.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -27,6 +27,9 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 - Family Wardrobe global action using native portrait SVG recoloring, with skin, hair, eyes, and jewelry protected from outfit tinting.
 - Custom Roman house shields for the player and NPC houses, including a configurable player shield.
 - Bundled vanilla-style and other-mod actions so Roman Society can be installed as one package instead of requiring several separate mods.
+- Integrated Bank of Rome, Coemptio matchmaking, and Household Slaves systems adapted into Society instead of requiring separate legacy installs.
+- Real slave characters in the Society slave order, with origins, owners, portraits, household roles, market purchases, capture opportunities, NPC house ownership, and manumission into their own Freedmen house.
+- NPC houses can borrow from the bank, buy and manage slaves, seek marriages, and suffer consequences from hostile social actions; cheat-style systems are not used for NPC simulation.
 - Android-focused safety rules: old unstable Society-only data can be repaired, migrated, or discarded when needed to protect loading performance and save stability.
 
 ## Project Rule
@@ -38,7 +41,7 @@ Performance, stability, Android safety, and visual quality take priority over co
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.25.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.26.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.
@@ -55,5 +58,6 @@ node -e "const fs=require('fs'); for (const f of ['cor_society/engine.js','cor_s
 - Citizen of Rome belongs to its creator. Roman Society is an unofficial fan mod.
 - `CitizenOfRomeDynastyAscendant` / the Citizen of Rome example mod ecosystem: bundled Play As, Murder, Stealing From, and Open DevTools snippets in `cor_society/bundled/`, adapted here so Roman Society can ship as one installable package.
 - Local COR mod versions: Disinheritance and Restore Inheritance actions, adapted and bundled into Roman Society for easier installation.
+- `peritiSumus/CoR-Mods`: Bank of Rome, Coemptio, and Household Slaves legacy mod concepts/assets, modernized and integrated into Roman Society with current Citizen of Rome compatibility.
 - Citizen of Rome vanilla systems and assets: Roman Society is designed around the game's existing DAAPI, event, portrait, genealogy, property, and character systems.
 - Roman Society development direction: built around performance, Android stability, visual integration, and making NPC dynasties feel like active Roman families rather than static menu entries.
