@@ -1125,7 +1125,14 @@
           if (payload && (payload.disableSocietyClose || payload.requireChoice || payload.isPriority || !payload.societyMenu)) {
             return options
           }
-          let hasClose = options.some((option) => option && typeof option === 'object' && /^close( society)?$/i.test(String(option.text || '').trim()) && !option.action)
+          let hasClose = false
+          for (let i = 0; i < options.length; i++) {
+            let opt = options[i]
+            if (opt && /^close( society)?$/i.test(String(opt.text || '').trim()) && !opt.action) {
+              hasClose = true
+              break
+            }
+          }
           if (!hasClose) {
             options.push({
               text: 'Close Society',
@@ -1172,7 +1179,7 @@
           }
           let context = action.context || {}
           let house = this.houseFromContext(context)
-          let state = daapi.getState()
+          let state = false // Lazy load state only if needed
           let profile = house ? (this.strata[house.stratum] || this.strata.plebeian) : this.strata.plebeian
           if (method === 'openEstate') return 'Consequences: opens that social order; no stats change.'
           if (method === 'openRelations') return 'Consequences: opens allies and patrons; no stats change.'
@@ -1281,6 +1288,7 @@
           if (method === 'exploitScandal') return this.effectLine(['+50 influence', '+6 prestige', '-35 house relation', '-8 house power', 'may start rivalry'])
           if (method === 'declineFamilyAffair') return this.effectLine(['-3 house relation'])
           if (method === 'performSocietyMarriage') {
+            state = daapi.getState()
             let effects = house ? this.marriageEffects(state, house) : false
             if (!effects) return 'Consequences: performs the vanilla marriage and refreshes Society.'
             let parts = [
