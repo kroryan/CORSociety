@@ -4,11 +4,21 @@
   checkType: 'allCharacters',
   checkAndAct(characterId) {
     let character = daapi.getCharacter({ characterId })
+    let deleteAction = () => {
+      for (let i = 0; i < 12; i += 1) {
+        try {
+          daapi.deleteCharacterAction({ characterId, key: 'play_as' })
+        } catch (err) {
+          break
+        }
+      }
+    }
     if (
       characterId !== daapi.getState().current.id &&
       character &&
       !character.isDead
     ) {
+      deleteAction()
       daapi.addCharacterAction({
         characterId,
         key: 'play_as',
@@ -27,10 +37,7 @@
         }
       })
     } else {
-      daapi.deleteCharacterAction({
-        characterId,
-        key: 'play_as'
-      })
+      deleteAction()
     }
   },
   methods: {

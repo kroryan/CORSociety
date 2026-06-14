@@ -13,7 +13,6 @@
   '/cor_society/modules/portraits_wardrobe',
   '/cor_society/modules/roster_overlays',
   '/cor_society/modules/log_utils',
-  '/cor_society/character_actions',
   '/cor_society/main',
   '/cor_society/bundled/play_as/main',
   '/cor_society/bundled/murder/main',

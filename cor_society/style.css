@@ -291,6 +291,11 @@
   outline: none;
 }
 
+.cor-society-tree-card.is-tree-guest {
+  border-style: dashed;
+  opacity: 0.94;
+}
+
 .cor-society-relation-anchor-text > .cor-society-character-action-button {
   top: 50%;
   right: 2.85rem;

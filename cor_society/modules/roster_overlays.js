@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.307') {
         return
       }
       Object.assign(window.corSociety, {
@@ -430,24 +430,20 @@
                   }
                   society = society || this.load()
                   state = state || daapi.getState()
+                  if (this.treeHouseIdForCharacter) {
+                    let treeHouseId = this.treeHouseIdForCharacter(character, state, society)
+                    if (treeHouseId && society.houses && society.houses[treeHouseId]) {
+                      return treeHouseId
+                    }
+                  }
                   if (this.resolveCharacterHouseId) {
-                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: true })
+                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: false })
                     if (resolvedHouseId) {
                       return resolvedHouseId
                     }
                   }
                   let dynastyId = character.dynastyId
-                  if (dynastyId) {
-                    let house = this.createHouseRecord(dynastyId)
-                    let dynasty = state.dynasties[dynastyId] || {}
-                    house.name = this.houseName(dynasty, dynastyId)
-                    house.stratum = this.classifyHouse(dynasty, [character], this.characterScore(character, state), this.isSenatorialCharacter(character, state))
-                    house.memberIds = [character.id]
-                    house.notableIds = [character.id]
-                    house.generated = false
-                    society.houses[dynastyId] = house
-                    this.refreshHouseMemberLists(society, state, house)
-                    this.save(society)
+                  if (dynastyId && society.houses && society.houses[dynastyId]) {
                     return dynastyId
                   }
                   return ''
@@ -737,23 +733,8 @@
                   if (typeof document === 'undefined') {
                     return
                   }
-                  let state = daapi.getState()
-                  if (!state || !state.characters) {
-                    return
-                  }
-                  let society = this.load()
+                  // Society Sheet is now registered as a native character action; DOM overlays caused stale floating buttons on reused game nodes.
                   this.clearFamilySocietyButtons()
-                  this.playerFamilyMemberIds(state).forEach((characterId) => {
-                    let character = state.characters[characterId]
-                    if (!character || character.isDead || this.sameCharacterId(characterId, this.currentCharacterId(state))) {
-                      return
-                    }
-                    character.id = character.id || characterId
-                    let houseId = this.houseIdForCharacter(character, state, society) || this.currentCharacterDynastyId(state)
-                    this.relationBadgeTargets(character, state).slice(0, 2).forEach((target) => {
-                      this.mountFamilySocietyButton(target.node, characterId, houseId, target.mode)
-                    })
-                  })
                 },
         clearFamilySocietyButtons() {
                   Array.prototype.slice.call(document.querySelectorAll('.cor-society-character-action-button')).forEach((button) => {
@@ -1075,7 +1056,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.307'
     }
   }
 }

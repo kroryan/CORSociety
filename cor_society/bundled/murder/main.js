@@ -6,6 +6,15 @@
   checkAndAct(characterId) {
     const currentId = daapi.getState().current.id
     const character = daapi.getCharacter({ characterId })
+    const deleteAction = (targetCharacterId, key) => {
+      for (let i = 0; i < 12; i += 1) {
+        try {
+          daapi.deleteCharacterAction({ characterId: targetCharacterId, key })
+        } catch (err) {
+          break
+        }
+      }
+    }
     if (
       characterId !== currentId &&
       character &&
@@ -14,6 +23,7 @@
       !daapi.getCharacterFlag({ characterId, flag: 'mod_murder_plotTarget' }) &&
       !daapi.getCharacterFlag({ characterId: currentId, flag: 'mod_murder_startedPlotOnTarget' })
     ) {
+      deleteAction(characterId, 'mod_murder_startPlot')
       daapi.addCharacterAction({
         characterId,
         key: 'mod_murder_startPlot',
@@ -32,7 +42,7 @@
         }
       })
     } else {
-      daapi.deleteCharacterAction({ characterId, key: 'mod_murder_startPlot' })
+      deleteAction(characterId, 'mod_murder_startPlot')
     }
   },
   methods: {
@@ -80,6 +90,13 @@
       daapi.deleteCharacterAction({ characterId, key: 'mod_murder_startPlot' })
       daapi.setCharacterFlag({ characterId, flag: 'mod_murder_plotTarget', data: true })
       daapi.setCharacterFlag({ characterId: currentId, flag: 'mod_murder_startedPlotOnTarget', data: characterId })
+      for (let i = 0; i < 12; i += 1) {
+        try {
+          daapi.deleteCharacterAction({ characterId: currentId, key: 'mod_murder_cancelPlot' })
+        } catch (err) {
+          break
+        }
+      }
       daapi.addCharacterAction({
         characterId: currentId,
         key: 'mod_murder_cancelPlot',

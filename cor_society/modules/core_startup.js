@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.307') {
         return
       }
       Object.assign(window.corSociety, {
@@ -335,22 +335,47 @@
                   if (!characterId) {
                     return false
                   }
+                  return this.replaceCharacterAction(characterId, key, {
+                    title,
+                    tooltip,
+                    icon,
+                    isAvailable: true,
+                    hideWhenBusy: false,
+                    process: {
+                      event: this.event,
+                      method,
+                      context: { characterId, ...(context || {}) }
+                    }
+                  })
+                },
+        replaceCharacterAction(characterId, key, action) {
+                  if (!characterId || !key) {
+                    return false
+                  }
+                  this.deleteCharacterActionKey(characterId, key, 12)
                   daapi.addCharacterAction({
                     characterId,
                     key,
-                    action: {
-                      title,
-                      tooltip,
-                      icon,
-                      isAvailable: true,
-                      hideWhenBusy: false,
-                      process: {
-                        event: this.event,
-                        method,
-                        context: { characterId, ...(context || {}) }
+                    action
+                  })
+                  return true
+                },
+        deleteCharacterActionKey(characterId, key, attempts) {
+                  if (!characterId || !key || !daapi.deleteCharacterAction) {
+                    return false
+                  }
+                  let max = Math.max(1, parseInt(attempts || 1, 10))
+                  for (let i = 0; i < max; i += 1) {
+                    try {
+                      daapi.deleteCharacterAction({ characterId, key })
+                    } catch (err) {
+                      try {
+                        daapi.deleteCharacterAction(characterId, key)
+                      } catch (innerErr) {
+                        break
                       }
                     }
-                  })
+                  }
                   return true
                 },
         registerPlayerEntryActions(state) {
@@ -359,15 +384,18 @@
                     let currentId = this.currentCharacterId(state)
                     let current = state && state.characters && state.characters[currentId]
                     let familyActionIds = this.playerFamilyActionMemberIds(state)
-                    let key = [this.version, 'sheet-actions-v1', currentId || '', current && this.isSlaveCharacter(current) ? 'slave' : 'free', familyActionIds.length].join(':')
+                    let key = [this.version, 'entry-actions-v2', currentId || '', current && this.isSlaveCharacter(current) ? 'slave' : 'free', familyActionIds.join(',')].join(':')
                     let now = Date.now ? Date.now() : 0
-                    this._registeredEntryActionKey = key
-                    this._registeredEntryActionAt = now || 1
                     if (!this._legacyGlobalActionsCleaned || (now && now - (this._legacyGlobalActionsCleanedAt || 0) > 60000)) {
                       this.cleanupLegacyGlobalActions()
                       this._legacyGlobalActionsCleaned = true
                       this._legacyGlobalActionsCleanedAt = now || 1
                     }
+                    if (this._registeredEntryActionKey === key && now && now - (this._registeredEntryActionAt || 0) < 30000) {
+                      return
+                    }
+                    this._registeredEntryActionKey = key
+                    this._registeredEntryActionAt = now || 1
                     this.registerCurrentCharacterAction(state, 'cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
                     this.registerCurrentCharacterAction(state, 'cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
                     this.registerCurrentCharacterAction(state, 'cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
@@ -413,32 +441,37 @@
                   try {
                     state = state || daapi.getState()
                     let icon = daapi.requireImage('/cor_society/assets/scroll.svg')
-                    ;(ids || this.playerFamilyActionMemberIds(state)).forEach((characterId) => {
+                    let actionIds = this.uniqueIds(ids || this.playerFamilyActionMemberIds(state))
+                    let actionMap = {}
+                    actionIds.forEach((characterId) => { actionMap[String(characterId)] = true })
+                    ;(this._registeredFamilySheetActionIds || []).forEach((characterId) => {
+                      if (!actionMap[String(characterId)]) {
+                        this.deleteCharacterActionKey(characterId, 'cor_society_character_sheet', 12)
+                      }
+                    })
+                    actionIds.forEach((characterId) => {
                       try {
                         let character = state.characters && state.characters[characterId]
                         if (!character) {
                           return
                         }
-                        daapi.addCharacterAction({
-                          characterId,
-                          key: 'cor_society_character_sheet',
-                          action: {
-                            title: 'Society Sheet',
-                            tooltip: 'Open this family member in Roman Society. Consequences: opens the Society character sheet; no stats change.',
-                            icon,
-                            isAvailable: true,
-                            hideWhenBusy: false,
-                            process: {
-                              event: this.event,
-                              method: 'openFamilyCharacterSheet',
-                              context: { characterId }
-                            }
+                        this.replaceCharacterAction(characterId, 'cor_society_character_sheet', {
+                          title: 'Society Sheet',
+                          tooltip: 'Open this family member in Roman Society. Consequences: opens the Society character sheet; no stats change.',
+                          icon,
+                          isAvailable: true,
+                          hideWhenBusy: false,
+                          process: {
+                            event: this.event,
+                            method: 'openFamilyCharacterSheet',
+                            context: { characterId }
                           }
                         })
                       } catch (err) {
                         console.warn('Roman Society character sheet action failed for ' + characterId, err)
                       }
                     })
+                    this._registeredFamilySheetActionIds = actionIds.slice()
                   } catch (err) {
                     console.warn(err)
                   }
@@ -450,12 +483,7 @@
                     if (!characterId || !daapi.deleteCharacterAction) {
                       return false
                     }
-                    try {
-                      daapi.deleteCharacterAction({ characterId, key: 'cor_society_player_tree' })
-                    } catch (err) {
-                      daapi.deleteCharacterAction(characterId, 'cor_society_player_tree')
-                    }
-                    return true
+                    return this.deleteCharacterActionKey(characterId, 'cor_society_player_tree', 12)
                   } catch (err) {
                     return false
                   }
@@ -483,20 +511,16 @@
                     if (!character || !this.isPlayerFamilyCharacter(state, characterId) || !this.isMarriageEligible({ ...character, id: characterId }, state)) {
                       return
                     }
-                    daapi.addCharacterAction({
-                      characterId,
-                      key: 'cor_society_coemptio_' + characterId,
-                      action: {
-                        title: 'Coemptio matchmaker',
-                        tooltip: 'Search Society houses for a real spouse candidate. Consequences: no stats change until a candidate is chosen.',
-                        icon: this.bundledIcon('coemptio', 'marriage'),
-                        isAvailable: true,
-                        hideWhenBusy: false,
-                        process: {
-                          event: this.event,
-                          method: 'openMatchmaker',
-                          context: { characterId }
-                        }
+                    this.replaceCharacterAction(characterId, 'cor_society_coemptio_' + characterId, {
+                      title: 'Coemptio matchmaker',
+                      tooltip: 'Search Society houses for a real spouse candidate. Consequences: no stats change until a candidate is chosen.',
+                      icon: this.bundledIcon('coemptio', 'marriage'),
+                      isAvailable: true,
+                      hideWhenBusy: false,
+                      process: {
+                        event: this.event,
+                        method: 'openMatchmaker',
+                        context: { characterId }
                       }
                     })
                   } catch (err) {
@@ -687,7 +711,7 @@
                   return society
                 }
       })
-      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.307'
     }
   }
 }

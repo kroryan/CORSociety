@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.307') {
         return
       }
       Object.assign(window.corSociety, {
@@ -43,14 +43,63 @@
                       seen[String(id)] = true
                     }
                   }
+                  let reverseChildren = (parentId) => {
+                    let ids = []
+                    if (parentId === undefined || parentId === null || parentId === '') {
+                      return ids
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if (this.sameCharacterId(candidate.fatherId, parentId) || this.sameCharacterId(candidate.motherId, parentId)) {
+                        ids.push(candidateId)
+                      }
+                    })
+                    return ids
+                  }
+                  let reverseSpouses = (spouseId) => {
+                    let ids = []
+                    if (spouseId === undefined || spouseId === null || spouseId === '') {
+                      return ids
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if (this.sameCharacterId(candidate.spouseId, spouseId)) {
+                        ids.push(candidateId)
+                      }
+                    })
+                    return ids
+                  }
+                  let reverseSiblings = (siblingId) => {
+                    let ids = []
+                    if (siblingId === undefined || siblingId === null || siblingId === '') {
+                      return ids
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if ((candidate.siblingIds || []).some((id) => this.sameCharacterId(id, siblingId))) {
+                        ids.push(candidateId)
+                      }
+                    })
+                    return ids
+                  }
                   let addRelatives = (character) => {
                     if (!character) return
-                    add(character.id)
+                    let characterId = character.id || Object.keys(characters).find((id) => characters[id] === character)
+                    add(characterId)
                     add(character.spouseId)
+                    reverseSpouses(characterId).forEach(add)
                     add(character.fatherId)
                     add(character.motherId)
                     ;(character.childrenIds || []).forEach(add)
+                    reverseChildren(characterId).forEach(add)
                     ;(character.siblingIds || []).forEach(add)
+                    reverseSiblings(characterId).forEach(add)
+                    ;[character.fatherId, character.motherId].forEach((parentId) => {
+                      reverseChildren(parentId).forEach(add)
+                    })
                   }
                   add(currentId)
                   ;[
@@ -62,16 +111,14 @@
                   })
                   player.id = player.id || currentId
                   addRelatives(player)
-                  ;(player.childrenIds || []).forEach((childId) => {
+                  let playerChildren = this.uniqueIds((player.childrenIds || []).concat(reverseChildren(currentId)))
+                  playerChildren.forEach((childId) => {
                     let child = characters[childId]
                     if (!child) return
                     addRelatives(child)
                     ;(child.childrenIds || []).forEach(add)
+                    reverseChildren(childId).forEach(add)
                   })
-                  let dynastyId = player.dynastyId || this.currentCharacterDynastyId(state)
-                  if (dynastyId && state.dynasties && state.dynasties[dynastyId]) {
-                    ;(state.dynasties[dynastyId].memberIds || []).forEach(add)
-                  }
                   return seen
                 },
         isPlayerFreeFamilyCharacter(state, characterId, character) {
@@ -85,8 +132,7 @@
                   if (close[String(characterId)]) {
                     return true
                   }
-                  let currentDynastyId = this.currentCharacterDynastyId(state)
-                  return !!(currentDynastyId && character.dynastyId && String(character.dynastyId) === String(currentDynastyId))
+                  return false
                 },
         freedmanHouseForCharacter(society, state, record, character) {
                   state = state || daapi.getState()
@@ -1908,7 +1954,6 @@
                   let current = state.current || {}
                   let currentId = this.currentCharacterId(state)
                   let player = characters[currentId] || {}
-                  let dynastyId = player.dynastyId
                   let seen = {}
                   let ids = []
                   let add = (characterId) => {
@@ -1917,6 +1962,48 @@
                     }
                     seen[characterId] = true
                     ids.push(characterId)
+                  }
+                  let reverseChildren = (parentId) => {
+                    let result = []
+                    if (parentId === undefined || parentId === null || parentId === '') {
+                      return result
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if (this.sameCharacterId(candidate.fatherId, parentId) || this.sameCharacterId(candidate.motherId, parentId)) {
+                        result.push(candidateId)
+                      }
+                    })
+                    return result
+                  }
+                  let reverseSpouses = (spouseId) => {
+                    let result = []
+                    if (spouseId === undefined || spouseId === null || spouseId === '') {
+                      return result
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if (this.sameCharacterId(candidate.spouseId, spouseId)) {
+                        result.push(candidateId)
+                      }
+                    })
+                    return result
+                  }
+                  let reverseSiblings = (siblingId) => {
+                    let result = []
+                    if (siblingId === undefined || siblingId === null || siblingId === '') {
+                      return result
+                    }
+                    Object.keys(characters).forEach((candidateId) => {
+                      let candidate = characters[candidateId]
+                      if (!candidate || candidate.isDead) return
+                      if ((candidate.siblingIds || []).some((id) => this.sameCharacterId(id, siblingId))) {
+                        result.push(candidateId)
+                      }
+                    })
+                    return result
                   }
                   add(currentId)
                   ;[
@@ -1932,24 +2019,24 @@
                     if (!character) {
                       return
                     }
+                    let characterId = character.id || Object.keys(characters).find((id) => characters[id] === character)
                     add(character.fatherId)
                     add(character.motherId)
                     add(character.spouseId)
+                    reverseSpouses(characterId).forEach(add)
                     ;(character.childrenIds || []).forEach(add)
+                    reverseChildren(characterId).forEach(add)
                     ;(character.siblingIds || []).forEach(add)
+                    reverseSiblings(characterId).forEach(add)
                     ;(character.dependantIds || []).forEach(add)
                     ;(character.dependentIds || []).forEach(add)
-                  }
-                  addRelations(player)
-                  if (dynastyId && state.dynasties && state.dynasties[dynastyId]) {
-                    ;(state.dynasties[dynastyId].memberIds || []).slice(0, 160).forEach((characterId) => {
-                      let character = characters[characterId]
-                      if (!character || character.isDead) return
-                      add(character.id || characterId)
-                      addRelations(character)
+                    ;[character.fatherId, character.motherId].forEach((parentId) => {
+                      reverseChildren(parentId).forEach(add)
                     })
                   }
-                  ;(player.childrenIds || []).forEach((characterId) => {
+                  addRelations(player)
+                  let playerChildren = this.uniqueIds((player.childrenIds || []).concat(reverseChildren(currentId)))
+                  playerChildren.forEach((characterId) => {
                     let character = characters[characterId]
                     if (!character || character.isDead) return
                     add(character.id || characterId)
@@ -2286,7 +2373,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.307'
     }
   }
 }

@@ -8,44 +8,44 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.303` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
+`1.1.307` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
 
 ## Features
 
-- Adds `Roman Society`, `House Shield`, `Family Wardrobe`, `Bank of Rome`, `Household Slaves`, and `Player Dynasty Tree` as actions on the current player character instead of cluttering the global action bar.
+- Adds `Roman Society`, `House Shield`, `Family Wardrobe`, `Bank of Rome`, and `Household Slaves` as actions on the current player character instead of cluttering the global action bar.
 - Adds a `Close Society` button to Society modal pages so the menu can be closed directly without walking back through every screen.
-- Prepares the current player dynasty tree during mod startup/monthly sync, so missing dead parents, grandparents, and limited extra kin exist before the tree is opened.
+- Keeps tree opening non-destructive: menu navigation no longer fabricates missing dead parents, grandparents, or extra kin just to make a larger tree.
 - Repairs and maintains one canonical player house tied to the current vanilla dynasty, so Society Sheet, house crest, member groups, Coemptio, and family trees all resolve spouse, children, and close kin through the same household instead of stale cloned houses.
 - Groups houses into social orders using existing game data: dynasty prestige, heritage, jobs, inheritance, Senate links, and living members.
 - Separates dynasties from houses: every dynasty has at least one origin house, can gain secondary cadet houses, and tracks a current head house independently from the origin house name.
 - Lets strong cadet houses challenge and replace the current dynasty head house without renaming any house or breaking the wider dynasty tree.
-- Unifies graphical genealogy around strict tree scopes: `Full family tree` and `Full dynasty tree` resolve only the selected dynasty and its houses, while `House tree` filters that same graph down to the selected house only.
-- Labels every tree portrait card with its Society house crest and origin/cadet house name, so full dynasty trees show which branch each character belongs to.
+- Unifies graphical genealogy around strict tree scopes: `Dynasty tree` resolves only the selected dynasty and its houses, while `House tree` filters that same graph down to the selected connected house branch only.
+- Labels every tree portrait card with its Society house crest and origin/cadet house name, so dynasty trees show which branch each character belongs to.
 - Keeps external spouses, slaves, captured dependants, and unrelated houses out of dynasty and house-tree expansion, reducing duplicate roots and Android freezes when opening large Society trees.
 - Uses connected tree components, canonical couple roots, and shared render deduplication so the same character is not repeated through father, mother, grandfather, grandmother, or stale generated roots.
 - Treats `knownMemberIds` as historical memory, not authoritative house-tree membership, preventing old cached Society records from flooding active house trees.
-- House trees now keep multiple valid house components instead of only the selected character's nuclear-family component, so a single house can show several branches while staying scoped to that house.
+- House trees now keep the connected component around the selected house member or house root, suppressing same-house people who are not attached by any real parent, child, or spouse edge.
 - Tree opening no longer scans all generated Society characters for every house tree; it uses scoped house/dynasty lists and local relationship indexes to reduce Android stalls.
-- Full dynasty trees now repair disconnected dynasty components through dead collateral ancestors before rendering, so generated houses and cadet houses do not appear as floating unrelated roots.
-- Full dynasty tree rendering avoids global character scans and shows one connected dynasty component at a time; if older save data still contains disconnected debris, it is hidden instead of drawn as a separate root.
-- Full dynasty and house tree openings now share a per-month runtime cache, so opening the same dynasty tree again from another Society route does not repeat the heavy genealogy scan in the same turn.
-- House trees now run a bounded once-per-month connection repair before rendering and suppress disconnected root debris, keeping the selected house branch connected instead of showing stray `Root` cards.
+- Dynasty trees no longer create dead collateral ancestors during rendering; disconnected legacy debris is filtered instead of being papered over with new ghost people.
+- Dynasty tree rendering avoids global character scans and shows one connected dynasty component at a time; if older save data still contains disconnected debris, it is hidden instead of drawn as a separate root.
+- Dynasty and house tree openings now share a per-month runtime cache, so opening the same dynasty tree again from another Society route does not repeat the heavy genealogy scan in the same turn.
+- House trees run selected-house membership repair before rendering and suppress disconnected root debris without inventing retroactive ancestry.
 - Adds a canonical house-resolution model used by Society menus, overlays, house lists, and tree renderers: valid explicit house first, then paternal/maternal inheritance, then the dynasty origin house.
 - Repairs old contaminated `corSocietyHouseId` data conservatively, filters stale `knownMemberIds`, and keeps slave/historical membership separate from free house-tree membership.
-- House Tree now builds from `selectedHouseId`, not from the selected character's family component: it gathers every real member whose canonical house is the selected house, supports multiple internal branches, and uses the selected character only as a visual focus.
-- House Tree no longer passes through the focus-component crop used by Full Dynasty Tree, so uncles, cousins, siblings, descendants, and collateral branches remain visible when they belong to the same house.
+- House Tree builds from `selectedHouseId`, then crops to the real connected branch around the focused/root member so unrelated same-house records do not appear as random branches.
+- Uncles, cousins, siblings, descendants, and collateral branches remain visible when they are actually connected to that branch.
 - External spouses may still appear as visual spouse cards, but they are not roots, seeds, or expandable members of the selected house.
 - Living top-level branches in House Tree are labeled `House branch` instead of `Root`, avoiding the misleading appearance of loose generated roots when a house has several internal branches.
 - Added targeted `repairHouseMembership()` before House Tree rendering to repair cadet branch membership, invalid house pointers, and stale known-member lists for the selected house without inventing living characters.
 - Adds `validateDynastyHouseSystem()` to the Society debug snapshot so dynasty/house origin, parent house, founder, member, and mismatch warnings can be inspected from `corSocietyDebug("full")`.
 - Cadet houses now carry `parentHouseId`, `founderId`, `branchRootId`, and `createdAtTurn`, and branch creation moves the founder's descendant branch instead of only immediate children.
 - Generated child relatives now receive both parents, using existing spouses or dead connector parents, preventing half-parent records from turning into loose roots later.
-- Creating a cadet house, whether by the player or NPC house simulation, now forces a dynasty-tree connection pass so the new house remains part of the wider dynasty instead of a standalone tree.
+- Creating a cadet house, whether by the player or NPC house simulation, refreshes dynasty and house membership without fabricating new historical ancestors.
 - Generates missing houses so every social level has families to interact with.
 - Seeds generated houses with real game characters at startup, preferring young adult founders so they have time to marry, have children, rise, or fall.
 - Generated houses try to keep at least one living man and one living woman available, so new houses do not begin as immediate dead-end lines.
-- Generated houses now enforce a connected dynasty tree: every generated house gets a shared ancestor line up to grandparents and at least one pair of siblings, while keeping extra living kin tightly limited.
-- Generated children with one missing parent are repaired with the missing ghost parent, keeping graphical Society trees coherent.
+- Generated houses seed living members conservatively and rely on real parent, child, and spouse links rather than retroactive shared ancestor lines.
+- Generated children with one existing parent can be repaired with the missing spouse/parent; characters with no parents are no longer given a fabricated dead parent pair during tree rendering.
 - Uses vanilla Citizen of Rome portrait assets through a local `icons/characters/...` to `img/*.svg` resolver, and keeps vanilla look data as the base identity.
 - Uses stable vanilla-based looks for Society-generated characters, with age progression and inherited look colors.
 - Gives generated characters vanilla Citizen of Rome traits through `daapi.addTrait`.
@@ -80,7 +80,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Uses copied vanilla interface icons for social orders and Society actions where the mod API allows local assets.
 - Lets the player inspect every known living dynasty member through Notables, Established members, and Common kin.
 - Lets the player interact with houses and characters, including Society actions plus vanilla / other mod character actions when the game exposes them.
-- Adds character family navigation through one `Full family tree` button, plus dynasty and house-extraction graphical trees with portrait cards, spouse links, children branches, house labels, zoom, centering, stable Back navigation, and dark/light theme detection.
+- Adds character family navigation through Society Sheet routes plus house and dynasty graphical trees with portrait cards, spouse links, children branches, house labels, zoom, centering, stable Back navigation, and dark/light theme detection.
 - Lets the player arrange marriages between unmarried adults from their household and NPC houses using the game's marriage API.
 - Includes the current player character as a marriage candidate when they are unmarried, so starts without a spouse and sudden succession cases can still use Society marriages.
 - Lets introduced characters become lovers through private courtship regardless of gender, with rapport, cooldowns, scandal risk, possible pregnancy when biologically possible, and divorce fallout when an exposed affair breaks a marriage.
