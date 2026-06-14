@@ -8,7 +8,7 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 The achievement compatibility hook is intentional and must not be removed.
 
-## Version 1.1.293
+## Version 1.1.294
 
 This build is based on the stable 1.1.290 gameplay layer and keeps the working action/button dispatch flow while splitting the former monolithic engine into module mixins.
 
@@ -19,6 +19,7 @@ This build is based on the stable 1.1.290 gameplay layer and keeps the working a
 - Houses with no living known members are removed from active Society orders and moved to a dead-house archive under Past Affairs.
 - Dead houses keep historical info and an archived graphical family tree when characters still exist in the save.
 - Bank of Rome now includes private loans: the player can lend to houses, and NPC houses can extend credit to each other.
+- Private loans now also support player borrowing: use Borrow to request credit from wealthy houses, with acceptance based on cash, relation, stability, and amount.
 - Generated child records with one missing parent are repaired with a matching ghost parent so Society trees stay coherent.
 - Slave market pagination keeps Next/Previous known people below market offers instead of splitting the list.
 - Same-family and spouse character pages use family visit options rather than Request Introduction.

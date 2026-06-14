@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.293') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.294') {
         return
       }
       Object.assign(window.corSociety, {
@@ -2875,7 +2875,7 @@
                   let cash = parseFloat(((state || {}).current || {}).cash || 0)
                   let active = (society.privateLoans || []).filter((loan) => loan && loan.status === 'active')
                   let options = active.slice(0, 8).map((loan) => {
-                    let borrower = society.houses && society.houses[loan.borrowerHouseId]
+                    let borrower = String(loan.borrowerHouseId || '') === 'player' ? { name: 'Your household' } : society.houses && society.houses[loan.borrowerHouseId]
                     let lender = loan.lenderHouseId === 'player' ? 'Your household' : ((society.houses && society.houses[loan.lenderHouseId] && society.houses[loan.lenderHouseId].name) || 'Unknown lender')
                     let principal = Math.round(parseFloat(loan.principal || 0))
                     let interest = Math.max(1, Math.ceil(principal * parseFloat(loan.interestRate || 0.10)))
@@ -2886,6 +2886,17 @@
                       showDisabledWithTooltip: true,
                       icons: [this.affairIcon('bank')]
                     }
+                  })
+                  options.unshift({
+                    variant: 'info',
+                    text: 'Borrow',
+                    tooltip: this.privateLoanActiveForBorrower(society, 'player')
+                      ? 'You already have an active private loan as borrower. Repay or settle it before requesting another.'
+                      : 'Request private loans from wealthy Society houses. Houses can accept or refuse depending on cash, relation, stability, and amount.',
+                    disabled: this.privateLoanActiveForBorrower(society, 'player'),
+                    showDisabledWithTooltip: true,
+                    icons: [this.affairIcon('coins'), this.affairIcon('bank')],
+                    action: { event: this.event, method: 'openPrivateLoanBorrowers' }
                   })
                   let candidates = this.sortedHouses(society)
                     .filter((house) => {
@@ -2935,14 +2946,160 @@
                   this.pushModal({
                     societyMenu: true,
                     title: 'Private Loans',
-                    message: 'Offer private credit to houses or inspect active contracts. NPC houses can also lend to each other when one has surplus and another needs liquidity.',
+                    message: 'Offer private credit, request loans from wealthy houses, or inspect active contracts. NPC houses can also lend to each other when one has surplus and another needs liquidity.',
                     societySummaryOptions: [
                       this.summaryOption('Your cash', Math.round(cash), [this.affairIcon('coins')], 'Cash available to lend.'),
                       this.summaryOption('Active loans', active.length, [this.affairIcon('bank')], 'Active private loans in Society.'),
-                      this.summaryOption('Borrowers', totalCandidates, [this.affairIcon('trade')], 'Eligible active houses without an existing private loan.')
+                      this.summaryOption('Lend targets', totalCandidates, [this.affairIcon('trade')], 'Eligible active houses you can offer private credit to.')
                     ],
                     image: this.affairIcon('bank'),
                     options
+                  })
+                },
+        openPrivateLoanBorrowers({ page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  page = parseInt(page || 0, 10)
+                  let hasActiveBorrowing = this.privateLoanActiveForBorrower(society, 'player')
+                  let houses = this.sortedHouses(society)
+                    .filter((house) => {
+                      if (!house || String(house.id) === String(this.currentCharacterDynastyId(state)) || !this.houseLivingMemberIds(society, state, house).length) return false
+                      return this.privateLoanRequestAmounts(state, house).length > 0
+                    })
+                    .sort((a, b) => parseFloat(((b.ai || {}).cash) || 0) - parseFloat(((a.ai || {}).cash) || 0))
+                  let options = houses.slice(page * 6, page * 6 + 6).map((house) => {
+                    let amounts = this.privateLoanRequestAmounts(state, house)
+                    let best = amounts.length ? amounts[amounts.length - 1] : 0
+                    return {
+                      variant: 'info',
+                      text: 'Ask ' + house.name,
+                      tooltip: 'Estimated house cash: ' + Math.round(parseFloat(((house.ai || {}).cash) || 0)) + '\nMaximum available request: ' + best + '\nRelation: ' + this.signed(house.relation || 0) + '\nOpen amount choices.',
+                      disabled: hasActiveBorrowing || !amounts.length,
+                      showDisabledWithTooltip: true,
+                      icons: [this.houseCrestIcon(society, house), this.affairIcon('bank')],
+                      action: { event: this.event, method: 'openPrivateLoanRequest', context: { houseId: house.id, page } }
+                    }
+                  })
+                  if ((page + 1) * 6 < houses.length) {
+                    options.push({ text: 'Next lenders', action: { event: this.event, method: 'openPrivateLoanBorrowers', context: { page: page + 1 } } })
+                  }
+                  if (page > 0) {
+                    options.push({ text: 'Previous lenders', action: { event: this.event, method: 'openPrivateLoanBorrowers', context: { page: page - 1 } } })
+                  }
+                  options.push({ text: 'Back', action: { event: this.event, method: 'openPrivateLoans' } })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Borrow Private Money',
+                    message: hasActiveBorrowing ? 'Your household already has an active private loan as borrower.' : 'Choose a wealthy house and request private credit. Acceptance is not guaranteed.',
+                    societySummaryOptions: [
+                      this.summaryOption('Available lenders', houses.length, [this.affairIcon('bank')], 'Houses with enough cash to consider a private loan request.'),
+                      this.summaryOption('Your cash', Math.round(parseFloat(((state || {}).current || {}).cash || 0)), [this.affairIcon('coins')], 'Current household cash.'),
+                      this.summaryOption('Rule', hasActiveBorrowing ? 'one active debt' : 'free to ask', [this.affairIcon('log')], 'Only one active private player-borrowed loan is allowed at a time.')
+                    ],
+                    image: this.affairIcon('bank'),
+                    options
+                  })
+                },
+        openPrivateLoanRequest({ houseId, page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  if (!house) {
+                    this.openPrivateLoanBorrowers({ page: page || 0 })
+                    return
+                  }
+                  let amounts = this.privateLoanRequestAmounts(state, house)
+                  let activeDebt = this.privateLoanActiveForBorrower(society, 'player')
+                  let options = amounts.map((amount) => {
+                    let chance = this.privateLoanRequestAcceptanceChance(society, state, house, amount)
+                    let rate = this.privateLoanRateForPlayerRequest(house, state)
+                    let interest = Math.max(1, Math.ceil(amount * rate))
+                    return {
+                      variant: chance >= 0.5 ? 'info' : 'danger',
+                      text: 'Request ' + amount + ' (' + this.privateLoanAcceptanceText(chance) + ')',
+                      tooltip: 'Private loan request to ' + house.name + '.\nAcceptance: ' + Math.round(chance * 100) + '% (' + this.privateLoanAcceptanceText(chance) + ').\nExpected repayment: ' + (amount + interest) + ' after interest.\nIf accepted now: +' + amount + ' cash. If refused: no cash changes.',
+                      statChanges: { cash: amount },
+                      disabled: activeDebt || parseFloat(((house.ai || {}).cash) || 0) < amount,
+                      showDisabledWithTooltip: true,
+                      icons: [this.affairIcon('coins'), this.houseCrestIcon(society, house)],
+                      action: { event: this.event, method: 'requestPrivateLoan', context: { houseId, amount, page: page || 0 } }
+                    }
+                  })
+                  if (!options.length) {
+                    options.push({
+                      disabled: true,
+                      showDisabledWithTooltip: true,
+                      text: 'No amount available',
+                      tooltip: house.name + ' does not have enough spare cash to lend right now.',
+                      icons: [this.affairIcon('bank')]
+                    })
+                  }
+                  options.push({ text: 'Back', action: { event: this.event, method: 'openPrivateLoanBorrowers', context: { page: page || 0 } } })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Request Private Loan',
+                    message: 'Choose the amount to request from ' + house.name + '. The house can accept or refuse.',
+                    societySummaryOptions: [
+                      this.summaryOption('House cash', Math.round(parseFloat(((house.ai || {}).cash) || 0)), [this.affairIcon('coins')], 'Estimated liquid cash held by this house.'),
+                      this.summaryOption('Relation', this.signed(house.relation || 0), [this.affairIcon('support')], 'Better relations improve acceptance.'),
+                      this.summaryOption('Rate', Math.round(this.privateLoanRateForPlayerRequest(house, state) * 100) + '%', [this.affairIcon('bank')], 'Interest rate for this request.')
+                    ],
+                    image: this.houseCrestIcon(society, house),
+                    options
+                  })
+                },
+        requestPrivateLoan({ houseId, amount, page } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  amount = Math.max(1, Math.round(parseFloat(amount || 0)))
+                  if (!house || this.privateLoanActiveForBorrower(society, 'player') || parseFloat(((house.ai || {}).cash) || 0) < amount) {
+                    this.openPrivateLoanBorrowers({ page: page || 0 })
+                    return
+                  }
+                  let chance = this.privateLoanRequestAcceptanceChance(society, state, house, amount)
+                  let accepted = Math.random() < chance
+                  if (accepted) {
+                    house.ai = house.ai || {}
+                    house.ai.cash = parseFloat(house.ai.cash || 0) - amount
+                    let loan = this.createPrivateLoan(society, state, houseId, 'player', amount, 'playerBorrow')
+                    if (!loan) {
+                      house.ai.cash = parseFloat(house.ai.cash || 0) + amount
+                      this.openPrivateLoanBorrowers({ page: page || 0 })
+                      return
+                    }
+                    this.applyStats({ cash: amount })
+                    house.relation = this.clamp((house.relation || 0) + 3, -100, 100)
+                    house.lastFamilyEvent = 'Extends private credit to your household.'
+                    house.lastFamilyKind = 'bank'
+                    this.log(society, house.name + ' accepts your private loan request of ' + amount + '.', 'bank', house.id)
+                    this.save(society)
+                    this.pushModal({
+                      societyMenu: true,
+                      title: 'Loan Request Accepted',
+                      message: house.name + ' lends your household ' + amount + ' cash. Repayment will be requested at the due date.',
+                      image: this.houseCrestIcon(society, house),
+                      options: [
+                        { text: 'Private loans', action: { event: this.event, method: 'openPrivateLoans' } },
+                        { text: 'House', action: { event: this.event, method: 'openHouse', context: { houseId } } }
+                      ]
+                    })
+                    return
+                  }
+                  house.relation = this.clamp((house.relation || 0) - (amount > (house.wealth || 100) * 0.55 ? 3 : 1), -100, 100)
+                  house.lastFamilyEvent = 'Refuses a private loan request from your household.'
+                  house.lastFamilyKind = 'bank'
+                  this.log(society, house.name + ' refuses your private loan request of ' + amount + '.', 'bank', house.id)
+                  this.save(society)
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Loan Request Refused',
+                    message: house.name + ' refuses to lend ' + amount + ' cash. No money changes hands.',
+                    image: this.houseCrestIcon(society, house),
+                    options: [
+                      { text: 'Try another amount', action: { event: this.event, method: 'openPrivateLoanRequest', context: { houseId, page: page || 0 } } },
+                      { text: 'Lenders', action: { event: this.event, method: 'openPrivateLoanBorrowers', context: { page: page || 0 } } }
+                    ]
                   })
                 },
         openPrivateLoanOffer({ houseId, page } = {}) {
@@ -3939,7 +4096,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.293'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.294'
     }
   }
 }

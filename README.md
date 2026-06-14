@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.293` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
+`1.1.294` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
 
 ## Features
 
@@ -45,7 +45,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Enslaved player characters reached through Play As get a current-character `Path to Freedom` action with extra work, patron-seeking, petitions, escape attempts, savings, and manumission into a free Freedmen house.
 - Lets manumitted freedmen houses occasionally try to buy and free enslaved close relatives when they can afford it.
 - Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
-- Bank of Rome includes private loans: the player can lend personal cash to Society houses, and NPC houses can lend to each other when one has surplus and another needs liquidity.
+- Bank of Rome includes private loans: the player can lend personal cash to Society houses, request loans from wealthy houses through `Borrow`, and NPC houses can lend to each other when one has surplus and another needs liquidity.
 - Lets NPC houses use vanilla Citizen of Rome property economics: the same property keys, values, revenue, stewardship limits, economy-of-scale factor, sale rate, and senatorial commercial-property restriction used by the base game.
 - Injects a Bank of Rome loan option into negative-cash forced-sale/debt notices when possible, so debt can be covered by a balanced loan in the same flow instead of a separate follow-up prompt.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.293') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.294') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1477,7 +1477,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.293'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.294'
     }
   }
 }

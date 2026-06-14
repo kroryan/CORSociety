@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.293') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.294') {
         return
       }
       Object.assign(window.corSociety, {
@@ -691,6 +691,19 @@
                     }
                   }
                   if (method === 'deferBankPayment') return { prestige: -8, influence: -20 }
+                  if (method === 'requestPrivateLoan' && amount > 0) return { cash: amount }
+                  if (method === 'payPlayerPrivateLoan' && context.loanId) {
+                    try {
+                      let society = this.load()
+                      let loan = (society.privateLoans || []).find((item) => item && item.id === context.loanId)
+                      if (loan && this.playerPrivateLoanTotals) {
+                        return { cash: -this.playerPrivateLoanTotals(loan).total }
+                      }
+                    } catch (err) {
+                      console.warn(err)
+                    }
+                  }
+                  if (method === 'defaultPlayerPrivateLoan') return { prestige: -8, influence: -12 }
                   if ((method === 'buySlave' || method === 'buyEnslavedCharacter') && cost > 0) return { cash: -cost }
                   if (method === 'captureEnslavedCharacter' && cost > 0) return { cash: -cost, influence: -10 }
                   if (method === 'privateCompanySlave') return { prestige: 1 }
@@ -731,6 +744,9 @@
                   if (method === 'openRivals') return 'Consequences: opens rival houses; no stats change.'
                   if (method === 'openWardrobe') return 'Consequences: opens the household wardrobe; no stats change.'
                   if (method === 'openBankOfRome') return 'Consequences: opens Bank of Rome loans and payments; no stats change yet.'
+                  if (method === 'openPrivateLoans') return 'Consequences: opens private lending and borrowing; no stats change yet.'
+                  if (method === 'openPrivateLoanBorrowers') return 'Consequences: opens houses you can ask for private loans; no stats change yet.'
+                  if (method === 'openPrivateLoanRequest') return 'Consequences: opens possible loan request amounts; no stats change yet.'
                   if (method === 'openHouseholdSlaves') return 'Consequences: opens household slave management; no stats change yet.'
                   if (method === 'openMatchmaker') return 'Consequences: opens matchmaker offers for this character; no stats change yet.'
                   if (method === 'openPlayerFamilyTree') return 'Consequences: opens your Society-style dynasty tree; may add missing dead ancestors and up to a few living kin if absent.'
@@ -770,6 +786,10 @@
                   if (method === 'takeBankLoan') return this.effectLine(['cash now', 'annual interest payment', 'loan principal remains until repaid'])
                   if (method === 'takeEmergencyDebtLoan') return this.effectLine(['cash enough to cover current debt', 'annual interest payment', 'loan principal remains until repaid'])
                   if (method === 'payBankLoan') return this.effectLine(['cash payment', 'reduces or clears loan principal'])
+                  if (method === 'requestPrivateLoan') return this.effectLine(['if accepted: cash gain now', 'private debt due later with interest', 'if refused: no cash changes'])
+                  if (method === 'payPlayerPrivateLoan') return this.effectLine(['cash payment', 'closes player private loan', 'creditor relation improves'])
+                  if (method === 'extendPlayerPrivateLoan') return this.effectLine(['interest added to principal', 'due date delayed six months', 'creditor relation worsens slightly'])
+                  if (method === 'defaultPlayerPrivateLoan') return this.effectLine(['debt grows', '-8 prestige', '-12 influence', 'creditor relation worsens'])
                   if (method === 'buySlave') return this.effectLine(['cash cost', 'adds one household slave', 'monthly task may improve cash, prestige, influence, education, health, or labor output'])
                   if (method === 'buyEnslavedCharacter') return this.effectLine(['cash cost', 'moves this real Society character into your household as a slave', 'origin and previous owner are preserved'])
                   if (method === 'captureEnslavedCharacter') return this.effectLine(['cash and influence cost', 'captures this real Society character as a household slave', 'origin house relation worsens'])
@@ -869,7 +889,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.293'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.294'
     }
   }
 }

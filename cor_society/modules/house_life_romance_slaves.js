@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.293') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.294') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1704,13 +1704,56 @@
                   if (chance >= 0.18) return 'unlikely'
                   return 'very unlikely'
                 },
+        privateLoanRateForPlayerRequest(lenderHouse, state) {
+                  let base = this.privateLoanRate(lenderHouse)
+                  let current = (state && state.current) || {}
+                  let standing = (parseFloat(current.prestige || 0) + parseFloat(current.influence || 0)) / 12000
+                  return this.clamp(base + 0.025 - Math.min(0.035, standing), 0.07, 0.20)
+                },
+        privateLoanRequestAmounts(state, lenderHouse) {
+                  let lenderCash = Math.max(0, Math.floor(parseFloat(((lenderHouse || {}).ai || {}).cash || 0)))
+                  let wealth = Math.max(80, parseFloat((lenderHouse && lenderHouse.wealth) || 100))
+                  let cap = Math.max(0, Math.min(100000, Math.floor(lenderCash * 0.55), Math.max(300, Math.round(wealth * 20))))
+                  let ladder = [200, 1000, 2000, 3000, 5000, 10000, 20000, 50000, 70000, 100000]
+                  let seen = {}
+                  return ladder
+                    .filter((amount) => amount <= cap)
+                    .filter((amount) => {
+                      if (seen[amount]) return false
+                      seen[amount] = true
+                      return true
+                    })
+                },
+        privateLoanRequestAcceptanceChance(society, state, lenderHouse, amount) {
+                  if (!lenderHouse || this.privateLoanActiveForBorrower(society, 'player')) {
+                    return 0
+                  }
+                  amount = Math.max(1, Math.round(parseFloat(amount || 0)))
+                  let lenderCash = Math.max(0, parseFloat(((lenderHouse || {}).ai || {}).cash || 0))
+                  if (lenderCash < amount) {
+                    return 0
+                  }
+                  let wealth = Math.max(80, parseFloat(lenderHouse.wealth || lenderHouse.prestige || 100))
+                  let liquidity = this.clamp((lenderCash - amount) / Math.max(250, wealth * 0.85), -0.28, 0.34)
+                  let relationScore = this.clamp((lenderHouse.relation || 0) / 220, -0.32, 0.34)
+                  let burden = amount / Math.max(100, wealth * 1.15)
+                  let burdenScore = burden <= 0.5 ? 0.12 : burden <= 1 ? 0 : -Math.min(0.42, (burden - 1) * 0.28)
+                  let stabilityScore = this.clamp(((lenderHouse.stability || 50) - 45) / 240, -0.08, 0.14)
+                  let rivalryPenalty = lenderHouse.rivalry ? -0.28 : 0
+                  let current = (state && state.current) || {}
+                  let standingScore = this.clamp((parseFloat(current.prestige || 0) + parseFloat(current.influence || 0)) / 9000, 0, 0.18)
+                  let chance = 0.26 + liquidity + relationScore + burdenScore + stabilityScore + standingScore + rivalryPenalty
+                  return this.clamp(chance, 0.03, 0.88)
+                },
         createPrivateLoan(society, state, lenderHouseId, borrowerHouseId, amount, source) {
-                  let borrower = society.houses && society.houses[borrowerHouseId]
+                  let isPlayerBorrower = String(borrowerHouseId || '') === 'player'
+                  let borrower = isPlayerBorrower ? { id: 'player', name: 'Your household' } : society.houses && society.houses[borrowerHouseId]
                   if (!borrower || amount <= 0 || this.privateLoanActiveForBorrower(society, borrowerHouseId)) {
                     return false
                   }
                   society.privateLoans = society.privateLoans || []
-                  let rate = this.privateLoanRate(borrower)
+                  let lender = lenderHouseId === 'player' ? false : society.houses && society.houses[lenderHouseId]
+                  let rate = isPlayerBorrower ? this.privateLoanRateForPlayerRequest(lender, state) : this.privateLoanRate(borrower)
                   let id = 'private_loan_' + this.safeId(lenderHouseId || 'player') + '_' + this.safeId(borrowerHouseId) + '_' + this.monthIndex(this.monthKey(state)) + '_' + society.privateLoans.length
                   let loan = {
                     id,
@@ -1724,10 +1767,12 @@
                     dueMonth: this.futureMonthKey(this.randomInt(8, 14))
                   }
                   society.privateLoans.push(loan)
-                  borrower.ai = borrower.ai || {}
-                  borrower.ai.cash = parseFloat(borrower.ai.cash || 0) + Math.round(amount)
-                  borrower.lastFamilyEvent = 'Receives a private loan.'
-                  borrower.lastFamilyKind = 'bank'
+                  if (!isPlayerBorrower) {
+                    borrower.ai = borrower.ai || {}
+                    borrower.ai.cash = parseFloat(borrower.ai.cash || 0) + Math.round(amount)
+                    borrower.lastFamilyEvent = 'Receives a private loan.'
+                    borrower.lastFamilyKind = 'bank'
+                  }
                   return loan
                 },
         processPrivateLoans(society, state) {
@@ -1738,17 +1783,58 @@
                     if (!loan || loan.status !== 'active' || !this.monthKeyReached(loan.dueMonth, state)) {
                       return
                     }
-                    let borrower = society.houses && society.houses[loan.borrowerHouseId]
+                    let isPlayerBorrower = String(loan.borrowerHouseId || '') === 'player'
                     let lender = loan.lenderHouseId === 'player' ? false : society.houses && society.houses[loan.lenderHouseId]
+                    let principal = Math.max(1, Math.round(parseFloat(loan.principal || 0)))
+                    let interest = Math.max(1, Math.ceil(principal * parseFloat(loan.interestRate || 0.10)))
+                    let total = principal + interest
+                    if (isPlayerBorrower) {
+                      let month = this.monthKey(state)
+                      if (loan.lastNoticeMonth === month) {
+                        return
+                      }
+                      loan.lastNoticeMonth = month
+                      this.pushModal({
+                        title: 'Private Loan Due',
+                        message: ((lender && lender.name) || 'A creditor house') + ' expects repayment of your private loan.\nPrincipal: ' + principal + '\nInterest: ' + interest + '\nTotal due: ' + total,
+                        image: this.affairIcon('bank'),
+                        options: [
+                          {
+                            variant: 'success',
+                            text: 'Pay ' + total,
+                            tooltip: 'Repay the private loan in full. Consequences: -' + total + ' cash, creditor relation improves, loan closes.',
+                            statChanges: { cash: -total },
+                            disabled: parseFloat(((state || {}).current || {}).cash || 0) < total,
+                            showDisabledWithTooltip: true,
+                            icons: [this.affairIcon('coins'), this.affairIcon('bank')],
+                            action: { event: this.event, method: 'payPlayerPrivateLoan', context: { loanId: loan.id } }
+                          },
+                          {
+                            text: 'Ask extension',
+                            tooltip: 'Roll the debt forward for six months. Consequences: interest is added to principal, creditor relation worsens slightly.',
+                            icons: [this.affairIcon('bank')],
+                            action: { event: this.event, method: 'extendPlayerPrivateLoan', context: { loanId: loan.id } }
+                          },
+                          {
+                            variant: 'danger',
+                            text: 'Default',
+                            tooltip: 'Miss the payment. Consequences: debt grows, creditor relation and standing suffer.',
+                            statChanges: { prestige: -8, influence: -12 },
+                            icons: [this.affairIcon('rivalry'), this.affairIcon('bank')],
+                            action: { event: this.event, method: 'defaultPlayerPrivateLoan', context: { loanId: loan.id } }
+                          }
+                        ]
+                      })
+                      this.log(society, 'Your household receives a private loan repayment demand from ' + ((lender && lender.name) || 'a creditor house') + '.', 'bank', loan.lenderHouseId)
+                      return
+                    }
+                    let borrower = society.houses && society.houses[loan.borrowerHouseId]
                     if (!borrower) {
                       loan.status = 'lost'
                       loan.closedMonth = this.monthKey(state)
                       return
                     }
                     borrower.ai = borrower.ai || {}
-                    let principal = Math.max(1, Math.round(parseFloat(loan.principal || 0)))
-                    let interest = Math.max(1, Math.ceil(principal * parseFloat(loan.interestRate || 0.10)))
-                    let total = principal + interest
                     if (parseFloat(borrower.ai.cash || 0) >= total) {
                       borrower.ai.cash -= total
                       loan.status = 'paid'
@@ -1810,6 +1896,88 @@
                     }
                   })
                   society.privateLoans = society.privateLoans.slice(-80)
+                },
+        playerPrivateLoanTotals(loan) {
+                  let principal = Math.max(1, Math.round(parseFloat((loan && loan.principal) || 0)))
+                  let interest = Math.max(1, Math.ceil(principal * parseFloat((loan && loan.interestRate) || 0.10)))
+                  return { principal, interest, total: principal + interest }
+                },
+        payPlayerPrivateLoan({ loanId } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let loan = (society.privateLoans || []).find((item) => item && item.id === loanId && item.status === 'active' && String(item.borrowerHouseId || '') === 'player')
+                  if (!loan) {
+                    this.openPrivateLoans()
+                    return
+                  }
+                  let totals = this.playerPrivateLoanTotals(loan)
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  if (cash < totals.total) {
+                    this.openPrivateLoans()
+                    return
+                  }
+                  let lender = society.houses && society.houses[loan.lenderHouseId]
+                  this.applyStats({ cash: -totals.total })
+                  if (lender) {
+                    lender.ai = lender.ai || {}
+                    lender.ai.cash = parseFloat(lender.ai.cash || 0) + totals.total
+                    lender.relation = this.clamp((lender.relation || 0) + 5, -100, 100)
+                    lender.lastFamilyEvent = 'Receives repayment from your household.'
+                    lender.lastFamilyKind = 'bank'
+                  }
+                  loan.status = 'paid'
+                  loan.closedMonth = this.monthKey(state)
+                  this.log(society, 'You repay a private loan to ' + ((lender && lender.name) || 'a creditor house') + ' with ' + totals.interest + ' interest.', 'bank', loan.lenderHouseId)
+                  this.save(society)
+                  this.openPrivateLoans()
+                },
+        extendPlayerPrivateLoan({ loanId } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let loan = (society.privateLoans || []).find((item) => item && item.id === loanId && item.status === 'active' && String(item.borrowerHouseId || '') === 'player')
+                  if (!loan) {
+                    this.openPrivateLoans()
+                    return
+                  }
+                  let totals = this.playerPrivateLoanTotals(loan)
+                  let lender = society.houses && society.houses[loan.lenderHouseId]
+                  loan.principal = totals.total
+                  loan.dueMonth = this.futureMonthKey(6)
+                  loan.lastNoticeMonth = ''
+                  loan.extendedMonth = this.monthKey(state)
+                  if (lender) {
+                    lender.relation = this.clamp((lender.relation || 0) - 4, -100, 100)
+                    lender.lastFamilyEvent = 'Extends a private loan to your household.'
+                    lender.lastFamilyKind = 'bank'
+                  }
+                  this.log(society, 'You request an extension on a private loan from ' + ((lender && lender.name) || 'a creditor house') + '; interest is added to principal.', 'bank', loan.lenderHouseId)
+                  this.save(society)
+                  this.openPrivateLoans()
+                },
+        defaultPlayerPrivateLoan({ loanId } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let loan = (society.privateLoans || []).find((item) => item && item.id === loanId && item.status === 'active' && String(item.borrowerHouseId || '') === 'player')
+                  if (!loan) {
+                    this.openPrivateLoans()
+                    return
+                  }
+                  let totals = this.playerPrivateLoanTotals(loan)
+                  let lender = society.houses && society.houses[loan.lenderHouseId]
+                  loan.defaultCount = Math.round(parseFloat(loan.defaultCount || 0) + 1)
+                  loan.principal = totals.total
+                  loan.dueMonth = this.futureMonthKey(6)
+                  loan.lastNoticeMonth = ''
+                  this.applyStats({ prestige: -8, influence: -12 })
+                  if (lender) {
+                    lender.relation = this.clamp((lender.relation || 0) - 14, -100, 100)
+                    lender.heat = (lender.heat || 0) + 1
+                    lender.lastFamilyEvent = 'Your household defaults on a private loan.'
+                    lender.lastFamilyKind = 'bank'
+                  }
+                  this.log(society, 'You default on a private loan from ' + ((lender && lender.name) || 'a creditor house') + '; the debt rolls forward.', 'bank', loan.lenderHouseId)
+                  this.save(society)
+                  this.openPrivateLoans()
                 },
         privateLoanDebtBondValue(society, state, borrowerHouse, character) {
                   return Math.max(60, Math.round(this.enslavedCharacterCost(society, state, borrowerHouse, character) * 0.75))
@@ -2980,7 +3148,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.293'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.294'
     }
   }
 }
