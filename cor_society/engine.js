@@ -37,7 +37,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.291') {
+      if (window.corSociety && window.corSociety.version === '1.1.292') {
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -46,7 +46,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.291',
+        version: '1.1.292',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -535,6 +535,7 @@
           if (!characterId) {
             return false
           }
+          let processEvent = this.entryActionEvent(method)
           daapi.addCharacterAction({
             characterId,
             key,
@@ -545,13 +546,24 @@
               isAvailable: true,
               hideWhenBusy: false,
               process: {
-                event: this.event,
+                event: processEvent,
                 method,
                 context: { characterId, ...(context || {}) }
               }
             }
           })
           return true
+        },
+        entryActionEvent(method) {
+          let loaderMethods = {
+            openHub: true,
+            openPlayerCrest: true,
+            openWardrobe: true,
+            openPlayerFamilyTree: true,
+            openBankOfRome: true,
+            openHouseholdSlaves: true
+          }
+          return loaderMethods[method] ? '/cor_society/main' : this.event
         },
         registerPlayerEntryActions(state) {
           try {
@@ -596,7 +608,7 @@
                 isAvailable: true,
                 hideWhenBusy: false,
                 process: {
-                  event: this.event,
+                  event: '/cor_society/main',
                   method: 'openPlayerFamilyTree',
                   context: { characterId }
                 }
@@ -3505,6 +3517,13 @@
           }
           this.installDebtSaleModalPatch()
           let monthKey = this.monthKey(state)
+          if (!society.lastProcessedMonth) {
+            society.lastProcessedMonth = monthKey
+            society.activationMonth = society.activationMonth || monthKey
+            society.firstGameplayTickSkipped = monthKey
+            this.save(society)
+            return
+          }
           if (society.lastProcessedMonth === monthKey) {
             return
           }
@@ -15317,6 +15336,15 @@
       window.corSociety.startPlayerCrestOverlay()
       window.corSociety.startPlayerStatusOverlay()
     },
+    invokeCorSociety(method, args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      if (!window.corSociety || typeof window.corSociety.runAction !== 'function') {
+        throw new Error('Roman Society engine did not start before ' + method)
+      }
+      return window.corSociety.runAction(method, args || {})
+    },
     monthlyTick() {
       if (!window.corSociety) {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
@@ -15336,331 +15364,331 @@
       window.corSociety.openHub()
     },
     openEstate(args) {
-      window.corSociety.runAction('openEstate', args || {})
+      this.invokeCorSociety('openEstate', args || {})
     },
     openDynasty(args) {
-      window.corSociety.runAction('openDynasty', args || {})
+      this.invokeCorSociety('openDynasty', args || {})
     },
     createPlayerCadetHouse(args) {
-      window.corSociety.runAction('createPlayerCadetHouse', args || {})
+      this.invokeCorSociety('createPlayerCadetHouse', args || {})
     },
     openRelations() {
-      window.corSociety.openRelations()
+      this.invokeCorSociety('openRelations', {})
     },
     openAllies(args) {
-      window.corSociety.runAction('openAllies', args || {})
+      this.invokeCorSociety('openAllies', args || {})
     },
     openRivals(args) {
-      window.corSociety.runAction('openRivals', args || {})
+      this.invokeCorSociety('openRivals', args || {})
     },
     openLog(args) {
-      window.corSociety.runAction('openLog', args || {})
+      this.invokeCorSociety('openLog', args || {})
     },
     openLogEntry(args) {
-      window.corSociety.runAction('openLogEntry', args || {})
+      this.invokeCorSociety('openLogEntry', args || {})
     },
     openPlayerCrest() {
-      window.corSociety.openPlayerCrest()
+      this.invokeCorSociety('openPlayerCrest', {})
     },
     randomizePlayerCrest() {
-      window.corSociety.randomizePlayerCrest()
+      this.invokeCorSociety('randomizePlayerCrest', {})
     },
     cyclePlayerCrest(args) {
-      window.corSociety.runAction('cyclePlayerCrest', args || {})
+      this.invokeCorSociety('cyclePlayerCrest', args || {})
     },
     togglePlayerCrestOverlay() {
-      window.corSociety.togglePlayerCrestOverlay()
+      this.invokeCorSociety('togglePlayerCrestOverlay', {})
     },
     openWardrobe() {
-      window.corSociety.openWardrobe()
+      this.invokeCorSociety('openWardrobe', {})
     },
     openWardrobeCharacter(args) {
-      window.corSociety.runAction('openWardrobeCharacter', args || {})
+      this.invokeCorSociety('openWardrobeCharacter', args || {})
     },
     applyWardrobeOutfit(args) {
-      window.corSociety.runAction('applyWardrobeOutfit', args || {})
+      this.invokeCorSociety('applyWardrobeOutfit', args || {})
     },
     openHouse(args) {
-      window.corSociety.runAction('openHouse', args || {})
+      this.invokeCorSociety('openHouse', args || {})
     },
     openPeople(args) {
-      window.corSociety.runAction('openPeople', args || {})
+      this.invokeCorSociety('openPeople', args || {})
     },
     openMemberGroups(args) {
-      window.corSociety.runAction('openMemberGroups', args || {})
+      this.invokeCorSociety('openMemberGroups', args || {})
     },
     openMemberGroup(args) {
-      window.corSociety.runAction('openMemberGroup', args || {})
+      this.invokeCorSociety('openMemberGroup', args || {})
     },
     openPerson(args) {
-      window.corSociety.runAction('openPerson', args || {})
+      this.invokeCorSociety('openPerson', args || {})
     },
     openVanillaActions(args) {
-      window.corSociety.runAction('openVanillaActions', args || {})
+      this.invokeCorSociety('openVanillaActions', args || {})
     },
     openVanillaKnownFamily(args) {
-      window.corSociety.runAction('openVanillaKnownFamily', args || {})
+      this.invokeCorSociety('openVanillaKnownFamily', args || {})
     },
     openVanillaFullFamilyTree(args) {
-      window.corSociety.runAction('openVanillaFullFamilyTree', args || {})
+      this.invokeCorSociety('openVanillaFullFamilyTree', args || {})
     },
     openFamilyTree(args) {
-      window.corSociety.runAction('openFamilyTree', args || {})
+      this.invokeCorSociety('openFamilyTree', args || {})
     },
     openDynastyTree(args) {
-      window.corSociety.runAction('openDynastyTree', args || {})
+      this.invokeCorSociety('openDynastyTree', args || {})
     },
     openHouseFamilyTree(args) {
-      window.corSociety.runAction('openHouseFamilyTree', args || {})
+      this.invokeCorSociety('openHouseFamilyTree', args || {})
     },
     openPlayerFamilyTree() {
-      window.corSociety.openPlayerFamilyTree()
+      this.invokeCorSociety('openPlayerFamilyTree', {})
     },
     closeFamilyTreeOverlay() {
-      window.corSociety.closeFamilyTreeOverlay()
+      this.invokeCorSociety('closeFamilyTreeOverlay', {})
     },
     openMarriageHousehold(args) {
-      window.corSociety.runAction('openMarriageHousehold', args || {})
+      this.invokeCorSociety('openMarriageHousehold', args || {})
     },
     openMarriageCandidates(args) {
-      window.corSociety.runAction('openMarriageCandidates', args || {})
+      this.invokeCorSociety('openMarriageCandidates', args || {})
     },
     confirmSocietyMarriage(args) {
-      window.corSociety.runAction('confirmSocietyMarriage', args || {})
+      this.invokeCorSociety('confirmSocietyMarriage', args || {})
     },
     performSocietyMarriage(args) {
-      window.corSociety.runAction('performSocietyMarriage', args || {})
+      this.invokeCorSociety('performSocietyMarriage', args || {})
     },
     registerBundledBankActions(args) {
-      window.corSociety.runAction('registerBundledBankActions', args || {})
+      this.invokeCorSociety('registerBundledBankActions', args || {})
     },
     registerBundledSlaveActions(args) {
-      window.corSociety.runAction('registerBundledSlaveActions', args || {})
+      this.invokeCorSociety('registerBundledSlaveActions', args || {})
     },
     registerBundledMatchmakerAction(args) {
-      window.corSociety.runAction('registerBundledMatchmakerAction', args || {})
+      this.invokeCorSociety('registerBundledMatchmakerAction', args || {})
     },
     openBankOfRome() {
-      window.corSociety.openBankOfRome()
+      this.invokeCorSociety('openBankOfRome', {})
     },
     takeBankLoan(args) {
-      window.corSociety.runAction('takeBankLoan', args || {})
+      this.invokeCorSociety('takeBankLoan', args || {})
     },
     takeEmergencyDebtLoan(args) {
-      window.corSociety.runAction('takeEmergencyDebtLoan', args || {})
+      this.invokeCorSociety('takeEmergencyDebtLoan', args || {})
     },
     payBankLoan(args) {
-      window.corSociety.runAction('payBankLoan', args || {})
+      this.invokeCorSociety('payBankLoan', args || {})
     },
     deferBankPayment(args) {
-      window.corSociety.runAction('deferBankPayment', args || {})
+      this.invokeCorSociety('deferBankPayment', args || {})
     },
     openHouseholdSlaves(args) {
-      window.corSociety.runAction('openHouseholdSlaves', args || {})
+      this.invokeCorSociety('openHouseholdSlaves', args || {})
     },
     openPlayerSlavePath(args) {
-      window.corSociety.runAction('openPlayerSlavePath', args || {})
+      this.invokeCorSociety('openPlayerSlavePath', args || {})
     },
     playerSlaveWorkExtra(args) {
-      window.corSociety.runAction('playerSlaveWorkExtra', args || {})
+      this.invokeCorSociety('playerSlaveWorkExtra', args || {})
     },
     playerSlavePetitionFreedom(args) {
-      window.corSociety.runAction('playerSlavePetitionFreedom', args || {})
+      this.invokeCorSociety('playerSlavePetitionFreedom', args || {})
     },
     playerSlaveSeekPatron(args) {
-      window.corSociety.runAction('playerSlaveSeekPatron', args || {})
+      this.invokeCorSociety('playerSlaveSeekPatron', args || {})
     },
     playerSlaveEscape(args) {
-      window.corSociety.runAction('playerSlaveEscape', args || {})
+      this.invokeCorSociety('playerSlaveEscape', args || {})
     },
     openSlaveMarket(args) {
-      window.corSociety.runAction('openSlaveMarket', args || {})
+      this.invokeCorSociety('openSlaveMarket', args || {})
     },
     buySlave(args) {
-      window.corSociety.runAction('buySlave', args || {})
+      this.invokeCorSociety('buySlave', args || {})
     },
     openManageSlave(args) {
-      window.corSociety.runAction('openManageSlave', args || {})
+      this.invokeCorSociety('openManageSlave', args || {})
     },
     openAssignSlaveTask(args) {
-      window.corSociety.runAction('openAssignSlaveTask', args || {})
+      this.invokeCorSociety('openAssignSlaveTask', args || {})
     },
     assignSlaveTask(args) {
-      window.corSociety.runAction('assignSlaveTask', args || {})
+      this.invokeCorSociety('assignSlaveTask', args || {})
     },
     openSlaveEducationTargets(args) {
-      window.corSociety.runAction('openSlaveEducationTargets', args || {})
+      this.invokeCorSociety('openSlaveEducationTargets', args || {})
     },
     setSlaveEducationTarget(args) {
-      window.corSociety.runAction('setSlaveEducationTarget', args || {})
+      this.invokeCorSociety('setSlaveEducationTarget', args || {})
     },
     privateCompanySlave(args) {
-      window.corSociety.runAction('privateCompanySlave', args || {})
+      this.invokeCorSociety('privateCompanySlave', args || {})
     },
     legitimizeSlaveBastard(args) {
-      window.corSociety.runAction('legitimizeSlaveBastard', args || {})
+      this.invokeCorSociety('legitimizeSlaveBastard', args || {})
     },
     openSlaveMarriageCandidates(args) {
-      window.corSociety.runAction('openSlaveMarriageCandidates', args || {})
+      this.invokeCorSociety('openSlaveMarriageCandidates', args || {})
     },
     marryOwnedSlaves(args) {
-      window.corSociety.runAction('marryOwnedSlaves', args || {})
+      this.invokeCorSociety('marryOwnedSlaves', args || {})
     },
     acceptSlaveSelfPurchase(args) {
-      window.corSociety.runAction('acceptSlaveSelfPurchase', args || {})
+      this.invokeCorSociety('acceptSlaveSelfPurchase', args || {})
     },
     sellSlave(args) {
-      window.corSociety.runAction('sellSlave', args || {})
+      this.invokeCorSociety('sellSlave', args || {})
     },
     freeSlave(args) {
-      window.corSociety.runAction('freeSlave', args || {})
+      this.invokeCorSociety('freeSlave', args || {})
     },
     buyEnslavedCharacter(args) {
-      window.corSociety.runAction('buyEnslavedCharacter', args || {})
+      this.invokeCorSociety('buyEnslavedCharacter', args || {})
     },
     captureEnslavedCharacter(args) {
-      window.corSociety.runAction('captureEnslavedCharacter', args || {})
+      this.invokeCorSociety('captureEnslavedCharacter', args || {})
     },
     openMatchmaker(args) {
-      window.corSociety.runAction('openMatchmaker', args || {})
+      this.invokeCorSociety('openMatchmaker', args || {})
     },
     acceptMatchmakerCandidate(args) {
-      window.corSociety.runAction('acceptMatchmakerCandidate', args || {})
+      this.invokeCorSociety('acceptMatchmakerCandidate', args || {})
     },
     declineMatchmakerCandidates(args) {
-      window.corSociety.runAction('declineMatchmakerCandidates', args || {})
+      this.invokeCorSociety('declineMatchmakerCandidates', args || {})
     },
     sendGift(args) {
-      window.corSociety.runAction('sendGift', args || {})
+      this.invokeCorSociety('sendGift', args || {})
     },
     hostDinner(args) {
-      window.corSociety.runAction('hostDinner', args || {})
+      this.invokeCorSociety('hostDinner', args || {})
     },
     askSupport(args) {
-      window.corSociety.runAction('askSupport', args || {})
+      this.invokeCorSociety('askSupport', args || {})
     },
     tradeDeal(args) {
-      window.corSociety.runAction('tradeDeal', args || {})
+      this.invokeCorSociety('tradeDeal', args || {})
     },
     fundTradeSafeguards(args) {
-      window.corSociety.runAction('fundTradeSafeguards', args || {})
+      this.invokeCorSociety('fundTradeSafeguards', args || {})
     },
     pressTradeTerms(args) {
-      window.corSociety.runAction('pressTradeTerms', args || {})
+      this.invokeCorSociety('pressTradeTerms', args || {})
     },
     letStandTradeReview(args) {
-      window.corSociety.runAction('letStandTradeReview', args || {})
+      this.invokeCorSociety('letStandTradeReview', args || {})
     },
     offerPatronage(args) {
-      window.corSociety.runAction('offerPatronage', args || {})
+      this.invokeCorSociety('offerPatronage', args || {})
     },
     seekPatronage(args) {
-      window.corSociety.runAction('seekPatronage', args || {})
+      this.invokeCorSociety('seekPatronage', args || {})
     },
     coverPatronageShortage(args) {
-      window.corSociety.runAction('coverPatronageShortage', args || {})
+      this.invokeCorSociety('coverPatronageShortage', args || {})
     },
     auditPatronageAccounts(args) {
-      window.corSociety.runAction('auditPatronageAccounts', args || {})
+      this.invokeCorSociety('auditPatronageAccounts', args || {})
     },
     endPatronage(args) {
-      window.corSociety.runAction('endPatronage', args || {})
+      this.invokeCorSociety('endPatronage', args || {})
     },
     sponsorTutorship(args) {
-      window.corSociety.runAction('sponsorTutorship', args || {})
+      this.invokeCorSociety('sponsorTutorship', args || {})
     },
     requestTutorshipFavor(args) {
-      window.corSociety.runAction('requestTutorshipFavor', args || {})
+      this.invokeCorSociety('requestTutorshipFavor', args || {})
     },
     declineTutorshipExchange(args) {
-      window.corSociety.runAction('declineTutorshipExchange', args || {})
+      this.invokeCorSociety('declineTutorshipExchange', args || {})
     },
     startRivalry(args) {
-      window.corSociety.runAction('startRivalry', args || {})
+      this.invokeCorSociety('startRivalry', args || {})
     },
     reconcile(args) {
-      window.corSociety.runAction('reconcile', args || {})
+      this.invokeCorSociety('reconcile', args || {})
     },
     praisePerson(args) {
-      window.corSociety.runAction('praisePerson', args || {})
+      this.invokeCorSociety('praisePerson', args || {})
     },
     requestIntroduction(args) {
-      window.corSociety.runAction('requestIntroduction', args || {})
+      this.invokeCorSociety('requestIntroduction', args || {})
     },
     inviteHomeTalk(args) {
-      window.corSociety.runAction('inviteHomeTalk', args || {})
+      this.invokeCorSociety('inviteHomeTalk', args || {})
     },
     courtCharacter(args) {
-      window.corSociety.runAction('courtCharacter', args || {})
+      this.invokeCorSociety('courtCharacter', args || {})
     },
     resolveCourtship(args) {
-      window.corSociety.runAction('resolveCourtship', args || {})
+      this.invokeCorSociety('resolveCourtship', args || {})
     },
     spreadRumor(args) {
-      window.corSociety.runAction('spreadRumor', args || {})
+      this.invokeCorSociety('spreadRumor', args || {})
     },
     startStealingFromCharacter(args) {
-      window.corSociety.runAction('startStealingFromCharacter', args || {})
+      this.invokeCorSociety('startStealingFromCharacter', args || {})
     },
     resolveStealingFromCharacter(args) {
-      window.corSociety.runAction('resolveStealingFromCharacter', args || {})
+      this.invokeCorSociety('resolveStealingFromCharacter', args || {})
     },
     answerSlander(args) {
-      window.corSociety.runAction('answerSlander', args || {})
+      this.invokeCorSociety('answerSlander', args || {})
     },
     ignoreSlander(args) {
-      window.corSociety.runAction('ignoreSlander', args || {})
+      this.invokeCorSociety('ignoreSlander', args || {})
     },
     acceptOpening(args) {
-      window.corSociety.runAction('acceptOpening', args || {})
+      this.invokeCorSociety('acceptOpening', args || {})
     },
     declineOpening(args) {
-      window.corSociety.runAction('declineOpening', args || {})
+      this.invokeCorSociety('declineOpening', args || {})
     },
     supportPetition(args) {
-      window.corSociety.runAction('supportPetition', args || {})
+      this.invokeCorSociety('supportPetition', args || {})
     },
     refusePetition(args) {
-      window.corSociety.runAction('refusePetition', args || {})
+      this.invokeCorSociety('refusePetition', args || {})
     },
     attendFamilyInvitation(args) {
-      window.corSociety.runAction('attendFamilyInvitation', args || {})
+      this.invokeCorSociety('attendFamilyInvitation', args || {})
     },
     declineFamilyInvitation(args) {
-      window.corSociety.runAction('declineFamilyInvitation', args || {})
+      this.invokeCorSociety('declineFamilyInvitation', args || {})
     },
     endorseOffice(args) {
-      window.corSociety.runAction('endorseOffice', args || {})
+      this.invokeCorSociety('endorseOffice', args || {})
     },
     honorWedding(args) {
-      window.corSociety.runAction('honorWedding', args || {})
+      this.invokeCorSociety('honorWedding', args || {})
     },
     judgeInheritance(args) {
-      window.corSociety.runAction('judgeInheritance', args || {})
+      this.invokeCorSociety('judgeInheritance', args || {})
     },
     investVenture(args) {
-      window.corSociety.runAction('investVenture', args || {})
+      this.invokeCorSociety('investVenture', args || {})
     },
     collectVentureResult(args) {
-      window.corSociety.runAction('collectVentureResult', args || {})
+      this.invokeCorSociety('collectVentureResult', args || {})
     },
     treatFamilyMember(args) {
-      window.corSociety.runAction('treatFamilyMember', args || {})
+      this.invokeCorSociety('treatFamilyMember', args || {})
     },
     comfortFamilyMember(args) {
-      window.corSociety.runAction('comfortFamilyMember', args || {})
+      this.invokeCorSociety('comfortFamilyMember', args || {})
     },
     ignoreFamilyDistress(args) {
-      window.corSociety.runAction('ignoreFamilyDistress', args || {})
+      this.invokeCorSociety('ignoreFamilyDistress', args || {})
     },
     shieldScandal(args) {
-      window.corSociety.runAction('shieldScandal', args || {})
+      this.invokeCorSociety('shieldScandal', args || {})
     },
     exploitScandal(args) {
-      window.corSociety.runAction('exploitScandal', args || {})
+      this.invokeCorSociety('exploitScandal', args || {})
     },
     declineFamilyAffair(args) {
-      window.corSociety.runAction('declineFamilyAffair', args || {})
+      this.invokeCorSociety('declineFamilyAffair', args || {})
     }
   }
 }

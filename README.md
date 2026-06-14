@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.291.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.292.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.291.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.292.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -46,14 +46,14 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 ## Performance Notes
 
-Version `1.1.291` fixes the issues reviewed in `ANALISIS COMPLETO2.MD`: NPC Society traits now sync from `characterSocial`, generated family members inherit correct dynasty features, fertility-blocking flags are respected, freedman rescue attempts no longer depend on one brittle flag, monthly care events no longer stop the rest of the monthly event pipeline, wardrobe repair is schema-gated instead of version-gated, and the base game's mod-used achievement flag is no longer cleared by Society.
+Version `1.1.292` fixes Android action dispatch regressions after moving Society access to character buttons: the main Society, shield, wardrobe, bank, slave household, tree, and notification actions now boot the engine before dispatching. It also skips gameplay events on the activation month so installing/enabling the mod prepares Society without immediately firing a monthly family event.
 
 ## Development
 
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.291.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.292.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.

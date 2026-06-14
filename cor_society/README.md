@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.291` fixes the issues reviewed in `ANALISIS COMPLETO2.MD`: NPC Society traits now sync from `characterSocial`, generated family members inherit correct dynasty features, fertility-blocking flags are respected, freedman rescue attempts no longer depend on one brittle flag, monthly care events no longer stop the rest of the monthly event pipeline, wardrobe repair is schema-gated instead of version-gated, and the base game's mod-used achievement flag is no longer cleared by Society.
+`1.1.292` fixes Android action dispatch regressions after moving Society access to character buttons: the main Society, shield, wardrobe, bank, slave household, tree, and notification actions now boot the engine before dispatching. It also skips gameplay events on the activation month so installing/enabling the mod prepares Society without immediately firing a monthly family event.
 
 ## Features
 
