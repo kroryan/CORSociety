@@ -8,13 +8,14 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 The achievement compatibility hook is intentional and must not be removed.
 
-## Version 1.1.294
+## Version 1.1.295
 
 This build is based on the stable 1.1.290 gameplay layer and keeps the working action/button dispatch flow while splitting the former monolithic engine into module mixins.
 
 ## Highlights
 
 - Living Roman dynasties and houses with marriages, children, relationships, social traits, trade, scandals, slavery, banking, property play, and family trees.
+- Player spouse, children, and close kin are now repaired into one canonical player house tied to the vanilla dynasty, preventing stale cloned houses, wrong crests, missing member groups, and false slave-family labels.
 - Generated houses now enforce a minimum living gender mix where possible so houses do not begin as dead-end single-gender lines.
 - Houses with no living known members are removed from active Society orders and moved to a dead-house archive under Past Affairs.
 - Dead houses keep historical info and an archived graphical family tree when characters still exist in the save.
@@ -23,6 +24,7 @@ This build is based on the stable 1.1.290 gameplay layer and keeps the working a
 - Generated child records with one missing parent are repaired with a matching ghost parent so Society trees stay coherent.
 - Slave market pagination keeps Next/Previous known people below market offers instead of splitting the list.
 - Same-family and spouse character pages use family visit options rather than Request Introduction.
+- NPC family simulation now prioritizes marriage-focused and small houses in the monthly batch, reducing avoidable extinction without removing the Android performance cap.
 - Native portrait, wardrobe, relationship badge, house shield, slave, Coemptio, Bank of Rome, Play As, murder, stealing, disinheritance, and restore-inheritance integrations remain bundled.
 
 ## Debug Console

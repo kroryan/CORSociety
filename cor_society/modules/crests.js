@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCrestsVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyCrestsVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -39,6 +39,10 @@
                 },
         ensureHouseCrest(society, house) {
                   society.crests = society.crests || {}
+                  if (house && house.isPlayerHouse && society.playerCrestId && society.crests[society.playerCrestId]) {
+                    house.crestId = society.playerCrestId
+                    return society.crests[society.playerCrestId]
+                  }
                   let crestId = 'house_' + this.safeId((house && house.id) || (house && house.name) || 'unknown')
                   if (!society.crests[crestId]) {
                     society.crests[crestId] = this.generateCrest(crestId + '-' + ((house && house.name) || '') + '-' + ((house && house.stratum) || ''))
@@ -229,7 +233,7 @@
                     .replace(/"/g, '&quot;')
                 }
       })
-      window.corSociety._mixinCorSocietyCrestsVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyCrestsVersion = '1.1.295'
     }
   }
 }

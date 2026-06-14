@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -25,13 +25,23 @@
                     society.wardrobeRepairVersion = this.version
                   }
                   this.normalizeDynastyHouseModel(society, state)
+                  this.syncPlayerHouseRecord(society, state)
                   let monthKey = this.monthKey(state)
                   let ensureKey = this.ensureKey(society, state)
                   let monthChanged = society.lastProcessedStatusMonth !== monthKey
                   let falseSlaveRepairKey = 'false-player-slave-v1'
                   let falseSlaveRepairNeeded = society.falsePlayerSlaveRepairVersion !== falseSlaveRepairKey
+                  let playerHouseRepairKey = 'player-house-v2'
+                  let playerHouseRepairNeeded = society.playerHouseRepairVersion !== playerHouseRepairKey
                   if (falseSlaveRepairNeeded) {
                     this.repairFalsePlayerSlaveFlags(society, state)
+                  }
+                  if (playerHouseRepairNeeded) {
+                    this.repairFalsePlayerSlaveFlags(society, state)
+                    this.syncPlayerHouseRecord(society, state)
+                    society.playerHouseRepairVersion = playerHouseRepairKey
+                  }
+                  if (falseSlaveRepairNeeded) {
                     society.falsePlayerSlaveRepairVersion = falseSlaveRepairKey
                   }
                   if (!options || !options.force) {
@@ -40,8 +50,9 @@
                       this.preparePlayerDynastyTreeOnce(society, state)
                       this.registerSocietyTraitDefinitions()
                       if (monthChanged) {
-                        this.syncExtendedKinVisibility(society, state)
                         this.repairFalsePlayerSlaveFlags(society, state)
+                        this.syncPlayerHouseRecord(society, state)
+                        this.syncExtendedKinVisibility(society, state)
                         this.ensureSlaveOrderPeople(society, state)
                         this.syncSocietyTraitsWithVanilla(society, state)
                         this.syncFamilyRelationStatuses(society, state)
@@ -49,7 +60,7 @@
                         society.lastProcessedStatusMonth = monthKey
                         this.save(society)
                       }
-                      if (falseSlaveRepairNeeded) {
+                      if (falseSlaveRepairNeeded || playerHouseRepairNeeded) {
                         this.save(society)
                       }
                       return society
@@ -58,6 +69,9 @@
                   this.registerSocietyTraitDefinitions()
                   this.registerPlayerEntryActions(state)
                   this.syncWithGame(society, state)
+                  state = daapi.getState()
+                  this.repairFalsePlayerSlaveFlags(society, state)
+                  this.syncPlayerHouseRecord(society, state)
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.ensureVisibleHouseMembers(society, state)
                   this.retireDeadHouses(society, state, { notify: false })
@@ -67,6 +81,7 @@
                   this.repairGeneratedHouseInitialGenderPairs(society, state)
                   state = daapi.getState()
                   this.repairFalsePlayerSlaveFlags(society, state)
+                  this.syncPlayerHouseRecord(society, state)
                   this.ensureSlaveOrderPeople(society, state)
                   this.normalizeGeneratedPeople(society, state)
                   this.ensureGeneratedParents(society, state)
@@ -681,7 +696,7 @@
                   return society
                 }
       })
-      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.295'
     }
   }
 }

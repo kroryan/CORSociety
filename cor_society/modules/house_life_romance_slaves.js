@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -15,7 +15,8 @@
                   if (!house || !house.memberIds || !house.memberIds.length) {
                     return
                   }
-                  let marriageChance = house.agenda === 'marriage' ? 0.12 : 0.04
+                  let livingCount = this.visibleHousePeople(house, state).length
+                  let marriageChance = house.agenda === 'marriage' ? 0.15 : (livingCount <= 3 ? 0.075 : 0.055)
                   if (Math.random() < marriageChance) {
                     let candidates = (houses || []).filter((other) => {
                       if (!other || other.id === house.id || !other.memberIds || !other.memberIds.length) {
@@ -29,7 +30,7 @@
                       return
                     }
                   }
-                  let pregnancyChance = house.agenda === 'marriage' ? 0.18 : 0.08
+                  let pregnancyChance = house.agenda === 'marriage' ? 0.24 : (livingCount <= 4 ? 0.14 : 0.10)
                   if (Math.random() < pregnancyChance) {
                     this.tryHousePregnancy(society, state, house)
                   }
@@ -2793,6 +2794,13 @@
                   if (!character || !house) {
                     return false
                   }
+                  if (house.isPlayerHouse) {
+                    let state = daapi.getState()
+                    let characterId = character.id || character.characterId || ''
+                    if (characterId && this.isPlayerFreeFamilyCharacter && this.isPlayerFreeFamilyCharacter(state, characterId, character)) {
+                      return true
+                    }
+                  }
                   if (character.corSocietyHouseId) {
                     return String(character.corSocietyHouseId) === String(house.id)
                   }
@@ -2971,6 +2979,7 @@
                   if (!currentDynastyId) {
                     return 0
                   }
+                  let protectedFamilyIds = this.playerCloseFamilyIdMap ? this.playerCloseFamilyIdMap(state) : {}
                   let ownedSlaveIds = {}
                   ;(society.playerSlaves || []).forEach((record) => {
                     if (record && record.characterId) {
@@ -3002,11 +3011,16 @@
                   let repaired = 0
                   Object.keys(candidates).forEach((characterId) => {
                     let character = state.characters[characterId]
-                    if (!character || character.isDead || String(character.dynastyId || '') !== String(currentDynastyId)) {
+                    if (!character || character.isDead) {
+                      return
+                    }
+                    let protectedFamily = !!protectedFamilyIds[String(characterId)] || String(character.dynastyId || '') === String(currentDynastyId)
+                    if (!protectedFamily) {
                       return
                     }
                     let ownerHouseId = character.corSocietySlaveOwnerHouseId || ''
-                    let realOwnedSlave = ownedSlaveIds[String(characterId)] || character.corSocietyOrigin === 'private_company_bastard' || (ownerHouseId && String(ownerHouseId) !== String(currentDynastyId))
+                    let slaveBastard = character.corSocietyOrigin === 'private_company_bastard' || character.corSocietyBastard === true
+                    let realOwnedSlave = slaveBastard || (ownedSlaveIds[String(characterId)] && !protectedFamily) || (ownerHouseId && String(ownerHouseId) !== String(currentDynastyId) && !protectedFamily)
                     if (realOwnedSlave) {
                       return
                     }
@@ -3036,7 +3050,7 @@
                       corSocietyOrigin: character.corSocietyOrigin === 'enslaved_dependant' ? '' : character.corSocietyOrigin,
                       flagCannotMarry: false
                     }
-                    if (inSlaveHouse && society.houses[currentDynastyId]) {
+                    if (society.houses[currentDynastyId]) {
                       patch.corSocietyHouseId = currentDynastyId
                     }
                     try {
@@ -3078,6 +3092,7 @@
                     return
                   }
                   let currentDynastyId = this.currentCharacterDynastyId(state)
+                  let protectedFamilyIds = this.playerCloseFamilyIdMap ? this.playerCloseFamilyIdMap(state) : {}
                   this.sortedHouses(society).forEach((house) => {
                     if (!house || house.stratum !== 'poor') {
                       return
@@ -3091,7 +3106,7 @@
                         return
                       }
                       character.id = character.id || characterId
-                      if (currentDynastyId && String(character.dynastyId || '') === String(currentDynastyId) && !this.isExplicitlyEnslavedCharacter(character)) {
+                      if ((protectedFamilyIds[String(characterId)] || (currentDynastyId && String(character.dynastyId || '') === String(currentDynastyId))) && character.corSocietyOrigin !== 'private_company_bastard') {
                         return
                       }
                       let patch = {}
@@ -3148,7 +3163,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.295'
     }
   }
 }

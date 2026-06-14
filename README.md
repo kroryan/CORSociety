@@ -8,13 +8,14 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.294` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
+`1.1.295` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
 
 ## Features
 
 - Adds `Roman Society`, `House Shield`, `Family Wardrobe`, `Bank of Rome`, `Household Slaves`, and `Player Dynasty Tree` as actions on the current player character instead of cluttering the global action bar.
 - Adds a `Close Society` button to Society modal pages so the menu can be closed directly without walking back through every screen.
 - Prepares the current player dynasty tree during mod startup/monthly sync, so missing dead parents, grandparents, and limited extra kin exist before the tree is opened.
+- Repairs and maintains one canonical player house tied to the current vanilla dynasty, so Society Sheet, house crest, member groups, Coemptio, and family trees all resolve spouse, children, and close kin through the same household instead of stale cloned houses.
 - Groups houses into social orders using existing game data: dynasty prestige, heritage, jobs, inheritance, Senate links, and living members.
 - Separates dynasties from houses: every dynasty has at least one origin house, can gain secondary cadet houses, and tracks a current head house independently from the origin house name.
 - Lets strong cadet houses challenge and replace the current dynasty head house without renaming any house or breaking the wider dynasty tree.
@@ -34,6 +35,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Adds contextual Society stealing against a selected character's household, with cooldowns, target-house context, success/failure outcomes, and caught consequences against both personal and house relations.
 - Replaces the old Society poor order presentation with a slave order: slave kin groups, market candidates, captured dependants, household slaves, and manumitted freedmen are all represented by real characters where possible.
 - Gives slaves cultural origins, owner links, Society status icons, household work roles, sale/manumission flow, and access from Society menus while keeping their vanilla portraits unobstructed.
+- Repairs false slave markers on legitimate player-family members, including spouses and children that were accidentally linked to slave-order houses in older saves, while keeping real slave-born bastards distinct.
 - Supports rare Roman slave origins from debt-bondage, condemnation, or renegade status. Those explanatory slavery notes are cleared when the character becomes free.
 - Gives owned slaves assignable household tasks with cooldowns and capped owner benefits: accounts can produce cash, educators can improve selected children under 13, doctors can treat household conditions, entertainers can add prestige, warriors can add influence/security, and laborers can provide small cash.
 - Expands the slave market with more purchasable profiles, including tutors, scribes, nurses, midwives, musicians, dancers, stewards, accountants, couriers, bodyguards, gladiators, hunters, cooks, artisans, and stable hands. These profiles map back to balanced household tasks and existing icon assets.

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -27,6 +27,8 @@
                   }
                   society.lastProcessedMonth = monthKey
                   this.syncPlayerWorldEffects(society, state)
+                  this.repairFalsePlayerSlaveFlags(society, state)
+                  this.syncPlayerHouseRecord(society, state)
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.processBankYear(society, state)
                   this.simulatePrivateLoans(society, state)
@@ -202,7 +204,9 @@
                       house.rivalry ||
                       (house.favor || 0) > 0 ||
                       (house.relation || 0) >= 55 ||
-                      (house.relation || 0) <= -45
+                      (house.relation || 0) <= -45 ||
+                      ((house.memberIds || []).length > 0 && (house.memberIds || []).length <= 3) ||
+                      house.agenda === 'marriage'
                     )
                   })
                   let pinnedCursor = parseInt(society.pinnedHouseSimulationCursor || 0, 10) || 0
@@ -640,7 +644,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.295'
     }
   }
 }

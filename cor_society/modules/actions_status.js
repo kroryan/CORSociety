@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -15,6 +15,63 @@
                   state = state || daapi.getState()
                   let current = state.characters && state.characters[this.currentCharacterId(state)]
                   return (current && current.dynastyId) || ((state.current || {}).dynastyId) || ''
+                },
+        playerCloseFamilyIdMap(state) {
+                  state = state || daapi.getState()
+                  let characters = state.characters || {}
+                  let current = state.current || {}
+                  let currentId = this.currentCharacterId(state)
+                  let player = characters[currentId] || {}
+                  let seen = {}
+                  let add = (id) => {
+                    if (id !== undefined && id !== null && id !== '' && characters[id]) {
+                      seen[String(id)] = true
+                    }
+                  }
+                  let addRelatives = (character) => {
+                    if (!character) return
+                    add(character.id)
+                    add(character.spouseId)
+                    add(character.fatherId)
+                    add(character.motherId)
+                    ;(character.childrenIds || []).forEach(add)
+                    ;(character.siblingIds || []).forEach(add)
+                  }
+                  add(currentId)
+                  ;[
+                    current.householdCharacterIds,
+                    current.formerHouseholdCharacterIds,
+                    current.familyCharacterIds
+                  ].forEach((list) => {
+                    ;(list || []).forEach(add)
+                  })
+                  player.id = player.id || currentId
+                  addRelatives(player)
+                  ;(player.childrenIds || []).forEach((childId) => {
+                    let child = characters[childId]
+                    if (!child) return
+                    addRelatives(child)
+                    ;(child.childrenIds || []).forEach(add)
+                  })
+                  let dynastyId = player.dynastyId || this.currentCharacterDynastyId(state)
+                  if (dynastyId && state.dynasties && state.dynasties[dynastyId]) {
+                    ;(state.dynasties[dynastyId].memberIds || []).forEach(add)
+                  }
+                  return seen
+                },
+        isPlayerFreeFamilyCharacter(state, characterId, character) {
+                  state = state || daapi.getState()
+                  characterId = characterId !== undefined && characterId !== null && characterId !== '' ? characterId : (character && character.id)
+                  character = character || ((state.characters || {})[characterId])
+                  if (!character || character.isDead || characterId === undefined || characterId === null || characterId === '') {
+                    return false
+                  }
+                  let close = this.playerCloseFamilyIdMap(state)
+                  if (close[String(characterId)]) {
+                    return true
+                  }
+                  let currentDynastyId = this.currentCharacterDynastyId(state)
+                  return !!(currentDynastyId && character.dynastyId && String(character.dynastyId) === String(currentDynastyId))
                 },
         freedmanHouseForCharacter(society, state, record, character) {
                   state = state || daapi.getState()
@@ -348,8 +405,10 @@
         matchmakerCandidates(society, state, character) {
                   let candidates = []
                   let playerStratum = this.playerStratum(state)
+                  let playerHouseId = this.currentCharacterDynastyId(state)
                   this.sortedHouses(society).forEach((house) => {
                     if (!house || house.stratum === 'poor') return
+                    if (String(house.id) === String(playerHouseId || '')) return
                     if (!house || Math.abs(this.socialLevel(house.stratum) - this.socialLevel(playerStratum)) > 2) return
                     if ((house.relation || 0) < -65) return
                     this.visibleHousePeople(house, state).forEach((characterId) => {
@@ -364,10 +423,11 @@
                 },
         ensureMatchmakerCandidates(society, state, character) {
                   let candidates = this.matchmakerCandidates(society, state, character)
+                  let playerHouseId = this.currentCharacterDynastyId(state)
                   let houses = this.sortedHouses(society).filter((house) => {
-                    return house && house.stratum !== 'poor' && house.id !== character.dynastyId && Math.abs(this.socialLevel(house.stratum) - this.socialLevel(this.playerStratum(state))) <= 2
+                    return house && house.stratum !== 'poor' && String(house.id) !== String(character.dynastyId || '') && String(house.id) !== String(playerHouseId || '') && Math.abs(this.socialLevel(house.stratum) - this.socialLevel(this.playerStratum(state))) <= 2
                   })
-                  while (candidates.length < 4 && houses.length && (society.generatedCharacterIds || []).length < 320) {
+                  while (candidates.length < 4 && houses.length && (society.generatedCharacterIds || []).length < 420) {
                     let house = this.pick(houses)
                     let id = this.generateMarriageProspect(society, state, house, character)
                     state = daapi.getState()
@@ -2160,7 +2220,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.295'
     }
   }
 }

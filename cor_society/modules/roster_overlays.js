@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -427,6 +427,16 @@
         houseIdForCharacter(character, state, society) {
                   if (!character) {
                     return ''
+                  }
+                  let characterId = character.id || character.characterId || ''
+                  let playerHouseId = this.currentCharacterDynastyId(state)
+                  if (society && playerHouseId && characterId && this.isPlayerFreeFamilyCharacter && this.isPlayerFreeFamilyCharacter(state, characterId, character)) {
+                    if (!society.houses[playerHouseId] && this.syncPlayerHouseRecord) {
+                      this.syncPlayerHouseRecord(society, state)
+                    }
+                    if (society.houses[playerHouseId]) {
+                      return playerHouseId
+                    }
                   }
                   if (character.corSocietyHouseId && society.houses[character.corSocietyHouseId]) {
                     return character.corSocietyHouseId
@@ -1073,7 +1083,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.295'
     }
   }
 }

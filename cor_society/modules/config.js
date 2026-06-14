@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyConfigVersion === '1.1.294') {
+      if (window.corSociety._mixinCorSocietyConfigVersion === '1.1.295') {
         return
       }
       Object.assign(window.corSociety, {
@@ -211,7 +211,7 @@
                   copper: '#c87545'
                 }
       })
-      window.corSociety._mixinCorSocietyConfigVersion = '1.1.294'
+      window.corSociety._mixinCorSocietyConfigVersion = '1.1.295'
     }
   }
 }
