@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.288.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.289.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.288.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.289.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -45,14 +45,14 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 ## Performance Notes
 
-Version `1.1.288` completes the vanilla `statChanges` pass from `1.1.287`: all Society action buttons with exact cash, influence, or prestige effects use the same icon path as the base game, while Society handlers subtract already-applied vanilla effects to prevent duplicated charges or rewards. It also adds final feedback modals for new Society choices, exact bribe-cost previews for Stealing From, and keeps the lightweight trade review, patronage audit, and tutorship events.
+Version `1.1.289` expands Society genealogy without removing the base game's performance guardrails: Roman Society now maintains a bounded extended-kin visibility window around the player's household so NPC families can keep having visible children across more generations, while graphical Society trees can show deeper dynasty branches with a hard render budget. It also applies the fixes from `ANALISIS COMPLETO.MD`: safer romance and slave pregnancy rules, cadet-house portrait lookup, protected player-family feud targets, cleaned relationship/slave caches, rotating NPC simulation priority, queued bundled murder modals, and smaller DAAPI hot-path reads.
 
 ## Development
 
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.288.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.289.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.

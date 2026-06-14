@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.288` completes the vanilla `statChanges` integration for Society buttons with exact money, influence, or prestige effects. Citizen of Rome draws the resource icons, while Society handlers subtract the already-applied vanilla values before applying their own results, preventing duplicated costs or rewards. It also adds final feedback modals for new Society choices, exact bribe-cost previews for Stealing From, and keeps debt-relief loans inside the original forced-sale/debt notice.
+`1.1.289` adds a bounded extended-kin visibility window so the base game can keep simulating and showing more of the player's related NPC world without turning every distant cousin into an always-active character. Society trees now render deeper dynasty branches with a strict node budget, while monthly NPC house simulation rotates priority houses so allies, rivals, and pending-event houses do not permanently starve neutral houses. This version also resolves the remaining items from `ANALISIS COMPLETO.MD`, including safer adult-only romance/slave pregnancy checks, cadet-house lookup fixes, player-family protection from silent NPC feud murder, cleaned non-persisted status caches, queued bundled murder modals, and lighter DAAPI calls in hot paths.
 
 ## Features
 
@@ -70,6 +70,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Gives each house a separate virtual-player state: AI cash, AI influence, AI prestige, property, focus, and controller marker.
 - Lets large vanilla changes to the player's cash, influence, or prestige shift Society relations, so base-game events can affect the social map too.
 - Can surface family events to the player: office campaigns, marriage alliances, inheritance disputes, trade ventures, scandals, feuds, petitions, and slander.
+- Maintains a capped extended-kin window around the player's household through the game's own close-family retention path. This lets visible NPC relatives continue marriage and children across more Society generations, while the cap and monthly recalculation protect Android performance.
 
 ## Social Orders
 
@@ -94,7 +95,7 @@ Generated traits use vanilla trait keys from the official example mod documentat
 
 Arranged marriages and AI house marriages call `daapi.performMarriage`, so the resulting spouse relationship should appear in the vanilla family UI after the game refreshes. If the vanilla marriage API rejects a wedding, Society does not fake the spouse link by writing `spouseId` manually; it shows an error and applies no Society effects. Marrying upward improves prestige and influence but costs more; marrying downward can improve practical support and local ties while costing some elite standing.
 
-AI house marriages have a higher monthly pregnancy chance than older Society builds, and pregnancies are attempted through `daapi.impregnate` so the base game can resolve the birth normally. Lover relationships are stored in Society state instead of vanilla `spouseId`; exposed affairs can damage relations, lower stability, cost player prestige/influence, and may clear vanilla spouse links as a divorce when the scandal is severe.
+AI house marriages have a higher monthly pregnancy chance than older Society builds, and pregnancies are attempted through `daapi.impregnate` so the base game can resolve the birth normally. Society also keeps more related NPC parents close enough to the player's household for the base game to preserve their children, bounded by `extendedKinDepth` and `extendedKinLimit` settings. Lover relationships are stored in Society state instead of vanilla `spouseId`; exposed affairs can damage relations, lower stability, cost player prestige/influence, and may clear vanilla spouse links as a divorce when the scandal is severe.
 
 The player's Society order is calculated from the same economic ladder used by the base game: Proletarii, Class V, Class IV, Class III, Class II, Class I, Equites, and Senatores. Novus Homo remains a vanilla heritage value, but Society treats it as a civic-status marker once the household has enough property class to support that rank. The main-screen citizen title is patched visually so it can evolve with Society status while leaving the vanilla data intact for elections and other base-game systems.
 

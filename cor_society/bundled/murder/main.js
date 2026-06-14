@@ -41,16 +41,21 @@
       const existingTargetId = daapi.getCharacterFlag({ characterId: currentId, flag: 'mod_murder_startedPlotOnTarget' })
       if(existingTargetId) {
         daapi.deleteCharacterAction({ characterId, key: 'mod_murder_startPlot' })
-        daapi.displayInteractionModal({
+        daapi.pushInteractionModalQueue({
           title: 'Another plot in progress ...',
           message: 'You already have a plot in progress against ' + `[c|${existingTargetId}|${daapi.getCharacter({ characterId: existingTargetId }).praenomen}]` + '',
-          image: daapi.requireImage('/cor_society/bundled/murder/plot.svg')
+          image: daapi.requireImage('/cor_society/bundled/murder/plot.svg'),
+          options: [{ text: 'Understood' }]
         })
         return
       }
       const character = daapi.getCharacter({ characterId })
+      if (!character || character.isDead) {
+        daapi.deleteCharacterAction({ characterId, key: 'mod_murder_startPlot' })
+        return
+      }
       const startPlotResponses = ['Let us prey', 'Kill. Die. Kill.', ' Die, Die, Die!', `Hades awaits ${character.praenomen}`, `DIE ${character.praenomen.toUpperCase()}, DIE`, 'Will no one rid me of this turbulent pest?', `${character.praenomen} is not long for this world!`, `Then fall ${character.praenomen}`]
-      daapi.displayInteractionModal({
+      daapi.pushInteractionModalQueue({
         title: 'Attempt to murder ' + character.praenomen + '?',
         message: 'Start a plot to have ' + `[c|${characterId}|${character.praenomen}]` + ' killed?',
         image: daapi.requireImage('/cor_society/bundled/murder/plot.svg'),

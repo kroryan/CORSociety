@@ -339,7 +339,11 @@
           character.skills.eloquence / 100 + state.current.influence / 30000
         var currentClass = daapi.calculateCurrentClass()
 
-        if (rngesus <= 0.25 + rngesusFactor) {
+        const successThreshold = Math.min(0.85, 0.25 + rngesusFactor)
+        const feeThreshold = Math.min(0.92, 0.50 + rngesusFactor)
+        const returnThreshold = Math.min(0.97, 0.75 + rngesusFactor)
+
+        if (rngesus <= successThreshold) {
           message =
             'You argue your case and managed to convince the judge that the ' +
             selectedAnimal +
@@ -352,7 +356,7 @@
             options.push({
               text: 'I fooled them!',
               statChanges: {
-                cash: Math.random() * 50,
+                cash: Math.round(Math.random() * 50),
                 prestige: 10,
                 influence: 15,
                 property,
@@ -370,7 +374,7 @@
               }
             })
           }
-        } else if (rngesus <= 0.25 && rngesus <= 0.5 + rngesusFactor) {
+        } else if (rngesus <= feeThreshold) {
           message =
             'You argue your case however, the judge remains skeptical about your claim. In the end, he offers to give the ' +
             selectedAnimal +
@@ -378,17 +382,17 @@
           options.push({
             text: 'Lucky the judge was crooked!',
             statChanges: {
-              cash: -Math.random() * 20,
+              cash: -Math.round(Math.random() * 20),
               prestige: 10,
               influence: 15,
               property,
               scaleByRevenue: ['cash', 'influence', 'prestige']
             }
           })
-        } else if (rngesus <= 0.5 && rngesus <= 0.75 + rngesusFactor) {
+        } else if (rngesus <= returnThreshold) {
           message =
             'The judge does not believe you at all and decides to return the stolen property to their rightful owners. '
-          if (state.current.flagIsSenetorialClass) {
+          if (state.current.flagIsSenetorialClass || state.current.flagIsSenatorialClass) {
             message +=
               'You have been convicted of furtum and have been barred from the senate for your transgressions'
             daapi.addTrait({
@@ -411,7 +415,7 @@
               text:
                 'What an embarrassment to be caught doing such a petty crime! This was a mistake...',
               statChanges: {
-                cash: -Math.random() * 60,
+                cash: -Math.round(Math.random() * 60),
                 prestige: -15,
                 influence: -20,
                 scaleByRevenue: ['cash', 'influence', 'prestige']
@@ -431,7 +435,7 @@
         } else {
           message =
             'The judge does not believe your story at all and not only decides to return the stolen property, but fines you a hefty sum as well! '
-          if (state.current.flagIsSenetorialClass) {
+          if (state.current.flagIsSenetorialClass || state.current.flagIsSenatorialClass) {
             message +=
               'You have been convicted of furtum and have been barred from the senate for your transgressions'
             daapi.addTrait({
@@ -443,7 +447,7 @@
               text:
                 'What an embarrassment to be caught doing such a petty crime! This was a horrible mistake!',
               statChanges: {
-                cash: -Math.random() * 70,
+                cash: -Math.round(Math.random() * 70),
                 prestige: -20,
                 influence: -25,
                 scaleByRevenue: ['cash', 'influence', 'prestige']
@@ -455,7 +459,7 @@
               text:
                 'What an embarrassment to be caught doing such a petty crime! This was a mistake...',
               statChanges: {
-                cash: -Math.random() * 60,
+                cash: -Math.round(Math.random() * 60),
                 prestige: -15,
                 influence: -20,
                 scaleByRevenue: ['cash', 'influence', 'prestige']
@@ -466,7 +470,7 @@
               text:
                 "I didn't have the right to steal... I deserve this punishment...",
               statChanges: {
-                cash: -Math.random() * 50,
+                cash: -Math.round(Math.random() * 50),
                 prestige: -10,
                 influence: -15,
                 scaleByRevenue: ['cash', 'influence', 'prestige']
@@ -524,7 +528,7 @@
               text:
                 'This greed has caused nothing but embarrassment! I have made a huge mistake!',
               statChanges: {
-                cash: -Math.random() * 60,
+                cash: -Math.round(Math.random() * 60),
                 prestige: -15,
                 influence: -20,
                 scaleByRevenue: ['cash', 'influence', 'prestige']
@@ -535,7 +539,7 @@
               text: 'This was an embarrassement',
               tooltip: 'This was due to your greed',
               statChanges: {
-                cash: -Math.random() * 50,
+                cash: -Math.round(Math.random() * 50),
                 prestige: -10,
                 influence: -15,
                 scaleByRevenue: ['influence', 'prestige']

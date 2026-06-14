@@ -9,7 +9,7 @@
       return
     }
     const character = state.characters[characterId]
-    daapi.displayInteractionModal({
+    daapi.pushInteractionModalQueue({
       title: 'Bandit gambit?',
       message: 'You hear news of ' + `[c|${characterId}|${character.praenomen}]` + ' plans to visit their estates in the countryside from one of your confidants, who is in on your scheme, presented along with an plan to disguise yourselves and a group of servants as bandits & ambush ' + `[c|${characterId}|${character.praenomen}]` + ' en-route',
       image: daapi.requireImage('/cor_society/bundled/murder/plot.svg'),
@@ -72,7 +72,7 @@
         daapi.setCharacterFlag({ characterId: currentId, flag: 'mod_murder_startedPlotOnTarget', data: false })
         daapi.deleteCharacterAction({ characterId: currentId, key: 'mod_murder_cancelPlot' })
       }
-      daapi.displayInteractionModal({
+      daapi.pushInteractionModalQueue({
         title: 'Bandit gambit',
         message,
         image: daapi.requireImage('/cor_society/bundled/murder/plot.svg'),

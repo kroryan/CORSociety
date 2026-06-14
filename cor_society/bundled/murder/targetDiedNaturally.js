@@ -9,7 +9,7 @@
       return
     }
     const character = state.characters[characterId]
-    daapi.displayInteractionModal({
+    daapi.pushInteractionModalQueue({
       title: 'Tryst of fate',
       message: `It appears fate itself has joined your plot. [c|${characterId}|${character.praenomen}] has died!`,
       image: daapi.requireImage('/cor_society/bundled/murder/plot.svg'),

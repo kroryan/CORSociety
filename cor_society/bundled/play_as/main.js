@@ -6,7 +6,8 @@
     let character = daapi.getCharacter({ characterId })
     if (
       characterId !== daapi.getState().current.id &&
-      character
+      character &&
+      !character.isDead
     ) {
       daapi.addCharacterAction({
         characterId,
@@ -35,7 +36,14 @@
   methods: {
     process({ characterId }) {
       let character = daapi.getCharacter({ characterId })
-      daapi.displayInteractionModal({
+      if (!character || character.isDead) {
+        daapi.deleteCharacterAction({
+          characterId,
+          key: 'play_as'
+        })
+        return
+      }
+      daapi.pushInteractionModalQueue({
         title: 'Play as ' + character.praenomen + '?',
         message: 'Would you like to play as ' + `[c|${characterId}|${character.praenomen}]` + '?',
         image: daapi.requireImage('/cor_society/bundled/play_as/switch.svg'),
