@@ -20,9 +20,30 @@
                     }
                   })
                 },
+        initialHouseHeadIsMale(society, state, stratum) {
+                  let counts = { male: 0, female: 0 }
+                  Object.keys((society && society.houses) || {}).forEach((houseId) => {
+                    let house = society.houses[houseId]
+                    if (!house || house.stratum !== stratum) {
+                      return
+                    }
+                    let ids = ((house.notableIds || []).concat(house.memberIds || [])).filter(Boolean)
+                    for (let i = 0; i < ids.length; i++) {
+                      let character = state.characters && state.characters[ids[i]]
+                      if (character && !character.isDead) {
+                        if (this.characterIsMale(character)) counts.male += 1
+                        else counts.female += 1
+                        return
+                      }
+                    }
+                  })
+                  if (counts.male > counts.female) return false
+                  if (counts.female > counts.male) return true
+                  return Math.random() > 0.5
+                },
         generateHouse(society, state, stratum) {
                   let profile = this.strata[stratum]
-                  let isMale = Math.random() > 0.25
+                  let isMale = this.initialHouseHeadIsMale(society, state, stratum)
                   let nomen = this.pick(this.nomina)
                   let cognomen = this.pick(this.cognomina)
                   let prestige = this.randomInt(profile.basePrestige[0], profile.basePrestige[1])
@@ -75,6 +96,42 @@
                   this.log(society, 'New ' + profile.singular + ' enters public life: ' + house.name + '.')
                   return house
                 },
+        ensureInitialHouseGenderPair(society, state, house, stratum) {
+                  let counts = this.houseLivingGenderCounts(society, state, house)
+                  if (!counts.male || !counts.female) {
+                    this.generateHouseSeedMember(society, state, house, { gender: counts.male ? 'female' : 'male' })
+                    state = daapi.getState()
+                    this.refreshHouseMemberLists(society, state, house)
+                  }
+                  return daapi.getState()
+                },
+        repairGeneratedHouseInitialGenderPairs(society, state) {
+                  let repairKey = 'initial-gender-pair-v1'
+                  if (!society || society.initialGenderPairRepairVersion === repairKey || !society.houses) {
+                    return false
+                  }
+                  Object.keys(society.houses).forEach((houseId) => {
+                    let house = society.houses[houseId]
+                    if (!house || !house.generated || house.initialGenderPairChecked) {
+                      return
+                    }
+                    this.refreshHouseMemberLists(society, state, house)
+                    let living = this.houseLivingMemberIds(society, state, house)
+                    if (!living.length) {
+                      house.initialGenderPairChecked = true
+                      return
+                    }
+                    let counts = this.houseLivingGenderCounts(society, state, house)
+                    if (!counts.male || !counts.female) {
+                      this.generateHouseSeedMember(society, state, house, { gender: counts.male ? 'female' : 'male' })
+                      state = daapi.getState()
+                      this.refreshHouseMemberLists(society, state, house)
+                    }
+                    house.initialGenderPairChecked = true
+                  })
+                  society.initialGenderPairRepairVersion = repairKey
+                  return true
+                },
         seedGeneratedHouseFamily(society, state, house, stratum, headId) {
                   let head = (state.characters && state.characters[headId]) || daapi.getCharacter({ characterId: headId })
                   if (!head) {
@@ -88,6 +145,8 @@
                     state = daapi.getState()
                     head = state.characters[headId] || head
                   }
+                  state = this.ensureInitialHouseGenderPair(society, state, house, stratum)
+                  head = state.characters[headId] || head
                   if (headAge >= 34) {
                     let spouseId = (head.spouseId && state.characters[head.spouseId]) ? head.spouseId : (spouse && spouse.id)
                     let spouseCharacter = spouseId ? state.characters[spouseId] || spouse : false
@@ -106,6 +165,8 @@
                     state = daapi.getState()
                     head = state.characters[headId] || head
                   }
+                  state = this.ensureInitialHouseGenderPair(society, state, house, stratum)
+                  head = state.characters[headId] || head
                   this.ensureHouseCommonTree(society, state, house, { allowLivingExtras: true })
                   state = daapi.getState()
                   this.refreshHouseMemberLists(society, state, house)
@@ -143,6 +204,14 @@
                   if (society.generatedCharacterIds.indexOf(spouseId) < 0) {
                     society.generatedCharacterIds.push(spouseId)
                   }
+                  house.memberIds = house.memberIds || []
+                  house.notableIds = house.notableIds || []
+                  if (house.memberIds.indexOf(spouseId) < 0) {
+                    house.memberIds.push(spouseId)
+                  }
+                  if (house.notableIds.indexOf(spouseId) < 0) {
+                    house.notableIds.push(spouseId)
+                  }
                   try {
                     daapi.performMarriage({
                       characterId: head.id,
@@ -168,6 +237,9 @@
         generateHouseChild(society, state, house, stratum, mother, father, childAge) {
                   mother = mother || {}
                   father = father || {}
+                  if (!mother.id || !father.id) {
+                    return false
+                  }
                   let isMale = Math.random() > 0.5
                   childAge = Math.max(0, Math.min(18, parseInt(childAge || 0, 10)))
                   let traits = childAge >= 12 ? this.generatedTraitsForStratum(stratum, '') : []
@@ -233,6 +305,7 @@
         generateRelative(society, state, house, stratum, head) {
                   let profile = this.strata[stratum]
                   let isMale = Math.random() > 0.5
+                  let headIsMale = this.characterIsMale(head)
                   let headAge = this.age(head, state)
                   let canBeChild = headAge >= 34
                   let relativeAge = canBeChild ? this.randomInt(0, Math.min(30, headAge - 18)) : this.randomInt(16, 30)
@@ -245,15 +318,15 @@
                       praenomen: isMale ? this.pick(this.maleNames) : this.pick(this.femaleNames),
                       birthMonth: this.randomInt(0, 11),
                       birthYear: state.year - relativeAge,
-                      look: canBeChild ? this.inheritedVanillaLook(isMale, head.isMale ? null : head, head.isMale ? head : null, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge) : this.generatedVanillaLook(isMale, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge),
+                      look: canBeChild ? this.inheritedVanillaLook(isMale, headIsMale ? null : head, headIsMale ? head : null, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge) : this.generatedVanillaLook(isMale, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge),
                       job,
                       jobLevel: job ? this.randomInt(0, 5) : 0,
                       traits,
                       skills: this.skillsForStratum(stratum),
                       corSocietyGenerated: true,
                       flagDoNotCull: true,
-                      fatherId: canBeChild && head.isMale ? head.id : null,
-                      motherId: canBeChild && !head.isMale ? head.id : null,
+                      fatherId: canBeChild && headIsMale ? head.id : null,
+                      motherId: canBeChild && !headIsMale ? head.id : null,
                       childrenIds: []
                     },
                     dynastyFeatures: this.dynastyFeaturesForHouse(house, state)
@@ -263,8 +336,8 @@
                     character: {
                       dynastyId: this.gameDynastyIdForHouse(house),
                       corSocietyHouseId: house.id,
-                      fatherId: canBeChild && head.isMale ? head.id : null,
-                      motherId: canBeChild && !head.isMale ? head.id : null
+                      fatherId: canBeChild && headIsMale ? head.id : null,
+                      motherId: canBeChild && !headIsMale ? head.id : null
                     }
                   })
                   if (canBeChild) {
@@ -631,6 +704,38 @@
                     }
                   }
                   society.generatedParentsCursor = ids.length ? (cursor + Math.max(1, inspected)) % ids.length : 0
+                },
+        repairIncompleteGeneratedParentPairs(society, state) {
+                  if (!society || !state || !state.characters) {
+                    return 0
+                  }
+                  let ids = this.uniqueIds([].concat(society.generatedCharacterIds || [], society.playerTreeGeneratedLivingIds || []))
+                  let repaired = 0
+                  for (let i = 0; i < ids.length && repaired < 12; i++) {
+                    let characterId = ids[i]
+                    let character = state.characters[characterId]
+                    if (!character || character.corSocietyGhostParent) {
+                      continue
+                    }
+                    if (!character.corSocietyGenerated && !character.corSocietyHouseId && !character.corSocietyPlayerTreeGenerated) {
+                      continue
+                    }
+                    character.id = character.id || characterId
+                    let hasFather = !!(character.fatherId && state.characters[character.fatherId])
+                    let hasMother = !!(character.motherId && state.characters[character.motherId])
+                    if (hasFather && hasMother) {
+                      continue
+                    }
+                    if (!hasFather && !hasMother) {
+                      continue
+                    }
+                    let fatherId = hasFather ? character.fatherId : this.generateGhostParent(society, state, character, true)
+                    let motherId = hasMother ? character.motherId : this.generateGhostParent(society, state, character, false)
+                    if (fatherId && motherId && this.connectCharacterToParents(state, characterId, fatherId, motherId)) {
+                      repaired += 1
+                    }
+                  }
+                  return repaired
                 },
         ensureGeneratedDynastyTrees(society, state) {
                   if (!society || !society.houses || !state || !state.characters) {

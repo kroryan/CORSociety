@@ -23,6 +23,307 @@
                   society.log = society.log || []
                   society.log.unshift(entry)
                 },
+        installDebugConsoleCommand() {
+                  let self = this
+                  let command = function(section) {
+                    section = section || 'overview'
+                    let snapshot = false
+                    try {
+                      let society = false
+                      try {
+                        society = (typeof window !== 'undefined' && window.corSociety) || (typeof globalThis !== 'undefined' && globalThis.corSociety) || false
+                      } catch (societyErr) {
+                        society = false
+                      }
+                      if (society && society.debugSnapshot) {
+                        snapshot = society.debugSnapshot(section)
+                      }
+                      try {
+                        daapi.invokeMethod({
+                          event: '/cor_society/engine',
+                          method: 'openDebugConsole',
+                          context: { section }
+                        })
+                      } catch (openErr) {
+                        console.warn(openErr)
+                      }
+                      if (typeof console !== 'undefined' && console.log) {
+                        console.log('CORSociety debug snapshot (' + section + ')', snapshot)
+                      }
+                    } catch (err) {
+                      console.warn(err)
+                      snapshot = { error: err.name + ': ' + err.message }
+                    }
+                    try {
+                      daapi.setGlobalFlag({ flag: 'corSocietyLastDebugSnapshot', data: snapshot || { section, requested: true } })
+                    } catch (flagErr) {
+                      console.warn(flagErr)
+                    }
+                    return snapshot
+                  }
+                  let help = function() {
+                    return {
+                      commands: [
+                        'corSocietyDebug()',
+                        'daapi.corSocietyDebug()',
+                        'daapi.invokeMethod({ event: "/cor_society/engine", method: "openDebugConsole" })',
+                        'corSocietyDebug("log")',
+                        'corSocietyDebug("houses")',
+                        'corSocietyDebug("systems")',
+                        'corSocietyDebug("full")'
+                      ],
+                      note: 'The command opens the in-game debug window and stores the last snapshot in corSocietyLastDebugSnapshot.'
+                    }
+                  }
+                  let roots = []
+                  try { if (typeof window !== 'undefined') roots.push(window) } catch (err) { console.warn(err) }
+                  try { if (typeof globalThis !== 'undefined' && roots.indexOf(globalThis) < 0) roots.push(globalThis) } catch (err) { console.warn(err) }
+                  try { if (typeof self !== 'undefined' && roots.indexOf(self) < 0) roots.push(self) } catch (err) { console.warn(err) }
+                  try {
+                    let globalRoot = Function('return this')()
+                    if (globalRoot && roots.indexOf(globalRoot) < 0) roots.push(globalRoot)
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                  roots.forEach((root) => {
+                    try {
+                      root.corSocietyDebug = command
+                      root.CORSocietyDebug = command
+                      root.corSocietyDebugHelp = help
+                    } catch (err) {
+                      console.warn(err)
+                    }
+                  })
+                  try {
+                    daapi.corSocietyDebug = command
+                    daapi.CORSocietyDebug = command
+                    daapi.corSocietyDebugHelp = help
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                  try {
+                    if (typeof document !== 'undefined' && document.documentElement && !document.getElementById('cor-society-debug-command')) {
+                      let script = document.createElement('script')
+                      script.id = 'cor-society-debug-command'
+                      script.textContent = [
+                        'function corSocietyDebug(section){',
+                        '  if (typeof daapi !== "undefined" && daapi.corSocietyDebug) return daapi.corSocietyDebug(section);',
+                        '  if (typeof daapi !== "undefined") return daapi.invokeMethod({event:"/cor_society/engine",method:"openDebugConsole",context:{section:section||"overview"}});',
+                        '}',
+                        'function CORSocietyDebug(section){ return corSocietyDebug(section); }',
+                        'function corSocietyDebugHelp(){ return (typeof daapi !== "undefined" && daapi.corSocietyDebugHelp) ? daapi.corSocietyDebugHelp() : "Use daapi.invokeMethod({ event: \\"/cor_society/engine\\", method: \\"openDebugConsole\\" })"; }'
+                      ].join('\n')
+                      document.documentElement.appendChild(script)
+                    }
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                  self.debugConsoleInstalled = true
+                  return true
+                },
+        debugFlag(name) {
+                  try {
+                    return daapi.getGlobalFlag({ flag: name })
+                  } catch (err) {
+                    return ''
+                  }
+                },
+        debugSnapshot(section) {
+                  section = section || 'overview'
+                  let state = daapi.getState()
+                  let society = this.load()
+                  let houses = Object.keys((society && society.houses) || {}).map((houseId) => society.houses[houseId]).filter(Boolean)
+                  let livingHouses = houses.filter((house) => {
+                    try {
+                      return this.houseLivingMemberIds(society, state, house).length > 0
+                    } catch (err) {
+                      return false
+                    }
+                  })
+                  let activeLoans = (society.privateLoans || []).filter((loan) => loan && loan.status === 'active')
+                  let activeVentures = (society.ventures || []).filter((venture) => venture && venture.status === 'active')
+                  let patronage = society.patronage || []
+                  let currentId = this.currentCharacterId(state)
+                  let current = state.characters && state.characters[currentId]
+                  let snapshot = {
+                    version: this.version,
+                    section,
+                    now: new Date().toISOString(),
+                    game: {
+                      year: state.year,
+                      month: state.month,
+                      day: state.day,
+                      currentId,
+                      currentName: current ? this.characterName({ ...current, id: currentId }, state) : '',
+                      currentCash: state.current && state.current.cash,
+                      currentInfluence: state.current && state.current.influence,
+                      currentPrestige: state.current && state.current.prestige,
+                      characterCount: Object.keys(state.characters || {}).length,
+                      dynastyCount: Object.keys(state.dynasties || {}).length
+                    },
+                    society: {
+                      houseCount: houses.length,
+                      livingHouseCount: livingHouses.length,
+                      deadHouseCount: (society.deadHouseIds || []).length,
+                      generatedCharacters: (society.generatedCharacterIds || []).length,
+                      generatedHouses: (society.generatedHouseIds || []).length,
+                      playerFamilyActionMembers: this.playerFamilyActionMemberIds ? this.playerFamilyActionMemberIds(state).length : 0,
+                      playerSlaves: (society.playerSlaves || []).length,
+                      slaveMarket: (society.slaveMarket || []).length,
+                      romances: (society.romances || []).length,
+                      pendingPaternities: (society.pendingPaternities || []).length,
+                      activePrivateLoans: activeLoans.length,
+                      activeVentures: activeVentures.length,
+                      logEntries: (society.log || []).length,
+                      lastEnsureKey: society.lastEnsureKey || '',
+                      lastProcessedStatusMonth: society.lastProcessedStatusMonth || ''
+                    },
+                    systems: {
+                      bank: society.bank || {},
+                      activePrivateLoans: activeLoans.slice(0, 20),
+                      activeVentures: activeVentures.slice(0, 20),
+                      pendingSteals: society.pendingSteals || {},
+                      tradeCompacts: society.tradeCompacts || {},
+                      patronage: patronage.slice ? patronage.slice(0, 20) : patronage
+                    },
+                    recentLog: (society.log || []).slice(0, 30),
+                    errors: {
+                      startup: this.debugFlag('corSocietyLastError'),
+                      startupShown: this.debugFlag('corSocietyStartupErrorShown')
+                    }
+                  }
+                  if (section === 'houses' || section === 'full') {
+                    snapshot.houses = houses.slice(0, section === 'full' ? 500 : 80).map((house) => {
+                      return {
+                        id: house.id,
+                        name: house.name,
+                        stratum: house.stratum,
+                        relation: house.relation,
+                        wealth: house.wealth,
+                        power: house.power,
+                        stability: house.stability,
+                        aiCash: house.ai && house.ai.cash,
+                        livingMembers: this.houseLivingMemberIds(society, state, house).length,
+                        slaves: (house.slaveIds || []).length,
+                        lastFamilyEvent: house.lastFamilyEvent || ''
+                      }
+                    })
+                  }
+                  if (section === 'full') {
+                    snapshot.rawSociety = society
+                    snapshot.rawCurrent = state.current
+                    snapshot.rawSettings = state.settings
+                  }
+                  return snapshot
+                },
+        debugSectionOptions(section) {
+                  let sections = [
+                    ['overview', 'Overview'],
+                    ['log', 'Recent log'],
+                    ['houses', 'Houses'],
+                    ['systems', 'Systems'],
+                    ['full', 'Dump full']
+                  ]
+                  return sections.map((item) => {
+                    return {
+                      variant: item[0] === section ? 'info' : undefined,
+                      text: item[1],
+                      tooltip: item[0] === 'full'
+                        ? 'Prints a larger debug snapshot to the browser console and opens a compact in-game view.'
+                        : 'Open the ' + item[1].toLowerCase() + ' debug view.',
+                      icons: [this.affairIcon(item[0] === 'houses' ? 'familyTree' : item[0] === 'systems' ? 'bank' : 'log')],
+                      action: {
+                        event: this.event,
+                        method: 'openDebugConsole',
+                        context: { section: item[0] }
+                      }
+                    }
+                  })
+                },
+        openDebugConsole({ section, page } = {}) {
+                  section = section || 'overview'
+                  page = parseInt(page || 0, 10)
+                  let snapshot = this.debugSnapshot(section)
+                  if (typeof console !== 'undefined' && console.log) {
+                    console.log('CORSociety debug window snapshot (' + section + ')', snapshot)
+                  }
+                  let options = this.debugSectionOptions(section)
+                  let message = ''
+                  let summary = []
+                  if (section === 'log') {
+                    let pageSize = 8
+                    let entries = snapshot.recentLog.slice(page * pageSize, page * pageSize + pageSize)
+                    message = entries.length ? 'Recent Society log page ' + (page + 1) + '.' : 'No Society log entries recorded yet.'
+                    entries.forEach((entry, index) => {
+                      options.push({
+                        disabled: true,
+                        showDisabledWithTooltip: true,
+                        text: this.shortText((entry && entry.text) || '', 72),
+                        tooltip: (entry && entry.text) || '',
+                        icons: [this.affairIcon((entry && entry.kind) || 'log')]
+                      })
+                    })
+                    if ((page + 1) * pageSize < snapshot.recentLog.length) {
+                      options.push({ text: 'Next log page', action: { event: this.event, method: 'openDebugConsole', context: { section, page: page + 1 } } })
+                    }
+                    if (page > 0) {
+                      options.push({ text: 'Previous log page', action: { event: this.event, method: 'openDebugConsole', context: { section, page: page - 1 } } })
+                    }
+                  } else if (section === 'houses') {
+                    message = 'House debug summary. Full details are also printed to the browser console.'
+                    summary = [
+                      this.summaryOption('Houses', snapshot.society.houseCount, [this.affairIcon('familyTree')], 'Total Society houses.'),
+                      this.summaryOption('Living', snapshot.society.livingHouseCount, [this.affairIcon('support')], 'Houses with at least one living member.'),
+                      this.summaryOption('Dead', snapshot.society.deadHouseCount, [this.affairIcon('death')], 'Archived extinct houses.')
+                    ]
+                    ;(snapshot.houses || []).slice(0, 12).forEach((house) => {
+                      options.push({
+                        disabled: true,
+                        showDisabledWithTooltip: true,
+                        text: this.shortText(house.name + ' - ' + house.stratum + ' (' + house.livingMembers + ')', 70),
+                        tooltip: 'Relation: ' + this.signed(house.relation || 0) + '\nWealth: ' + Math.round(house.wealth || 0) + '\nPower: ' + Math.round(house.power || 0) + '\nStability: ' + Math.round(house.stability || 0) + '\nLast: ' + (house.lastFamilyEvent || 'none'),
+                        icons: [this.stratumIcon(house.stratum)]
+                      })
+                    })
+                  } else if (section === 'systems') {
+                    message = 'System state for bank, private loans, ventures, romances, slaves, pending paternity, and recent errors.'
+                    summary = [
+                      this.summaryOption('Bank principal', Math.round((snapshot.systems.bank && snapshot.systems.bank.principal) || 0), [this.affairIcon('bank')], 'Player Bank of Rome principal.'),
+                      this.summaryOption('Loans', snapshot.society.activePrivateLoans, [this.affairIcon('coins')], 'Active private loans.'),
+                      this.summaryOption('Ventures', snapshot.society.activeVentures, [this.affairIcon('trade')], 'Active Society ventures.'),
+                      this.summaryOption('Romances', snapshot.society.romances, [this.affairIcon('romance')], 'Tracked Society romances.'),
+                      this.summaryOption('Paternity', snapshot.society.pendingPaternities, [this.affairIcon('birth')], 'Pending secret/illegitimate paternity records.'),
+                      this.summaryOption('Last error', snapshot.errors.startup ? 'present' : 'none', [this.affairIcon('log')], snapshot.errors.startup || 'No startup error flag.')
+                    ]
+                  } else if (section === 'full') {
+                    message = 'Full debug snapshot printed to the browser console. The in-game view stays compact to avoid freezing the UI.'
+                    summary = [
+                      this.summaryOption('Characters', snapshot.game.characterCount, [this.affairIcon('familyTree')], 'Game character records.'),
+                      this.summaryOption('Society houses', snapshot.society.houseCount, [this.affairIcon('support')], 'Society house records.'),
+                      this.summaryOption('Generated chars', snapshot.society.generatedCharacters, [this.affairIcon('birth')], 'Generated Society characters.')
+                    ]
+                  } else {
+                    message = 'CORSociety debug console. Use corSocietyDebug(), daapi.corSocietyDebug(), corSocietyDebug("log"), corSocietyDebug("houses"), corSocietyDebug("systems"), or corSocietyDebug("full") from the DAAPI command console.'
+                    summary = [
+                      this.summaryOption('Version', snapshot.version, [daapi.requireImage('/cor_society/icon.svg')], 'Loaded Society version.'),
+                      this.summaryOption('Date', 'Y' + snapshot.game.year + ' M' + ((snapshot.game.month || 0) + 1), [this.affairIcon('log')], 'Current game date.'),
+                      this.summaryOption('Current', snapshot.game.currentName || snapshot.game.currentId || 'unknown', [this.affairIcon('familyTree')], 'Current player character.'),
+                      this.summaryOption('Actions', snapshot.society.playerFamilyActionMembers, [daapi.requireImage('/cor_society/assets/scroll.svg')], 'Family members registered for Society Sheet action.'),
+                      this.summaryOption('Logs', snapshot.society.logEntries, [this.affairIcon('log')], 'Society log entries stored.'),
+                      this.summaryOption('Last error', snapshot.errors.startup ? 'present' : 'none', [this.affairIcon('rivalry')], snapshot.errors.startup || 'No startup error flag.')
+                    ]
+                  }
+                  options.push({ text: 'Refresh', action: { event: this.event, method: 'openDebugConsole', context: { section, page } } })
+                  options.push({ text: 'Close' })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'CORSociety Debug',
+                    message,
+                    societySummaryOptions: summary,
+                    image: daapi.requireImage('/cor_society/icon.svg'),
+                    options
+                  })
+                },
         normalizeLogEntry(entry, index) {
                   if (entry && typeof entry === 'object') {
                     return {

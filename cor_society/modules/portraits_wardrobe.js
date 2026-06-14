@@ -58,15 +58,30 @@
                   }
                   return this.genericVanillaCharacterPortrait(character, state)
                 },
-        isSlaveCharacter(character, house) {
+        isExplicitlyEnslavedCharacter(character) {
                   return !!(
                     character &&
                     (
-                      character.corSocietySlave ||
-                      character.corSocietySlaveMarket ||
+                      character.corSocietySlave === true ||
+                      character.corSocietySlaveActive === true ||
+                      character.corSocietySlaveMarket === true ||
                       character.corSocietyOrigin === 'enslaved_dependant' ||
-                      (house && house.stratum === 'poor')
+                      character.corSocietyOrigin === 'private_company_bastard'
                     )
+                  )
+                },
+        isSlaveCharacter(character, house) {
+                  if (!character) {
+                    return false
+                  }
+                  if (this.isExplicitlyEnslavedCharacter(character)) {
+                    return true
+                  }
+                  let characterId = character.id || character.characterId || ''
+                  return !!(
+                    characterId &&
+                    house &&
+                    (house.slaveIds || []).some((id) => String(id) === String(characterId))
                   )
                 },
         isSocietyGeneratedCharacter(character, house) {

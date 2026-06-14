@@ -35,6 +35,7 @@
     boot() {
       if (window.corSociety && window.corSociety.version === '1.1.293') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
+        window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -51,6 +52,7 @@
 
       daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
       window.corSociety.ensure()
+      window.corSociety.installDebugConsoleCommand()
       window.corSociety.installDebtSaleModalPatch()
       window.corSociety.registerPlayerEntryActions()
       window.corSociety.startPlayerCrestOverlay()
@@ -123,7 +125,25 @@
     openLogEntry(args) {
       window.corSociety.runAction('openLogEntry', args || {})
     },
+    openDebugConsole(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      window.corSociety.runAction('openDebugConsole', args || {})
+    },
+    openDeadHouses(args) {
+      window.corSociety.runAction('openDeadHouses', args || {})
+    },
+    openDeadHouse(args) {
+      window.corSociety.runAction('openDeadHouse', args || {})
+    },
+    openDeadHouseFamilyTree(args) {
+      window.corSociety.runAction('openDeadHouseFamilyTree', args || {})
+    },
     openPlayerCrest() {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.openPlayerCrest()
     },
     randomizePlayerCrest() {
@@ -136,6 +156,9 @@
       window.corSociety.togglePlayerCrestOverlay()
     },
     openWardrobe() {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.openWardrobe()
     },
     openWardrobeCharacter(args) {
@@ -159,6 +182,12 @@
     openPerson(args) {
       window.corSociety.runAction('openPerson', args || {})
     },
+    openFamilyCharacterSheet(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      window.corSociety.runAction('openFamilyCharacterSheet', args || {})
+    },
     openVanillaActions(args) {
       window.corSociety.runAction('openVanillaActions', args || {})
     },
@@ -178,6 +207,9 @@
       window.corSociety.runAction('openHouseFamilyTree', args || {})
     },
     openPlayerFamilyTree() {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.openPlayerFamilyTree()
     },
     closeFamilyTreeOverlay() {
@@ -205,6 +237,9 @@
       window.corSociety.runAction('registerBundledMatchmakerAction', args || {})
     },
     openBankOfRome() {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.openBankOfRome()
     },
     takeBankLoan(args) {
@@ -219,10 +254,34 @@
     deferBankPayment(args) {
       window.corSociety.runAction('deferBankPayment', args || {})
     },
+    openPrivateLoans(args) {
+      window.corSociety.runAction('openPrivateLoans', args || {})
+    },
+    openPrivateLoanOffer(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      window.corSociety.runAction('openPrivateLoanOffer', args || {})
+    },
+    offerPrivateLoan(args) {
+      window.corSociety.runAction('offerPrivateLoan', args || {})
+    },
+    claimPrivateLoanDebtBond(args) {
+      window.corSociety.runAction('claimPrivateLoanDebtBond', args || {})
+    },
+    extendPrivateLoan(args) {
+      window.corSociety.runAction('extendPrivateLoan', args || {})
+    },
     openHouseholdSlaves(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.runAction('openHouseholdSlaves', args || {})
     },
     openPlayerSlavePath(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
       window.corSociety.runAction('openPlayerSlavePath', args || {})
     },
     playerSlaveWorkExtra(args) {
@@ -347,6 +406,9 @@
     },
     praisePerson(args) {
       window.corSociety.runAction('praisePerson', args || {})
+    },
+    supportKinshipCharacter(args) {
+      window.corSociety.runAction('supportKinshipCharacter', args || {})
     },
     requestIntroduction(args) {
       window.corSociety.runAction('requestIntroduction', args || {})

@@ -28,6 +28,12 @@
                   let monthKey = this.monthKey(state)
                   let ensureKey = this.ensureKey(society, state)
                   let monthChanged = society.lastProcessedStatusMonth !== monthKey
+                  let falseSlaveRepairKey = 'false-player-slave-v1'
+                  let falseSlaveRepairNeeded = society.falsePlayerSlaveRepairVersion !== falseSlaveRepairKey
+                  if (falseSlaveRepairNeeded) {
+                    this.repairFalsePlayerSlaveFlags(society, state)
+                    society.falsePlayerSlaveRepairVersion = falseSlaveRepairKey
+                  }
                   if (!options || !options.force) {
                     if (society.lastEnsureKey === ensureKey) {
                       this.registerPlayerEntryActions(state)
@@ -35,11 +41,15 @@
                       this.registerSocietyTraitDefinitions()
                       if (monthChanged) {
                         this.syncExtendedKinVisibility(society, state)
+                        this.repairFalsePlayerSlaveFlags(society, state)
                         this.ensureSlaveOrderPeople(society, state)
                         this.syncSocietyTraitsWithVanilla(society, state)
                         this.syncFamilyRelationStatuses(society, state)
                         this.syncSlaveStatuses(society, state)
                         society.lastProcessedStatusMonth = monthKey
+                        this.save(society)
+                      }
+                      if (falseSlaveRepairNeeded) {
                         this.save(society)
                       }
                       return society
@@ -50,9 +60,17 @@
                   this.syncWithGame(society, state)
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.ensureVisibleHouseMembers(society, state)
+                  this.retireDeadHouses(society, state, { notify: false })
+                  state = daapi.getState()
+                  this.ensureMinimumHouses(society, state)
+                  state = daapi.getState()
+                  this.repairGeneratedHouseInitialGenderPairs(society, state)
+                  state = daapi.getState()
+                  this.repairFalsePlayerSlaveFlags(society, state)
                   this.ensureSlaveOrderPeople(society, state)
                   this.normalizeGeneratedPeople(society, state)
                   this.ensureGeneratedParents(society, state)
+                  this.repairIncompleteGeneratedParentPairs(society, state)
                   this.ensureGeneratedDynastyTrees(society, state)
                   this.ensureGeneratedLooks(society, state)
                   this.ensureCrests(society, state)
@@ -75,6 +93,8 @@
                   let romanceCount = society && society.romances ? Object.keys(society.romances).length : 0
                   let slaveCount = society && society.playerSlaves ? society.playerSlaves.length : 0
                   let pendingPaternityCount = society && society.pendingPaternities ? society.pendingPaternities.length : 0
+                  let privateLoanCount = society && society.privateLoans ? society.privateLoans.length : 0
+                  let deadHouseCount = society && society.deadHouseIds ? society.deadHouseIds.length : 0
                   let currentId = state && state.current ? state.current.id : 'none'
                   let currentClass = state && state.current ? (state.current.class || state.current.currentClass || '') : ''
                   let senatorial = state && state.current && (state.current.flagIsSenetorialClass || state.current.flagIsSenatorialClass) ? 'senate' : ''
@@ -88,6 +108,8 @@
                     romanceCount,
                     slaveCount,
                     pendingPaternityCount,
+                    privateLoanCount,
+                    deadHouseCount,
                     this.version
                   ].join(':')
                 },
@@ -320,23 +342,87 @@
                     state = state || daapi.getState()
                     let currentId = this.currentCharacterId(state)
                     let current = state && state.characters && state.characters[currentId]
-                    let key = [this.version, currentId || '', current && this.isSlaveCharacter(current) ? 'slave' : 'free'].join(':')
+                    let familyActionIds = this.playerFamilyActionMemberIds(state)
+                    let key = [this.version, 'sheet-actions-v1', currentId || '', current && this.isSlaveCharacter(current) ? 'slave' : 'free', familyActionIds.length].join(':')
                     let now = Date.now ? Date.now() : 0
-                    if (this._registeredEntryActionKey === key && now && this._registeredEntryActionAt && now - this._registeredEntryActionAt < 15000) {
-                      return
-                    }
                     this._registeredEntryActionKey = key
                     this._registeredEntryActionAt = now || 1
-                    this.cleanupLegacyGlobalActions()
+                    if (!this._legacyGlobalActionsCleaned || (now && now - (this._legacyGlobalActionsCleanedAt || 0) > 60000)) {
+                      this.cleanupLegacyGlobalActions()
+                      this._legacyGlobalActionsCleaned = true
+                      this._legacyGlobalActionsCleanedAt = now || 1
+                    }
                     this.registerCurrentCharacterAction(state, 'cor_society', 'Roman Society', 'Opens the Society overview. Consequences: no stats change until you choose an action inside.', daapi.requireImage('/cor_society/icon.svg'), 'openHub')
                     this.registerCurrentCharacterAction(state, 'cor_society_player_crest', 'House Shield', 'Opens player house shield settings. Consequences: visual shield changes only; no stats change.', daapi.requireImage('/cor_society/shield.svg'), 'openPlayerCrest')
                     this.registerCurrentCharacterAction(state, 'cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
                     this.registerCurrentCharacterAction(state, 'cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', this.bundledIcon('bank_of_rome', 'money'), 'openBankOfRome')
                     this.registerCurrentCharacterAction(state, 'cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', this.slaveTypeIcon('household'), 'openHouseholdSlaves')
                     this.registerPlayerDynastyTreeAction(state)
+                    this.registerFamilyCharacterSheetActions(state, familyActionIds)
                     if (current && this.isSlaveCharacter(current)) {
                       this.registerCurrentCharacterAction(state, 'cor_society_slave_path', 'Path to Freedom', 'Open slave-focused Society actions for earning or negotiating freedom.', this.slaveTypeIcon(current.corSocietySlaveType || 'labor'), 'openPlayerSlavePath')
                     }
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                },
+        playerFamilyActionMemberIds(state) {
+                  state = state || daapi.getState()
+                  let current = state.current || {}
+                  let characters = state.characters || {}
+                  let seen = {}
+                  let ids = []
+                  let add = (characterId) => {
+                    if (characterId === undefined || characterId === null || characterId === '' || seen[characterId] || !characters[characterId]) {
+                      return
+                    }
+                    seen[characterId] = true
+                    ids.push(characterId)
+                  }
+                  add(this.currentCharacterId(state))
+                  ;[
+                    current.householdCharacterIds,
+                    current.formerHouseholdCharacterIds,
+                    current.deadHouseholdCharacterIds,
+                    current.familyCharacterIds,
+                    current.dependantCharacterIds,
+                    current.dependentCharacterIds
+                  ].forEach((list) => {
+                    ;(list || []).forEach(add)
+                  })
+                  this.playerFamilyMemberIds(state).forEach(add)
+                  return ids.slice(0, 180)
+                },
+        registerFamilyCharacterSheetActions(state, ids) {
+                  try {
+                    state = state || daapi.getState()
+                    let icon = daapi.requireImage('/cor_society/assets/scroll.svg')
+                    ;(ids || this.playerFamilyActionMemberIds(state)).forEach((characterId) => {
+                      try {
+                        let character = state.characters && state.characters[characterId]
+                        if (!character) {
+                          return
+                        }
+                        daapi.addCharacterAction({
+                          characterId,
+                          key: 'cor_society_character_sheet',
+                          action: {
+                            title: 'Society Sheet',
+                            tooltip: 'Open this family member in Roman Society. Consequences: opens the Society character sheet; no stats change.',
+                            icon,
+                            isAvailable: true,
+                            hideWhenBusy: false,
+                            process: {
+                              event: this.event,
+                              method: 'openFamilyCharacterSheet',
+                              context: { characterId }
+                            }
+                          }
+                        })
+                      } catch (err) {
+                        console.warn('Roman Society character sheet action failed for ' + characterId, err)
+                      }
+                    })
                   } catch (err) {
                     console.warn(err)
                   }
@@ -479,6 +565,9 @@
                       lastNoticeYear: '',
                       lastClearedYear: ''
                     },
+                    privateLoans: [],
+                    deadHouses: {},
+                    deadHouseIds: [],
                     playerSlaves: [],
                     slaveMarketOffers: [],
                     lastProcessedMonth: '',
@@ -534,6 +623,9 @@
                     lastClearedYear: '',
                     ...(society.bank || {})
                   }
+                  society.privateLoans = society.privateLoans || []
+                  society.deadHouses = society.deadHouses || {}
+                  society.deadHouseIds = society.deadHouseIds || []
                   society.playerSlaves = society.playerSlaves || []
                   society.slaveMarketOffers = society.slaveMarketOffers || []
                   society.log = society.log || []
@@ -553,6 +645,21 @@
                   }
                   if (society.pendingVentures && society.pendingVentures.length > 80) {
                     society.pendingVentures = society.pendingVentures.slice(-80)
+                  }
+                  if (society.privateLoans && society.privateLoans.length > 80) {
+                    society.privateLoans = society.privateLoans.slice(-80)
+                  }
+                  if (society.deadHouseIds && society.deadHouseIds.length > 80) {
+                    society.deadHouseIds = society.deadHouseIds.slice(0, 80)
+                  }
+                  if (society.deadHouses && society.deadHouseIds) {
+                    let keepDeadHouses = {}
+                    society.deadHouseIds.forEach((houseId) => {
+                      if (society.deadHouses[houseId]) {
+                        keepDeadHouses[houseId] = society.deadHouses[houseId]
+                      }
+                    })
+                    society.deadHouses = keepDeadHouses
                   }
                   if (society.slaveMarketOffers && society.slaveMarketOffers.length > 80) {
                     society.slaveMarketOffers = society.slaveMarketOffers.slice(0, 80)

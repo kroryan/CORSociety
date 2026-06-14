@@ -227,9 +227,9 @@
                     this.visibleHousePeople(house, state).forEach((characterId) => {
                       let character = state.characters[characterId]
                       if (!character || character.isDead) return
-                      if (!(character.corSocietySlave || character.corSocietySlaveMarket || character.corSocietyOrigin === 'enslaved_dependant' || house.stratum === 'poor')) return
+                      if (!this.isSlaveCharacter(character, house)) return
                       active[characterId] = true
-                      let title = 'Society slave: ' + this.slaveOriginDescription(character.corSocietySlaveOrigin || 'unknown')
+                      let title = this.slaveStatusTitle(character, null, state)
                       let icon = this.slaveStatusIcon(character.corSocietySlaveOrigin || 'unknown')
                       let hash = title + '::' + icon
                       if (this._slaveStatusHashCache[characterId] === hash) {
@@ -256,7 +256,7 @@
                     let character = state.characters[record.characterId]
                     if (!character || character.isDead) return
                     active[record.characterId] = true
-                    let title = 'Household slave: ' + this.slaveOriginDescription(record.origin || character.corSocietySlaveOrigin || 'unknown')
+                    let title = this.slaveStatusTitle(character, record, state)
                     let icon = this.slaveStatusIcon(record.origin || character.corSocietySlaveOrigin || 'unknown')
                     let hash = title + '::' + icon
                     if (this._slaveStatusHashCache[record.characterId] === hash) {
@@ -292,6 +292,21 @@
                     }
                   })
                   society.slaveStatusCharacterIds = Object.keys(active)
+                },
+        slaveStatusTitle(character, record, state) {
+                  let origin = (record && record.origin) || (character && character.corSocietySlaveOrigin) || 'unknown'
+                  let originText = this.slaveOriginDescription(origin)
+                  if (character && (character.corSocietyOrigin === 'private_company_bastard' || (character.corSocietyBastard && (character.corSocietySlave || character.corSocietySlaveActive)))) {
+                    let notes = []
+                    if (character.corSocietyTrueFatherId && character.fatherId && !this.sameCharacterId(character.corSocietyTrueFatherId, character.fatherId)) {
+                      notes.push('different true father')
+                    }
+                    if (character.corSocietyTrueMotherId && character.motherId && !this.sameCharacterId(character.corSocietyTrueMotherId, character.motherId)) {
+                      notes.push('different true mother')
+                    }
+                    return 'Slave-born bastard: ' + originText + (notes.length ? '; ' + notes.join(', ') : '; parentage recorded by Society') + '.'
+                  }
+                  return ((record && record.characterId) ? 'Household slave: ' : 'Society slave: ') + originText
                 },
         slaveStatusIcon(origin) {
                   this._slaveIconCache = this._slaveIconCache || {}

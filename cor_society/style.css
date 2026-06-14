@@ -260,6 +260,45 @@
   white-space: nowrap;
 }
 
+.cor-society-character-action-button {
+  position: absolute;
+  left: 0.12rem;
+  bottom: 0.12rem;
+  z-index: 16;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0.12rem;
+  background: rgba(38, 44, 52, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 0.28rem;
+  box-shadow: 0 0.14rem 0.34rem rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.cor-society-character-action-button img {
+  width: 1.35rem;
+  height: 1.35rem;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.cor-society-character-action-button:hover,
+.cor-society-character-action-button:focus {
+  background: rgba(24, 160, 180, 0.92);
+  outline: none;
+}
+
+.cor-society-relation-anchor-text > .cor-society-character-action-button {
+  top: 50%;
+  right: 2.85rem;
+  bottom: auto;
+  left: auto;
+  transform: translateY(-50%);
+}
+
 .cor-society-relation-anchor-text {
   padding-right: clamp(2.6rem, 24%, 5.4rem) !important;
 }

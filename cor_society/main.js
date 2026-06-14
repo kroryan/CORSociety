@@ -100,6 +100,25 @@
         })
       }
     },
+    openFamilyCharacterSheet: function(args) {
+      try {
+        daapi.invokeMethod({
+          event: '/cor_society/engine',
+          method: 'boot'
+        })
+        daapi.invokeMethod({
+          event: '/cor_society/engine',
+          method: 'openFamilyCharacterSheet',
+          context: args || {}
+        })
+      } catch (err) {
+        daapi.pushInteractionModalQueue({
+          title: 'Society Sheet error',
+          message: err.name + ': ' + err.message,
+          image: daapi.requireImage('/cor_society/icon.svg')
+        })
+      }
+    },
     openBankOfRome: function() {
       try {
         daapi.invokeMethod({
@@ -113,6 +132,25 @@
       } catch (err) {
         daapi.pushInteractionModalQueue({
           title: 'Bank of Rome error',
+          message: err.name + ': ' + err.message,
+          image: daapi.requireImage('/cor_society/icon.svg')
+        })
+      }
+    },
+    openPlayerSlavePath: function(args) {
+      try {
+        daapi.invokeMethod({
+          event: '/cor_society/engine',
+          method: 'boot'
+        })
+        daapi.invokeMethod({
+          event: '/cor_society/engine',
+          method: 'openPlayerSlavePath',
+          context: args || {}
+        })
+      } catch (err) {
+        daapi.pushInteractionModalQueue({
+          title: 'Path to Freedom error',
           message: err.name + ': ' + err.message,
           image: daapi.requireImage('/cor_society/icon.svg')
         })

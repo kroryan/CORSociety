@@ -1642,6 +1642,412 @@
                   let bank = society.bank || {}
                   return Math.max(1, Math.ceil(parseFloat(bank.principal || 0) * parseFloat(bank.interestRate || 0.083)))
                 },
+        privateLoanRate(house) {
+                  let heat = Math.max(0, parseFloat((house && house.heat) || 0))
+                  let stability = Math.max(0, parseFloat((house && house.stability) || 50))
+                  return Math.min(0.18, Math.max(0.08, 0.10 + heat * 0.006 - Math.max(0, stability - 55) * 0.0007))
+                },
+        privateLoanActiveForBorrower(society, borrowerHouseId) {
+                  return (society.privateLoans || []).some((loan) => {
+                    return loan && loan.status === 'active' && String(loan.borrowerHouseId) === String(borrowerHouseId)
+                  })
+                },
+        privateLoanOfferAmount(state, house) {
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  let amounts = this.privateLoanOfferAmounts(state, house, cash)
+                  return amounts.length ? amounts[Math.min(1, amounts.length - 1)] : 0
+                },
+        privateLoanOfferAmounts(state, house, lenderCash) {
+                  lenderCash = lenderCash === undefined ? parseFloat(((state || {}).current || {}).cash || 0) : parseFloat(lenderCash || 0)
+                  let wealth = Math.max(80, parseFloat((house && house.wealth) || 100))
+                  let lenderCap = Math.max(0, Math.floor(lenderCash))
+                  let borrowerCash = parseFloat(((house || {}).ai || {}).cash || 0)
+                  let wealthCap = Math.max(200, Math.round(wealth * 18))
+                  let liquidityCap = borrowerCash < 50 ? 100000 : borrowerCash < 200 ? 70000 : borrowerCash < 600 ? 50000 : Math.max(3000, Math.round(wealth * 6))
+                  let cap = Math.max(0, Math.min(100000, lenderCap, Math.max(wealthCap, liquidityCap)))
+                  let ladder = [200, 1000, 2000, 3000, 5000, 10000, 20000, 50000, 70000, 100000]
+                  let raw = (lenderCash < 200 ? [100] : []).concat(ladder)
+                  let seen = {}
+                  return raw
+                    .map((amount) => Math.round(Math.max(0, parseFloat(amount || 0)) / (amount >= 1000 ? 100 : 10)) * (amount >= 1000 ? 100 : 10))
+                    .filter((amount) => amount >= 100 && amount <= cap)
+                    .sort((a, b) => a - b)
+                    .filter((amount) => {
+                      if (seen[amount]) return false
+                      seen[amount] = true
+                      return true
+                    })
+                    .slice(0, 12)
+                },
+        privateLoanAcceptanceChance(society, state, borrowerHouse, amount, lenderHouseId) {
+                  if (!borrowerHouse || this.privateLoanActiveForBorrower(society, borrowerHouse.id)) {
+                    return 0
+                  }
+                  amount = Math.max(1, Math.round(parseFloat(amount || 0)))
+                  let borrowerCash = parseFloat(((borrowerHouse || {}).ai || {}).cash || 0)
+                  let wealth = Math.max(80, parseFloat(borrowerHouse.wealth || borrowerHouse.prestige || 100))
+                  let needScore = this.clamp((190 - borrowerCash) / 260, -0.2, 0.55)
+                  let relationScore = lenderHouseId === 'player' ? this.clamp((borrowerHouse.relation || 0) / 240, -0.25, 0.28) : 0
+                  let burden = amount / Math.max(100, wealth * 0.55)
+                  let burdenScore = burden <= 0.65 ? 0.12 : burden <= 1 ? 0 : -Math.min(0.38, (burden - 1) * 0.26)
+                  let stabilityScore = this.clamp((55 - (borrowerHouse.stability || 50)) / 260, -0.08, 0.10)
+                  let heatScore = this.clamp((borrowerHouse.heat || 0) * 0.025, 0, 0.10)
+                  let rivalryPenalty = borrowerHouse.rivalry && lenderHouseId === 'player' ? -0.24 : 0
+                  let chance = 0.38 + needScore + relationScore + burdenScore + stabilityScore + heatScore + rivalryPenalty
+                  return this.clamp(chance, 0.05, 0.92)
+                },
+        privateLoanAcceptanceText(chance) {
+                  chance = parseFloat(chance || 0)
+                  if (chance >= 0.75) return 'very likely'
+                  if (chance >= 0.55) return 'likely'
+                  if (chance >= 0.35) return 'uncertain'
+                  if (chance >= 0.18) return 'unlikely'
+                  return 'very unlikely'
+                },
+        createPrivateLoan(society, state, lenderHouseId, borrowerHouseId, amount, source) {
+                  let borrower = society.houses && society.houses[borrowerHouseId]
+                  if (!borrower || amount <= 0 || this.privateLoanActiveForBorrower(society, borrowerHouseId)) {
+                    return false
+                  }
+                  society.privateLoans = society.privateLoans || []
+                  let rate = this.privateLoanRate(borrower)
+                  let id = 'private_loan_' + this.safeId(lenderHouseId || 'player') + '_' + this.safeId(borrowerHouseId) + '_' + this.monthIndex(this.monthKey(state)) + '_' + society.privateLoans.length
+                  let loan = {
+                    id,
+                    status: 'active',
+                    source: source || 'society',
+                    lenderHouseId: lenderHouseId || 'player',
+                    borrowerHouseId,
+                    principal: Math.round(amount),
+                    interestRate: rate,
+                    startMonth: this.monthKey(state),
+                    dueMonth: this.futureMonthKey(this.randomInt(8, 14))
+                  }
+                  society.privateLoans.push(loan)
+                  borrower.ai = borrower.ai || {}
+                  borrower.ai.cash = parseFloat(borrower.ai.cash || 0) + Math.round(amount)
+                  borrower.lastFamilyEvent = 'Receives a private loan.'
+                  borrower.lastFamilyKind = 'bank'
+                  return loan
+                },
+        processPrivateLoans(society, state) {
+                  if (!society || !society.privateLoans || !society.privateLoans.length) {
+                    return
+                  }
+                  society.privateLoans.forEach((loan) => {
+                    if (!loan || loan.status !== 'active' || !this.monthKeyReached(loan.dueMonth, state)) {
+                      return
+                    }
+                    let borrower = society.houses && society.houses[loan.borrowerHouseId]
+                    let lender = loan.lenderHouseId === 'player' ? false : society.houses && society.houses[loan.lenderHouseId]
+                    if (!borrower) {
+                      loan.status = 'lost'
+                      loan.closedMonth = this.monthKey(state)
+                      return
+                    }
+                    borrower.ai = borrower.ai || {}
+                    let principal = Math.max(1, Math.round(parseFloat(loan.principal || 0)))
+                    let interest = Math.max(1, Math.ceil(principal * parseFloat(loan.interestRate || 0.10)))
+                    let total = principal + interest
+                    if (parseFloat(borrower.ai.cash || 0) >= total) {
+                      borrower.ai.cash -= total
+                      loan.status = 'paid'
+                      loan.closedMonth = this.monthKey(state)
+                      if (loan.lenderHouseId === 'player') {
+                        this.applyStats({ cash: total })
+                        this.log(society, borrower.name + ' repays your private loan with ' + interest + ' interest.', 'bank', borrower.id)
+                        this.pushModal({
+                          title: 'Private Loan Repaid',
+                          message: borrower.name + ' repays ' + total + ' cash on a private loan.\nPrincipal: ' + principal + '\nInterest: ' + interest,
+                          image: this.affairIcon('bank'),
+                          options: [
+                            {
+                              text: 'Dismiss'
+                            }
+                          ]
+                        })
+                      } else if (lender) {
+                        lender.ai = lender.ai || {}
+                        lender.ai.cash = parseFloat(lender.ai.cash || 0) + total
+                        this.changeHouseRelation(society, lender.id, borrower.id, 3, 'Private credit repaid on time.')
+                        this.log(society, borrower.name + ' repays a private loan to ' + lender.name + '.', 'bank', borrower.id)
+                      }
+                      borrower.relation = this.clamp((borrower.relation || 0) + 2, -100, 100)
+                    } else {
+                      loan.defaultCount = Math.round(parseFloat(loan.defaultCount || 0) + 1)
+                      loan.canClaimDebtBond = true
+                      loan.principal = principal + interest
+                      loan.dueMonth = this.futureMonthKey(6)
+                      borrower.relation = this.clamp((borrower.relation || 0) - (loan.lenderHouseId === 'player' ? 6 : 0), -100, 100)
+                      borrower.heat = (borrower.heat || 0) + 1
+                      if (lender) {
+                        this.changeHouseRelation(society, lender.id, borrower.id, -8, 'Private loan payment missed.')
+                        if (loan.defaultCount >= 2 && Math.random() < 0.45) {
+                          this.claimPrivateLoanDebtBondForHouse(society, state, loan, lender, borrower)
+                        }
+                      } else if (loan.lenderHouseId === 'player') {
+                        this.pushModal({
+                          title: 'Private Loan Default',
+                          message: borrower.name + ' cannot repay your private loan.\nDebt now due: ' + loan.principal + '\nYou can extend the debt or claim debt bonds from the borrower house.',
+                          image: this.affairIcon('bank'),
+                          options: [
+                            {
+                              variant: 'danger',
+                              text: 'Claim debt bonds',
+                              tooltip: 'Take one or more eligible members of the debtor house as household slaves until the debt value is covered or no candidates remain.',
+                              icons: [this.slaveTypeIcon('labor'), this.affairIcon('bank')],
+                              action: { event: this.event, method: 'claimPrivateLoanDebtBond', context: { loanId: loan.id } }
+                            },
+                            {
+                              text: 'Extend loan',
+                              tooltip: 'Roll the debt forward for six months. The borrower house remains under pressure.',
+                              action: { event: this.event, method: 'extendPrivateLoan', context: { loanId: loan.id } }
+                            }
+                          ]
+                        })
+                      }
+                      this.log(society, borrower.name + ' fails to repay a private loan; the debt rolls forward.', 'bank', borrower.id)
+                    }
+                  })
+                  society.privateLoans = society.privateLoans.slice(-80)
+                },
+        privateLoanDebtBondValue(society, state, borrowerHouse, character) {
+                  return Math.max(60, Math.round(this.enslavedCharacterCost(society, state, borrowerHouse, character) * 0.75))
+                },
+        privateLoanDebtBondCandidates(society, state, borrowerHouse, debt) {
+                  if (!borrowerHouse) {
+                    return []
+                  }
+                  let headId = (borrowerHouse.notableIds || borrowerHouse.memberIds || [])[0]
+                  let candidates = this.houseLivingMemberIds(society, state, borrowerHouse)
+                    .map((characterId) => {
+                      let character = state.characters && state.characters[characterId]
+                      if (!character) return false
+                      character.id = character.id || characterId
+                      if (character.corSocietySlaveActive || character.corSocietySlave || this.age(character, state) < 13) return false
+                      return {
+                        character,
+                        value: this.privateLoanDebtBondValue(society, state, borrowerHouse, character),
+                        isHead: this.sameCharacterId(characterId, headId),
+                        age: this.age(character, state),
+                        score: this.characterScore(character, state)
+                      }
+                    })
+                    .filter(Boolean)
+                    .sort((a, b) => {
+                      if (a.isHead !== b.isHead) return a.isHead ? 1 : -1
+                      if ((a.age >= 16) !== (b.age >= 16)) return a.age >= 16 ? -1 : 1
+                      return a.score - b.score
+                    })
+                  let selected = []
+                  let covered = 0
+                  for (let i = 0; i < candidates.length && selected.length < 4; i++) {
+                    selected.push(candidates[i])
+                    covered += candidates[i].value
+                    if (covered >= debt) break
+                  }
+                  return selected
+                },
+        enslaveCharacterForDebtBond(society, state, borrowerHouse, lenderHouse, character, value, source) {
+                  if (!borrowerHouse || !character || !character.id) {
+                    return false
+                  }
+                  let playerLender = !lenderHouse || lenderHouse === 'player'
+                  let ownerHouseId = playerLender ? this.currentCharacterDynastyId(state) : lenderHouse.id
+                  let ownerDynastyId = playerLender ? this.currentCharacterDynastyId(state) : this.gameDynastyIdForHouse(lenderHouse)
+                  let type = this.slaveTypeFromCharacter(character)
+                  let level = Math.max(1, Math.round(character.corSocietySlaveLevel || this.characterScore(character, state) / 24 || 1))
+                  let task = character.corSocietySlaveTask || type || 'labor'
+                  let origin = character.corSocietySlaveOrigin || 'Roman debt-bond'
+                  borrowerHouse.memberIds = (borrowerHouse.memberIds || []).filter((id) => !this.sameCharacterId(id, character.id))
+                  borrowerHouse.notableIds = (borrowerHouse.notableIds || []).filter((id) => !this.sameCharacterId(id, character.id))
+                  borrowerHouse.slaveIds = (borrowerHouse.slaveIds || []).filter((id) => !this.sameCharacterId(id, character.id))
+                  if (!playerLender && lenderHouse) {
+                    lenderHouse.memberIds = lenderHouse.memberIds || []
+                    lenderHouse.slaveIds = lenderHouse.slaveIds || []
+                    if (lenderHouse.memberIds.indexOf(character.id) < 0) lenderHouse.memberIds.push(character.id)
+                    if (lenderHouse.slaveIds.indexOf(character.id) < 0) lenderHouse.slaveIds.push(character.id)
+                  }
+                  try {
+                    daapi.updateCharacter({
+                      characterId: character.id,
+                      character: {
+                        dynastyId: ownerDynastyId || character.dynastyId,
+                        corSocietyHouseId: playerLender ? '' : lenderHouse.id,
+                        corSocietySlave: true,
+                        corSocietySlaveActive: true,
+                        corSocietySlaveMarket: false,
+                        corSocietySlaveType: type,
+                        corSocietySlaveLevel: level,
+                        corSocietySlaveOwnerHouseId: ownerHouseId || '',
+                        corSocietySlaveOrigin: origin,
+                        corSocietySlaveTask: task,
+                        corSocietySlaveSavings: Math.max(0, parseFloat(character.corSocietySlaveSavings || 0)),
+                        corSocietyOriginHouseId: character.corSocietyOriginHouseId || borrowerHouse.id,
+                        corSocietyPreviousOwnerHouseId: borrowerHouse.id,
+                        corSocietyDebtBondValue: value,
+                        corSocietyDebtBondSource: source || 'private_loan',
+                        flagCannotMarry: true,
+                        flagDoNotCull: true
+                      }
+                    })
+                    daapi.forceUpdateCharacterDisplay({ characterId: character.id })
+                  } catch (err) {
+                    console.warn(err)
+                    return false
+                  }
+                  state = daapi.getState()
+                  let updated = state.characters && state.characters[character.id] || character
+                  if (playerLender) {
+                    let record = this.playerSlaveRecordFromCharacter({
+                      key: 'slave_' + this.safeId(character.id),
+                      characterId: character.id,
+                      type,
+                      level,
+                      age: this.age(updated, state),
+                      originHouseId: borrowerHouse.id,
+                      previousOwnerHouseId: borrowerHouse.id,
+                      origin,
+                      task,
+                      savings: Math.max(0, parseFloat(updated.corSocietySlaveSavings || 0))
+                    }, updated, state)
+                    society.playerSlaves = (society.playerSlaves || []).filter((slave) => !this.sameCharacterId(slave.characterId, character.id))
+                    society.playerSlaves.push(record)
+                  }
+                  this.refreshHouseMemberLists(society, state, borrowerHouse)
+                  if (!playerLender && lenderHouse) {
+                    this.refreshHouseMemberLists(society, state, lenderHouse)
+                  }
+                  return true
+                },
+        claimPrivateLoanDebtBondForHouse(society, state, loan, lenderHouse, borrowerHouse) {
+                  if (!loan || !borrowerHouse || !lenderHouse) {
+                    return false
+                  }
+                  let debt = Math.max(1, Math.round(parseFloat(loan.principal || 0)))
+                  let candidates = this.privateLoanDebtBondCandidates(society, state, borrowerHouse, debt)
+                  if (!candidates.length) {
+                    return false
+                  }
+                  let covered = 0
+                  let names = []
+                  candidates.forEach((item) => {
+                    if (covered >= debt) return
+                    if (this.enslaveCharacterForDebtBond(society, state, borrowerHouse, lenderHouse, item.character, item.value, loan.id)) {
+                      covered += item.value
+                      names.push(this.characterName(item.character, state))
+                    }
+                  })
+                  loan.bondCharacterIds = (loan.bondCharacterIds || []).concat(candidates.map((item) => item.character.id))
+                  if (covered >= debt) {
+                    loan.status = 'collected_bonds'
+                    loan.closedMonth = this.monthKey(state)
+                    loan.principal = 0
+                  } else {
+                    loan.principal = Math.max(0, debt - covered)
+                    loan.dueMonth = this.futureMonthKey(8)
+                  }
+                  borrowerHouse.relation = this.clamp((borrowerHouse.relation || 0) - 18, -100, 100)
+                  borrowerHouse.heat = (borrowerHouse.heat || 0) + 2
+                  this.changeHouseRelation(society, lenderHouse.id, borrowerHouse.id, -18, 'Debt bonds claimed after private loan default.')
+                  this.log(society, lenderHouse.name + ' claims debt bonds from ' + borrowerHouse.name + ': ' + names.join(', ') + '.', 'slaves', borrowerHouse.id)
+                  return true
+                },
+        claimPrivateLoanDebtBond({ loanId } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let loan = (society.privateLoans || []).find((item) => item && item.id === loanId && item.status === 'active' && item.lenderHouseId === 'player')
+                  let borrower = loan && society.houses && society.houses[loan.borrowerHouseId]
+                  if (!loan || !borrower) {
+                    this.openPrivateLoans()
+                    return
+                  }
+                  let debt = Math.max(1, Math.round(parseFloat(loan.principal || 0)))
+                  let candidates = this.privateLoanDebtBondCandidates(society, state, borrower, debt)
+                  if (!candidates.length) {
+                    this.pushModal({
+                      societyMenu: true,
+                      title: 'No Debt Bonds Available',
+                      message: borrower.name + ' has no eligible living members who can be claimed for this debt.',
+                      image: this.affairIcon('bank'),
+                      options: [{ text: 'Back', action: { event: this.event, method: 'openPrivateLoans' } }]
+                    })
+                    return
+                  }
+                  let covered = 0
+                  let names = []
+                  candidates.forEach((item) => {
+                    if (covered >= debt) return
+                    if (this.enslaveCharacterForDebtBond(society, state, borrower, 'player', item.character, item.value, loan.id)) {
+                      covered += item.value
+                      names.push(this.characterName(item.character, state))
+                    }
+                  })
+                  loan.bondCharacterIds = (loan.bondCharacterIds || []).concat(candidates.map((item) => item.character.id))
+                  if (covered >= debt) {
+                    loan.status = 'collected_bonds'
+                    loan.closedMonth = this.monthKey(state)
+                    loan.principal = 0
+                  } else {
+                    loan.principal = Math.max(0, debt - covered)
+                    loan.dueMonth = this.futureMonthKey(8)
+                  }
+                  borrower.relation = this.clamp((borrower.relation || 0) - 24, -100, 100)
+                  borrower.heat = (borrower.heat || 0) + 3
+                  this.log(society, 'You claim debt bonds from ' + borrower.name + ': ' + names.join(', ') + '.', 'slaves', borrower.id)
+                  this.retireDeadHouses(society, daapi.getState(), { notify: true })
+                  this.save(society)
+                  this.openPrivateLoans()
+                },
+        extendPrivateLoan({ loanId } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let loan = (society.privateLoans || []).find((item) => item && item.id === loanId && item.status === 'active')
+                  if (loan) {
+                    loan.dueMonth = this.futureMonthKey(6)
+                    loan.canClaimDebtBond = false
+                    loan.extendedMonth = this.monthKey(state)
+                    this.log(society, 'A private loan is extended for six months.', 'bank', loan.borrowerHouseId)
+                    this.save(society)
+                  }
+                  this.openPrivateLoans()
+                },
+        simulatePrivateLoans(society, state) {
+                  this.processPrivateLoans(society, state)
+                  if (Math.random() > 0.35) {
+                    return false
+                  }
+                  let houses = this.sortedHouses(society).filter((house) => house && house.ai && !this.privateLoanActiveForBorrower(society, house.id))
+                  let borrowers = houses.filter((house) => parseFloat(house.ai.cash || 0) < 35 && this.houseLivingMemberIds(society, state, house).length)
+                  let lenders = houses.filter((house) => parseFloat(house.ai.cash || 0) > Math.max(420, (house.wealth || 100) * 0.75) && this.houseLivingMemberIds(society, state, house).length)
+                  if (!borrowers.length || !lenders.length) {
+                    return false
+                  }
+                  let borrower = this.pick(borrowers)
+                  let lender = this.pick(lenders.filter((house) => String(house.id) !== String(borrower.id)))
+                  if (!lender) {
+                    return false
+                  }
+                  let amounts = this.privateLoanOfferAmounts(state, borrower, Math.round(parseFloat(lender.ai.cash || 0) * 0.55))
+                  let amount = this.pick(amounts.filter((candidate) => candidate <= Math.max(80, Math.round(parseFloat(lender.ai.cash || 0) * 0.18)))) || 0
+                  if (amount <= 0) {
+                    return false
+                  }
+                  let chance = this.privateLoanAcceptanceChance(society, state, borrower, amount, lender.id)
+                  if (Math.random() > chance) {
+                    borrower.lastFamilyEvent = 'Declines private credit from ' + lender.name + '.'
+                    borrower.lastFamilyKind = 'bank'
+                    return false
+                  }
+                  lender.ai.cash -= amount
+                  let loan = this.createPrivateLoan(society, state, lender.id, borrower.id, amount, 'npc')
+                  if (loan) {
+                    this.log(society, lender.name + ' extends a private loan to ' + borrower.name + '.', 'bank', borrower.id)
+                    return true
+                  }
+                  lender.ai.cash += amount
+                  return false
+                },
         educationSkillForSlave(slave) {
                   let type = (slave && (slave.type || slave.task)) || 'educator'
                   let profile = this.slaveTypeProfile(type)
@@ -2070,12 +2476,14 @@
                     let house = society.houses[houseId]
                     this.refreshHouseMemberLists(society, state, house)
                     let visible = this.visibleHousePeople(house, state)
-                    if (!visible.length && totalGeneratedThisTick < 6) {
-                      this.generateHouseSeedMember(society, state, house)
-                      state = daapi.getState()
-                      this.refreshHouseMemberLists(society, state, house)
-                      visible = this.visibleHousePeople(house, state)
-                      totalGeneratedThisTick++
+                    if (!visible.length) {
+                      if (this.retireHouse(society, state, house, { notify: false })) {
+                        continue
+                      }
+                    }
+                    let genderCounts = this.houseLivingGenderCounts(society, state, house)
+                    if (!genderCounts.male || !genderCounts.female) {
+                      continue
                     }
                     while (visible.length < this.minimumVisibleMembers(house) && (society.generatedCharacterIds || []).length < 260 && totalGeneratedThisTick < 6) {
                       let headId = visible[0]
@@ -2102,6 +2510,117 @@
                   if (stratum === 'civic' || stratum === 'plebeian') return 4
                   return 3
                 },
+        houseKnownMemberIds(society, state, house) {
+                  let seen = {}
+                  let ids = []
+                  let add = (characterId) => {
+                    if (!characterId || seen[characterId]) {
+                      return
+                    }
+                    seen[characterId] = true
+                    ids.push(characterId)
+                  }
+                  ;(house.memberIds || []).forEach(add)
+                  ;(house.notableIds || []).forEach(add)
+                  ;(house.slaveIds || []).forEach(add)
+                  ;(house.knownMemberIds || []).forEach(add)
+                  ;(house.deadMemberIds || []).forEach(add)
+                  let dynastyId = this.gameDynastyIdForHouse(house)
+                  if (dynastyId && state.dynasties && state.dynasties[dynastyId]) {
+                    ;(state.dynasties[dynastyId].memberIds || []).forEach(add)
+                  }
+                  ;(society.generatedCharacterIds || []).forEach((characterId) => {
+                    let character = state.characters && state.characters[characterId]
+                    if (this.characterBelongsToHouse(character, house)) {
+                      add(characterId)
+                    }
+                  })
+                  return ids
+                },
+        houseLivingMemberIds(society, state, house) {
+                  return this.houseKnownMemberIds(society, state, house)
+                    .filter((characterId) => {
+                      let character = state.characters && state.characters[characterId]
+                      return character && !character.isDead && this.characterBelongsToHouse(character, house)
+                    })
+                },
+        houseLivingGenderCounts(society, state, house) {
+                  let counts = { male: 0, female: 0 }
+                  this.houseLivingMemberIds(society, state, house).forEach((characterId) => {
+                    let character = state.characters && state.characters[characterId]
+                    if (this.characterIsMale(character)) counts.male += 1
+                    else counts.female += 1
+                  })
+                  return counts
+                },
+        shouldRetireHouse(society, state, house) {
+                  if (!society || !state || !house || !house.id) {
+                    return false
+                  }
+                  if (String(house.id) === String(this.currentCharacterDynastyId(state))) {
+                    return false
+                  }
+                  return this.houseLivingMemberIds(society, state, house).length <= 0
+                },
+        retireDeadHouses(society, state, options) {
+                  if (!society || !society.houses || !state || !state.characters) {
+                    return 0
+                  }
+                  options = options || {}
+                  let retired = 0
+                  Object.keys(society.houses).forEach((houseId) => {
+                    let house = society.houses[houseId]
+                    if (this.shouldRetireHouse(society, state, house)) {
+                      if (this.retireHouse(society, state, house, options)) {
+                        retired += 1
+                      }
+                    }
+                  })
+                  return retired
+                },
+        retireHouse(society, state, house, options) {
+                  if (!house || !house.id || !society.houses || !society.houses[house.id]) {
+                    return false
+                  }
+                  options = options || {}
+                  society.deadHouses = society.deadHouses || {}
+                  society.deadHouseIds = society.deadHouseIds || []
+                  let deadMemberIds = this.houseKnownMemberIds(society, state, house)
+                  let snapshot = {
+                    ...house,
+                    id: house.id,
+                    extinct: true,
+                    extinctYear: state.year || 0,
+                    extinctMonth: (state.month || 0) + 1,
+                    extinctDate: 'Y' + (state.year || 0) + ' M' + ((state.month || 0) + 1),
+                    deadMemberIds,
+                    memberIds: deadMemberIds.slice(),
+                    notableIds: deadMemberIds.slice(0, 8),
+                    lastFamilyEvent: house.lastFamilyEvent || 'The house has no living known members.'
+                  }
+                  society.deadHouses[house.id] = snapshot
+                  society.deadHouseIds = [house.id].concat((society.deadHouseIds || []).filter((id) => String(id) !== String(house.id))).slice(0, 80)
+                  delete society.houses[house.id]
+                  society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(house.id))
+                  this.log(society, 'House ' + house.name + ' becomes extinct; its records move to the dead-house archive.', 'death', house.id)
+                  if (options.notify) {
+                    this.pushModal({
+                      title: 'House Extinguished',
+                      message: house.name + ' has no living known members. The house has been removed from active Society lists and archived under Past Affairs.',
+                      image: this.houseCrestIcon(society, snapshot),
+                      options: [
+                        {
+                          text: 'Open dead houses',
+                          action: { event: this.event, method: 'openDeadHouses' }
+                        },
+                        {
+                          text: 'Dismiss'
+                        }
+                      ]
+                    })
+                  }
+                  return true
+                },
         characterBelongsToHouse(character, house) {
                   if (!character || !house) {
                     return false
@@ -2118,6 +2637,23 @@
                   let month = this.monthKey(state)
                   let dynastyId = this.gameDynastyIdForHouse(house)
                   let dynastyMembers = dynastyId && state.dynasties && state.dynasties[dynastyId] && state.dynasties[dynastyId].memberIds ? state.dynasties[dynastyId].memberIds : []
+                  let knownSeen = {}
+                  let knownIds = []
+                  let remember = (characterId) => {
+                    if (!characterId || knownSeen[characterId] || !state.characters[characterId]) {
+                      return
+                    }
+                    knownSeen[characterId] = true
+                    knownIds.push(characterId)
+                  }
+                  ;(house.knownMemberIds || []).forEach(remember)
+                  ;(house.memberIds || []).forEach(remember)
+                  ;(house.notableIds || []).forEach(remember)
+                  ;(house.slaveIds || []).forEach(remember)
+                  dynastyMembers.forEach(remember)
+                  if (knownIds.length) {
+                    house.knownMemberIds = knownIds.slice(-160)
+                  }
                   let refreshSignature = [
                     month,
                     (house.memberIds || []).join('|'),
@@ -2153,10 +2689,11 @@
                   house._lastRefreshedMonth = month
                   house._lastRefreshedSignature = refreshSignature
                 },
-        generateHouseSeedMember(society, state, house) {
+        generateHouseSeedMember(society, state, house, options) {
+                  options = options || {}
                   let stratum = house.stratum || 'plebeian'
                   let profile = this.strata[stratum] || this.strata.plebeian
-                  let isMale = Math.random() > 0.45
+                  let isMale = options.gender ? options.gender === 'male' : Math.random() > 0.45
                   let job = this.pick(profile.jobs)
                   let traits = this.generatedTraitsForStratum(stratum, job)
                   let age = this.randomInt(19, 30)
@@ -2258,10 +2795,121 @@
                   this.log(society, house.name + ' introduces a marriage prospect for your household.')
                   return prospectId
                 },
+        repairFalsePlayerSlaveFlags(society, state) {
+                  if (!society || !state || !state.characters) {
+                    return 0
+                  }
+                  let currentDynastyId = this.currentCharacterDynastyId(state)
+                  if (!currentDynastyId) {
+                    return 0
+                  }
+                  let ownedSlaveIds = {}
+                  ;(society.playerSlaves || []).forEach((record) => {
+                    if (record && record.characterId) {
+                      ownedSlaveIds[String(record.characterId)] = true
+                    }
+                  })
+                  let candidates = {}
+                  let add = (id) => {
+                    if (id && state.characters[id]) candidates[String(id)] = true
+                  }
+                  let current = state.current || {}
+                  ;[
+                    current.id,
+                    current.characterId,
+                    current.householdCharacterIds,
+                    current.formerHouseholdCharacterIds,
+                    current.deadHouseholdCharacterIds,
+                    current.familyCharacterIds,
+                    current.dependantCharacterIds,
+                    current.dependentCharacterIds,
+                    society.slaveStatusCharacterIds
+                  ].forEach((item) => {
+                    if (Array.isArray(item)) item.forEach(add)
+                    else add(item)
+                  })
+                  ;(this.playerFamilyMemberIds(state) || []).forEach(add)
+                  let dynasty = state.dynasties && state.dynasties[currentDynastyId]
+                  ;((dynasty && dynasty.memberIds) || []).forEach(add)
+                  let repaired = 0
+                  Object.keys(candidates).forEach((characterId) => {
+                    let character = state.characters[characterId]
+                    if (!character || character.isDead || String(character.dynastyId || '') !== String(currentDynastyId)) {
+                      return
+                    }
+                    let ownerHouseId = character.corSocietySlaveOwnerHouseId || ''
+                    let realOwnedSlave = ownedSlaveIds[String(characterId)] || character.corSocietyOrigin === 'private_company_bastard' || (ownerHouseId && String(ownerHouseId) !== String(currentDynastyId))
+                    if (realOwnedSlave) {
+                      return
+                    }
+                    let house = character.corSocietyHouseId && society.houses && society.houses[character.corSocietyHouseId]
+                    let inSlaveHouse = !!(house && house.stratum === 'poor')
+                    let hasFalseSlaveData = !!(
+                      inSlaveHouse ||
+                      character.corSocietySlave ||
+                      character.corSocietySlaveActive ||
+                      character.corSocietySlaveMarket ||
+                      character.corSocietyOrigin === 'enslaved_dependant'
+                    )
+                    if (!hasFalseSlaveData) {
+                      return
+                    }
+                    let patch = {
+                      corSocietySlave: false,
+                      corSocietySlaveActive: false,
+                      corSocietySlaveMarket: false,
+                      corSocietySlaveOrigin: '',
+                      corSocietySlaveOwnerHouseId: '',
+                      corSocietySlaveFullName: '',
+                      corSocietySlaveType: '',
+                      corSocietySlaveLevel: 0,
+                      corSocietySlaveTask: '',
+                      corSocietySlaveSavings: 0,
+                      corSocietyOrigin: character.corSocietyOrigin === 'enslaved_dependant' ? '' : character.corSocietyOrigin,
+                      flagCannotMarry: false
+                    }
+                    if (inSlaveHouse && society.houses[currentDynastyId]) {
+                      patch.corSocietyHouseId = currentDynastyId
+                    }
+                    try {
+                      daapi.updateCharacter({ characterId, character: patch })
+                      Object.assign(character, patch)
+                      daapi.setCharacterStatusActive({ characterId, key: 'cor_society_slave_status', isActive: false })
+                    } catch (err) {
+                      try {
+                        daapi.deleteCharacterStatus({ characterId, key: 'cor_society_slave_status' })
+                      } catch (innerErr) {
+                        console.warn(innerErr)
+                      }
+                    }
+                    Object.keys(society.houses || {}).forEach((houseId) => {
+                      let candidateHouse = society.houses[houseId]
+                      if (!candidateHouse || candidateHouse.stratum !== 'poor') return
+                      candidateHouse.memberIds = (candidateHouse.memberIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+                      candidateHouse.notableIds = (candidateHouse.notableIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+                      candidateHouse.slaveIds = (candidateHouse.slaveIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+                    })
+                    society.playerSlaves = (society.playerSlaves || []).filter((record) => !record || !this.sameCharacterId(record.characterId, characterId))
+                    society.slaveStatusCharacterIds = (society.slaveStatusCharacterIds || []).filter((id) => !this.sameCharacterId(id, characterId))
+                    if (society.houses[currentDynastyId]) {
+                      let playerHouse = society.houses[currentDynastyId]
+                      playerHouse.memberIds = playerHouse.memberIds || []
+                      if (!playerHouse.memberIds.some((id) => this.sameCharacterId(id, characterId))) {
+                        playerHouse.memberIds.push(characterId)
+                      }
+                    }
+                    repaired += 1
+                  })
+                  if (repaired) {
+                    this.log(society, 'Roman Society repaired ' + repaired + ' false household slave marker' + (repaired === 1 ? '' : 's') + ' on legitimate player-family members.', 'slaves')
+                  }
+                  return repaired
+                },
         ensureSlaveOrderPeople(society, state) {
                   if (!society || !state || !state.characters) {
                     return
                   }
+                  let currentDynastyId = this.currentCharacterDynastyId(state)
                   this.sortedHouses(society).forEach((house) => {
                     if (!house || house.stratum !== 'poor') {
                       return
@@ -2275,6 +2923,9 @@
                         return
                       }
                       character.id = character.id || characterId
+                      if (currentDynastyId && String(character.dynastyId || '') === String(currentDynastyId) && !this.isExplicitlyEnslavedCharacter(character)) {
+                        return
+                      }
                       let patch = {}
                       if (!character.corSocietyOrigin || character.corSocietyOrigin !== 'enslaved_dependant') patch.corSocietyOrigin = 'enslaved_dependant'
                       if (!character.corSocietySlaveMarket) patch.corSocietySlaveMarket = true

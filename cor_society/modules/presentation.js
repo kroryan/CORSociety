@@ -96,6 +96,7 @@
                     support: 'senate',
                     marriage: 'marriage',
                     birth: 'familyTree',
+                    death: 'familyTree',
                     gift: 'coins',
                     coins: 'coins',
                     prestige: 'prestige',
@@ -743,6 +744,7 @@
                   if (method === 'openMemberGroups') return 'Consequences: opens member groups; no stats change.'
                   if (method === 'openMemberGroup') return 'Consequences: opens one member category; no stats change.'
                   if (method === 'openPerson') return 'Consequences: opens this character; no stats change.'
+                  if (method === 'openFamilyCharacterSheet') return 'Consequences: opens this family member in Roman Society; no stats change.'
                   if (method === 'openVanillaActions') return 'Consequences: opens this character\'s vanilla / other mods actions; no stats change yet.'
                   if (method === 'openVanillaKnownFamily') return 'Consequences: opens the vanilla known-family screen if the game route is available; no stats change.'
                   if (method === 'openVanillaFullFamilyTree') return 'Consequences: opens the vanilla full-family-tree screen if the game route is available; no stats change.'

@@ -35,7 +35,7 @@
                   return groups
                 },
         memberCategoryFor(character, state, house, index) {
-                  if (character && (character.corSocietySlave || character.corSocietySlaveMarket || character.corSocietyOrigin === 'enslaved_dependant' || (house && house.stratum === 'poor'))) {
+                  if (this.isSlaveCharacter(character, house)) {
                     return 'slaves'
                   }
                   let age = this.age(character, state)
@@ -494,12 +494,16 @@
                   if (this.playerStatusOverlayStarted) {
                     this.applyPlayerStatusOverlay()
                     this.applyPortraitOverlays()
+                    this.applyFamilySocietyButtons()
+                    this.registerPlayerEntryActions(daapi.getState())
                     this.clearRelationBadges()
                     return
                   }
                   this.playerStatusOverlayStarted = true
                   this.applyPlayerStatusOverlay()
                   this.applyPortraitOverlays()
+                  this.applyFamilySocietyButtons()
+                  this.registerPlayerEntryActions(daapi.getState())
                   this.clearRelationBadges()
                   if (typeof window !== 'undefined' && window.setInterval) {
                     window.setInterval(() => {
@@ -507,6 +511,8 @@
                         if (window.corSociety) {
                           window.corSociety.applyPlayerStatusOverlay()
                           window.corSociety.applyPortraitOverlays()
+                          window.corSociety.applyFamilySocietyButtons()
+                          window.corSociety.registerPlayerEntryActions(daapi.getState())
                         }
                       } catch (err) {
                         console.warn(err)
@@ -718,12 +724,83 @@
                     }
                   })
                   Array.prototype.slice.call(document.querySelectorAll('[data-cor-society-rel-anchor="1"]')).forEach((node) => {
-                    if (node && !node.querySelector('.cor-society-vanilla-relation-badge')) {
+                    if (node && !node.querySelector('.cor-society-vanilla-relation-badge') && !node.querySelector('.cor-society-character-action-button')) {
                       node.removeAttribute('data-cor-society-rel-anchor')
                       node.classList.remove('cor-society-relation-anchor')
                       node.classList.remove('cor-society-relation-anchor-text')
                     }
                   })
+                },
+        applyFamilySocietyButtons() {
+                  if (typeof document === 'undefined') {
+                    return
+                  }
+                  let state = daapi.getState()
+                  if (!state || !state.characters) {
+                    return
+                  }
+                  let society = this.load()
+                  this.clearFamilySocietyButtons()
+                  this.playerFamilyMemberIds(state).forEach((characterId) => {
+                    let character = state.characters[characterId]
+                    if (!character || character.isDead || this.sameCharacterId(characterId, this.currentCharacterId(state))) {
+                      return
+                    }
+                    character.id = character.id || characterId
+                    let houseId = this.houseIdForCharacter(character, state, society) || this.currentCharacterDynastyId(state)
+                    this.relationBadgeTargets(character, state).slice(0, 2).forEach((target) => {
+                      this.mountFamilySocietyButton(target.node, characterId, houseId, target.mode)
+                    })
+                  })
+                },
+        clearFamilySocietyButtons() {
+                  Array.prototype.slice.call(document.querySelectorAll('.cor-society-character-action-button')).forEach((button) => {
+                    if (button && button.parentElement) {
+                      button.parentElement.removeChild(button)
+                    }
+                  })
+                  Array.prototype.slice.call(document.querySelectorAll('[data-cor-society-rel-anchor="1"]')).forEach((node) => {
+                    if (node && !node.querySelector('.cor-society-vanilla-relation-badge') && !node.querySelector('.cor-society-character-action-button')) {
+                      node.removeAttribute('data-cor-society-rel-anchor')
+                      node.classList.remove('cor-society-relation-anchor')
+                      node.classList.remove('cor-society-relation-anchor-text')
+                    }
+                  })
+                },
+        mountFamilySocietyButton(node, characterId, houseId, mode) {
+                  if (!node || node.querySelector('[data-cor-society-character-action-id="' + this.attrEscape(characterId) + '"]')) {
+                    return
+                  }
+                  node.setAttribute('data-cor-society-rel-anchor', '1')
+                  node.classList.add('cor-society-relation-anchor')
+                  if (mode === 'text') {
+                    node.classList.add('cor-society-relation-anchor-text')
+                  }
+                  let button = document.createElement('button')
+                  button.type = 'button'
+                  button.className = 'cor-society-character-action-button'
+                  button.setAttribute('data-cor-society-character-action-id', characterId)
+                  button.title = 'Open this character in Roman Society'
+                  let img = document.createElement('img')
+                  img.src = this.assetIcon('scroll')
+                  img.alt = ''
+                  img.setAttribute('aria-hidden', 'true')
+                  button.appendChild(img)
+                  button.addEventListener('click', (event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    try {
+                      daapi.invokeMethod({
+                        event: this.event,
+                        method: 'openPerson',
+                        context: { houseId, characterId, returnTo: 'hub' }
+                      })
+                    } catch (err) {
+                      console.warn(err)
+                      daapi.invokeMethod({ event: this.event, method: 'openHub' })
+                    }
+                  })
+                  node.appendChild(button)
                 },
         familyRelationCandidateIds(state) {
                   let currentId = this.currentCharacterId(state)

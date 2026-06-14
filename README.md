@@ -20,7 +20,9 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Lets strong cadet houses challenge and replace the current dynasty head house without renaming any house or breaking the wider dynasty tree.
 - Generates missing houses so every social level has families to interact with.
 - Seeds generated houses with real game characters at startup, preferring young adult founders so they have time to marry, have children, rise, or fall.
+- Generated houses try to keep at least one living man and one living woman available, so new houses do not begin as immediate dead-end lines.
 - Generated houses now enforce a connected dynasty tree: every generated house gets a shared ancestor line up to grandparents and at least one pair of siblings, while keeping extra living kin tightly limited.
+- Generated children with one missing parent are repaired with the missing ghost parent, keeping graphical Society trees coherent.
 - Uses vanilla Citizen of Rome portrait assets through a local `icons/characters/...` to `img/*.svg` resolver, and keeps vanilla look data as the base identity.
 - Uses stable vanilla-based looks for Society-generated characters, with age progression and inherited look colors.
 - Gives generated characters vanilla Citizen of Rome traits through `daapi.addTrait`.
@@ -43,9 +45,11 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Enslaved player characters reached through Play As get a current-character `Path to Freedom` action with extra work, patron-seeking, petitions, escape attempts, savings, and manumission into a free Freedmen house.
 - Lets manumitted freedmen houses occasionally try to buy and free enslaved close relatives when they can afford it.
 - Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
+- Bank of Rome includes private loans: the player can lend personal cash to Society houses, and NPC houses can lend to each other when one has surplus and another needs liquidity.
 - Lets NPC houses use vanilla Citizen of Rome property economics: the same property keys, values, revenue, stewardship limits, economy-of-scale factor, sale rate, and senatorial commercial-property restriction used by the base game.
 - Injects a Bank of Rome loan option into negative-cash forced-sale/debt notices when possible, so debt can be covered by a balanced loan in the same flow instead of a separate follow-up prompt.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
+- Houses with no living known members are removed from active Society orders and archived under Past Affairs as dead houses, with final notes and family trees where possible.
 - Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.
 - Splits allies/patrons and rivals into separate paged menus with matching overview counts and contextual Back navigation.
 - Shows past affairs as paged notification-style entries with their own event icons.

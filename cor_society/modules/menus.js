@@ -128,6 +128,17 @@
                       }
                     })
                   }
+                  if ((society.deadHouseIds || []).length) {
+                    options.push({
+                      text: 'Dead houses (' + society.deadHouseIds.length + ')',
+                      tooltip: 'Open the archive of houses that no longer have living known members.',
+                      icons: [this.affairIcon('death')],
+                      action: {
+                        event: this.event,
+                        method: 'openDeadHouses'
+                      }
+                    })
+                  }
                   options.push({
                     text: 'Back',
                     action: {
@@ -410,6 +421,119 @@
                         }
                       }
                     ]
+                  })
+                },
+        openDeadHouses({ page } = {}) {
+                  let society = this.ensure()
+                  page = parseInt(page || 0, 10)
+                  let ids = (society.deadHouseIds || []).filter((houseId) => society.deadHouses && society.deadHouses[houseId])
+                  let pageSize = this.historyPageSize || 8
+                  let start = page * pageSize
+                  let shown = ids.slice(start, start + pageSize)
+                  let options = shown.map((houseId) => {
+                    let house = society.deadHouses[houseId]
+                    return {
+                      text: house.name + ' - ' + (house.extinctDate || 'extinct'),
+                      tooltip: 'Order: ' + this.stratumTitle(house.stratum) + '\nLast record: ' + (house.lastFamilyEvent || 'No final record.'),
+                      icons: [this.houseCrestIcon(society, house), this.affairIcon('death')],
+                      action: {
+                        event: this.event,
+                        method: 'openDeadHouse',
+                        context: { houseId, page }
+                      }
+                    }
+                  })
+                  if (start + pageSize < ids.length) {
+                    options.push({
+                      text: 'Next page',
+                      action: { event: this.event, method: 'openDeadHouses', context: { page: page + 1 } }
+                    })
+                  }
+                  if (page > 0) {
+                    options.push({
+                      text: 'Previous page',
+                      action: { event: this.event, method: 'openDeadHouses', context: { page: page - 1 } }
+                    })
+                  }
+                  options.push({
+                    text: 'Back',
+                    action: { event: this.event, method: 'openLog' }
+                  })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Dead Houses',
+                    message: ids.length ? 'Extinct houses are removed from active Society orders but kept here for history and family-tree inspection.' : 'No houses have gone extinct yet.',
+                    image: this.affairIcon('death'),
+                    options
+                  })
+                },
+        openDeadHouse({ houseId, page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let house = society.deadHouses && society.deadHouses[houseId]
+                  if (!house) {
+                    this.openDeadHouses({ page })
+                    return
+                  }
+                  let memberIds = (house.deadMemberIds || house.memberIds || []).filter((characterId) => state.characters && state.characters[characterId])
+                  let knownMembers = memberIds.length
+                  let lastLiving = memberIds
+                    .map((characterId) => state.characters[characterId])
+                    .filter((character) => character && !character.isDead)
+                    .length
+                  let options = []
+                  if (memberIds.length) {
+                    options.push({
+                      variant: 'info',
+                      text: 'Full family tree',
+                      tooltip: 'Open the archived graphical tree for this extinct house.',
+                      icons: [this.assetIcon('familyTree')],
+                      action: { event: this.event, method: 'openDeadHouseFamilyTree', context: { houseId, page } }
+                    })
+                  }
+                  options.push({
+                    text: 'Back',
+                    action: { event: this.event, method: 'openDeadHouses', context: { page: page || 0 } }
+                  })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: house.name,
+                    message: 'Extinct house record.',
+                    societySummaryOptions: [
+                      this.summaryOption('Order', this.stratumTitle(house.stratum), [this.stratumIcon(house.stratum)], 'Final Society order before extinction.'),
+                      this.summaryOption('Extinct', house.extinctDate || 'unknown', [this.affairIcon('death')], 'Date recorded by Roman Society.'),
+                      this.summaryOption('Known members', knownMembers + ' recorded; ' + lastLiving + ' living', [this.assetIcon('familyTree')], 'Archived members remain available for tree inspection.'),
+                      this.summaryOption('Last affair', house.lastFamilyEvent || 'No final record.', [this.affairIcon(house.lastFamilyKind || 'log')], 'Last known Society note for this house.')
+                    ],
+                    image: this.houseCrestIcon(society, house),
+                    options
+                  })
+                },
+        openDeadHouseFamilyTree({ houseId, page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let house = society.deadHouses && society.deadHouses[houseId]
+                  if (!house) {
+                    this.openDeadHouses({ page })
+                    return
+                  }
+                  let memberIds = (house.deadMemberIds || house.memberIds || []).filter((characterId) => state.characters && state.characters[characterId])
+                  let characterId = memberIds[0]
+                  if (!characterId) {
+                    this.openDeadHouse({ houseId, page })
+                    return
+                  }
+                  this.openGraphicalFamilyTree({
+                    society,
+                    state,
+                    house,
+                    houseId,
+                    characterId,
+                    group: '',
+                    page: 0,
+                    mode: 'house',
+                    returnTo: 'deadHouse',
+                    returnPage: page || 0
                   })
                 },
         openPlayerCrest() {
@@ -933,9 +1057,109 @@
                   }
                   return society.characterSocial[key] || {}
                 },
+        societyKinshipContext(society, state, house, character) {
+                  state = state || daapi.getState()
+                  let characters = state.characters || {}
+                  let currentId = this.currentCharacterId(state)
+                  let player = characters[currentId] || state.current || {}
+                  let characterId = character && character.id
+                  let close = {}
+                  let add = (id) => {
+                    if (id !== undefined && id !== null && id !== '') {
+                      close[String(id)] = true
+                    }
+                  }
+                  let addCharacterRelatives = (person) => {
+                    if (!person) return
+                    add(person.id)
+                    add(person.spouseId)
+                    add(person.fatherId)
+                    add(person.motherId)
+                    ;(person.childrenIds || []).forEach(add)
+                  }
+                  player.id = player.id || currentId
+                  addCharacterRelatives(player)
+                  ;[player.fatherId, player.motherId].forEach((parentId) => {
+                    let parent = characters[parentId]
+                    if (parent) {
+                      add(parent.fatherId)
+                      add(parent.motherId)
+                      ;(parent.childrenIds || []).forEach(add)
+                    }
+                  })
+                  ;(player.childrenIds || []).forEach((childId) => {
+                    let child = characters[childId]
+                    if (child) {
+                      add(child.spouseId)
+                      ;(child.childrenIds || []).forEach(add)
+                    }
+                  })
+                  let playerRelatives = this.familyTreeRelatives(player, state)
+                  ;(playerRelatives.siblings || []).forEach((siblingId) => {
+                    add(siblingId)
+                    let sibling = characters[siblingId]
+                    if (sibling) {
+                      add(sibling.spouseId)
+                      ;(sibling.childrenIds || []).forEach(add)
+                    }
+                  })
+                  Object.keys(close).forEach((id) => {
+                    let closeCharacter = characters[id]
+                    if (closeCharacter && closeCharacter.spouseId) {
+                      add(closeCharacter.spouseId)
+                    }
+                  })
+                  if (!characterId) {
+                    return { kind: 'outsider', label: 'Outsider', text: 'Request introduction', icon: this.affairIcon('support') }
+                  }
+                  if (this.sameCharacterId(characterId, currentId)) {
+                    return { kind: 'self', label: 'Current character', text: 'Personal affairs', icon: this.assetIcon('familyTree') }
+                  }
+                  if (close[String(characterId)]) {
+                    let spouse = this.sameCharacterId(character.spouseId, currentId) || this.sameCharacterId(player.spouseId, characterId)
+                    return {
+                      kind: spouse ? 'spouse' : 'family',
+                      label: spouse ? 'Spouse' : 'Close family',
+                      text: spouse ? 'Spend time with spouse' : 'Family conversation',
+                      icon: this.assetIcon('familyTree')
+                    }
+                  }
+                  let targetHouseId = this.houseIdForCharacter(character, state, society) || (house && house.id) || ''
+                  let playerHouseId = this.houseIdForCharacter(player, state, society) || this.currentCharacterDynastyId(state)
+                  if (targetHouseId && playerHouseId && String(targetHouseId) === String(playerHouseId)) {
+                    return { kind: 'house', label: 'Same house', text: 'Household council', icon: this.houseCrestIcon(society, house || society.houses[targetHouseId]) }
+                  }
+                  let targetDynastyId = character.dynastyId || this.gameDynastyIdForHouse(house)
+                  let playerDynastyId = player.dynastyId || this.currentCharacterDynastyId(state)
+                  if (targetDynastyId && playerDynastyId && String(targetDynastyId) === String(playerDynastyId)) {
+                    return { kind: 'dynasty', label: 'Same dynasty', text: 'Dynasty audience', icon: this.assetIcon('familyTree') }
+                  }
+                  return { kind: 'outsider', label: 'Outsider', text: 'Request introduction', icon: this.affairIcon('support') }
+                },
         socialVisitOption(society, state, house, character, nav) {
                   let characterId = character && character.id
+                  let kinship = this.societyKinshipContext(society, state, house, character)
                   let social = this.characterSocialRecord(society, characterId, false)
+                  if (kinship.kind !== 'outsider') {
+                    let cooldown = social.nextInviteMonth && !this.monthKeyReached(social.nextInviteMonth, state)
+                    return {
+                      variant: 'info',
+                      text: kinship.text,
+                      disabled: kinship.kind === 'self' || !!cooldown,
+                      showDisabledWithTooltip: true,
+                      tooltip: kinship.kind === 'self'
+                        ? 'This is the character you currently control.'
+                        : cooldown
+                          ? kinship.label + ' interaction is cooling down until ' + social.nextInviteMonth + '.'
+                          : 'No introduction is needed: ' + kinship.label.toLowerCase() + '. This uses a dedicated ' + kinship.label.toLowerCase() + ' interaction instead of a public presentation.',
+                      icons: [kinship.icon],
+                      action: {
+                        event: this.event,
+                        method: 'inviteHomeTalk',
+                        context: { houseId: house.id, characterId, visitKind: kinship.kind }
+                      }
+                    }
+                  }
                   if (!social.introduced) {
                     return {
                       variant: 'info',
@@ -963,6 +1187,33 @@
                       event: this.event,
                       method: 'inviteHomeTalk',
                       context: { houseId: house.id, characterId }
+                    }
+                  }
+                },
+        kinshipSupportOption(society, state, house, character) {
+                  let kinship = this.societyKinshipContext(society, state, house, character)
+                  if (!kinship || ['spouse', 'family', 'house', 'dynasty'].indexOf(kinship.kind) < 0) {
+                    return false
+                  }
+                  let text = kinship.kind === 'spouse'
+                    ? 'Support spouse'
+                    : kinship.kind === 'family'
+                      ? 'Support family member'
+                      : kinship.kind === 'house'
+                        ? 'Reinforce house ties'
+                        : 'Reinforce dynasty ties'
+                  let tooltip = kinship.kind === 'spouse' || kinship.kind === 'family'
+                    ? 'Special family action. Consequences: improves personal relation and gives a small prestige gain; no formal introduction is used.'
+                    : 'Special house/dynasty action. Consequences: improves personal relation and house ties; no formal introduction is used.'
+                  return {
+                    variant: 'info',
+                    text,
+                    tooltip,
+                    icons: [kinship.icon],
+                    action: {
+                      event: this.event,
+                      method: 'supportKinshipCharacter',
+                      context: { houseId: house.id, characterId: character.id, visitKind: kinship.kind }
                     }
                   }
                 },
@@ -1062,6 +1313,7 @@
                   let currentId = this.currentCharacterId(state)
                   let social = this.characterSocialRecord(society, characterId, false)
                   let romance = this.getRomance(society, currentId, characterId)
+                  let kinship = this.societyKinshipContext(society, state, house, character)
                   let relationScore = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationScore(society, state, currentId, characterId) : 0
                   let relationRecord = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationRecord(society, currentId, characterId, false) : false
                   let backAction = group ? {
@@ -1115,10 +1367,11 @@
                           context: { houseId, characterId }
                         }
                       },
+                      this.kinshipSupportOption(society, state, house, character),
                       this.socialVisitOption(society, state, house, character, nav),
                       this.romanceOption(society, state, house, character),
                       this.buyEnslavedPersonOption(society, state, house, character, nav),
-                      {
+                      (kinship.kind === 'spouse' || kinship.kind === 'family') ? false : {
                         variant: 'danger',
                         text: 'Spread rumor',
                         icons: [this.affairIcon('rivalry')],
@@ -1134,6 +1387,34 @@
                       }
                     ].filter(Boolean)
                   })
+                },
+        openFamilyCharacterSheet(args = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let characterId = args.characterId || args.targetCharacterId || (args.context && (args.context.characterId || args.context.targetCharacterId)) || ''
+                  let character = state.characters && state.characters[characterId]
+                  if (!character) {
+                    this.openHub()
+                    return
+                  }
+                  character.id = character.id || characterId
+                  let houseId = this.houseIdForCharacter(character, state, society)
+                  if (!houseId) {
+                    let currentId = this.currentCharacterId(state)
+                    let current = state.characters && state.characters[currentId]
+                    if (current) {
+                      current.id = current.id || currentId
+                      houseId = this.houseIdForCharacter(current, state, society)
+                    }
+                  }
+                  let house = society.houses && society.houses[houseId]
+                  if (house) {
+                    this.refreshHouseMemberLists(society, state, house)
+                    this.save(society)
+                    this.openPerson({ houseId, characterId, returnTo: 'hub' })
+                    return
+                  }
+                  this.openHub()
                 },
         openVanillaActions({ houseId, characterId, group, page, returnTo, returnPage } = {}) {
                   let society = this.ensure()
@@ -1590,6 +1871,10 @@
                   let house = society.houses[houseId]
                   let character = state.characters[characterId]
                   if (!character) {
+                    if (returnTo === 'deadHouse') {
+                      this.openDeadHouse({ houseId, page: returnPage || 0 })
+                      return
+                    }
                     this.openHouse({ houseId, returnTo, returnPage })
                     return
                   }
@@ -1638,6 +1923,8 @@
                     this.closeFamilyTreeOverlay()
                     if (mode === 'dynasty' && house) {
                       this.openDynasty({ dynastyId: this.gameDynastyIdForHouse(house), stratum: house.stratum, page: returnPage || 0 })
+                    } else if (returnTo === 'deadHouse') {
+                      this.openDeadHouse({ houseId, page: returnPage || 0 })
                     } else if (mode === 'house') {
                       this.openHouse({ houseId, returnTo, returnPage })
                     } else {
@@ -2064,7 +2351,11 @@
                     relativeOptions.push(this.familyRelativeOption('Sibling', relativeId, state, society, houseId, returnTo, returnPage))
                   })
                   let nav = this.navContext(returnTo, returnPage)
-                  let backAction = group ? {
+                  let backAction = returnTo === 'deadHouse' ? {
+                    event: this.event,
+                    method: 'openDeadHouse',
+                    context: { houseId, page: returnPage || 0 }
+                  } : group ? {
                     event: this.event,
                     method: 'openPerson',
                     context: { houseId, characterId, group, page: page || 0, ...nav }
@@ -2469,6 +2760,16 @@
                   }
                   options = options.concat(loanAmounts)
                   options.push({
+                    variant: 'info',
+                    text: 'Private loans',
+                    tooltip: 'Offer your own money to Society houses as private credit. Repayment depends on the borrower house economy.',
+                    icons: [this.affairIcon('bank'), this.affairIcon('trade')],
+                    action: {
+                      event: this.event,
+                      method: 'openPrivateLoans'
+                    }
+                  })
+                  options.push({
                     text: 'Back',
                     action: {
                       event: this.event,
@@ -2566,6 +2867,190 @@
                   this.applyStats({ prestige: -8, influence: -20 })
                   this.log(society, 'You defer Bank of Rome interest; debt grows by ' + interest + ' and standing suffers.', 'bank')
                   this.save(society)
+                },
+        openPrivateLoans({ page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  page = parseInt(page || 0, 10)
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  let active = (society.privateLoans || []).filter((loan) => loan && loan.status === 'active')
+                  let options = active.slice(0, 8).map((loan) => {
+                    let borrower = society.houses && society.houses[loan.borrowerHouseId]
+                    let lender = loan.lenderHouseId === 'player' ? 'Your household' : ((society.houses && society.houses[loan.lenderHouseId] && society.houses[loan.lenderHouseId].name) || 'Unknown lender')
+                    let principal = Math.round(parseFloat(loan.principal || 0))
+                    let interest = Math.max(1, Math.ceil(principal * parseFloat(loan.interestRate || 0.10)))
+                    return {
+                      text: lender + ' -> ' + (borrower ? borrower.name : 'lost house') + ' (' + (principal + interest) + ')',
+                      tooltip: 'Principal: ' + principal + '\nExpected interest: ' + interest + '\nDue: ' + (loan.dueMonth || 'unknown'),
+                      disabled: true,
+                      showDisabledWithTooltip: true,
+                      icons: [this.affairIcon('bank')]
+                    }
+                  })
+                  let candidates = this.sortedHouses(society)
+                    .filter((house) => {
+                      return house &&
+                        String(house.id) !== String(this.currentCharacterDynastyId(state)) &&
+                        this.houseLivingMemberIds(society, state, house).length &&
+                        !this.privateLoanActiveForBorrower(society, house.id)
+                    })
+                    .sort((a, b) => parseFloat(((a.ai || {}).cash) || 0) - parseFloat(((b.ai || {}).cash) || 0))
+                    .slice(page * 5, page * 5 + 5)
+                  candidates.forEach((house) => {
+                    let amounts = this.privateLoanOfferAmounts(state, house, cash)
+                    let disabled = !amounts.length || cash < 50
+                    options.push({
+                      variant: 'info',
+                      text: 'Offer terms to ' + house.name,
+                      tooltip: amounts.length
+                        ? 'Open possible private loan amounts. The house may accept or refuse depending on need, relation, stability, and debt burden.\nExpected rate: ' + Math.round(this.privateLoanRate(house) * 100) + '%.'
+                        : 'You do not have enough spare cash to make a sensible private loan offer.',
+                      disabled,
+                      showDisabledWithTooltip: true,
+                      icons: [this.houseCrestIcon(society, house), this.affairIcon('bank')],
+                      action: {
+                        event: this.event,
+                        method: 'openPrivateLoanOffer',
+                        context: { houseId: house.id, page }
+                      }
+                    })
+                  })
+                  let totalCandidates = this.sortedHouses(society).filter((house) => house && String(house.id) !== String(this.currentCharacterDynastyId(state)) && this.houseLivingMemberIds(society, state, house).length && !this.privateLoanActiveForBorrower(society, house.id)).length
+                  if ((page + 1) * 5 < totalCandidates) {
+                    options.push({
+                      text: 'Next houses',
+                      action: { event: this.event, method: 'openPrivateLoans', context: { page: page + 1 } }
+                    })
+                  }
+                  if (page > 0) {
+                    options.push({
+                      text: 'Previous houses',
+                      action: { event: this.event, method: 'openPrivateLoans', context: { page: page - 1 } }
+                    })
+                  }
+                  options.push({
+                    text: 'Back',
+                    action: { event: this.event, method: 'openBankOfRome' }
+                  })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Private Loans',
+                    message: 'Offer private credit to houses or inspect active contracts. NPC houses can also lend to each other when one has surplus and another needs liquidity.',
+                    societySummaryOptions: [
+                      this.summaryOption('Your cash', Math.round(cash), [this.affairIcon('coins')], 'Cash available to lend.'),
+                      this.summaryOption('Active loans', active.length, [this.affairIcon('bank')], 'Active private loans in Society.'),
+                      this.summaryOption('Borrowers', totalCandidates, [this.affairIcon('trade')], 'Eligible active houses without an existing private loan.')
+                    ],
+                    image: this.affairIcon('bank'),
+                    options
+                  })
+                },
+        openPrivateLoanOffer({ houseId, page } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  if (!house) {
+                    this.openPrivateLoans({ page: page || 0 })
+                    return
+                  }
+                  let amounts = this.privateLoanOfferAmounts(state, house, cash)
+                  let options = amounts.map((amount) => {
+                    let chance = this.privateLoanAcceptanceChance(society, state, house, amount, 'player')
+                    let rate = this.privateLoanRate(house)
+                    let interest = Math.max(1, Math.ceil(amount * rate))
+                    return {
+                      variant: chance >= 0.5 ? 'info' : 'danger',
+                      text: 'Offer ' + amount + ' (' + this.privateLoanAcceptanceText(chance) + ')',
+                      tooltip: 'Private loan offer to ' + house.name + '.\nAcceptance: ' + Math.round(chance * 100) + '% (' + this.privateLoanAcceptanceText(chance) + ').\nExpected repayment: ' + (amount + interest) + ' after interest.\nIf accepted now: -' + amount + ' cash. If refused: no cash is spent.',
+                      statChanges: { cash: -amount },
+                      disabled: cash < amount || this.privateLoanActiveForBorrower(society, houseId),
+                      showDisabledWithTooltip: true,
+                      icons: [this.affairIcon('coins'), this.affairIcon('bank')],
+                      action: {
+                        event: this.event,
+                        method: 'offerPrivateLoan',
+                        context: { houseId, amount, page: page || 0 }
+                      }
+                    }
+                  })
+                  if (!options.length) {
+                    options.push({
+                      disabled: true,
+                      showDisabledWithTooltip: true,
+                      text: 'No sensible offer available',
+                      tooltip: 'You need more spare cash or the house is not a useful borrower right now.',
+                      icons: [this.affairIcon('bank')]
+                    })
+                  }
+                  options.push({
+                    text: 'Back',
+                    action: { event: this.event, method: 'openPrivateLoans', context: { page: page || 0 } }
+                  })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Private Loan Offer',
+                    message: 'Choose the amount to offer ' + house.name + '. The house can accept or refuse; no money leaves your household unless the offer is accepted.',
+                    societySummaryOptions: [
+                      this.summaryOption('Your cash', Math.round(cash), [this.affairIcon('coins')], 'Cash available right now.'),
+                      this.summaryOption('House cash', Math.round(parseFloat(((house.ai || {}).cash) || 0)), [this.affairIcon('trade')], 'Estimated liquid cash held by this house.'),
+                      this.summaryOption('Rate', Math.round(this.privateLoanRate(house) * 100) + '%', [this.affairIcon('bank')], 'Interest rate based on stability and risk.')
+                    ],
+                    image: this.houseCrestIcon(society, house),
+                    options
+                  })
+                },
+        offerPrivateLoan({ houseId, amount, page } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  amount = Math.max(1, Math.round(parseFloat(amount || 0)))
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  if (!house || cash < amount || this.privateLoanActiveForBorrower(society, houseId)) {
+                    this.openPrivateLoans({ page: page || 0 })
+                    return
+                  }
+                  let chance = this.privateLoanAcceptanceChance(society, state, house, amount, 'player')
+                  let accepted = Math.random() < chance
+                  if (accepted) {
+                    let loan = this.createPrivateLoan(society, state, 'player', houseId, amount, 'player')
+                    if (!loan) {
+                      this.openPrivateLoans({ page: page || 0 })
+                      return
+                    }
+                    this.applyStats({ cash: -amount })
+                    house.relation = this.clamp((house.relation || 0) + 6, -100, 100)
+                    house.lastFamilyEvent = 'Accepts a private loan from your household.'
+                    house.lastFamilyKind = 'bank'
+                    this.log(society, house.name + ' accepts your private loan of ' + amount + '.', 'bank', house.id)
+                    this.save(society)
+                    this.pushModal({
+                      societyMenu: true,
+                      title: 'Loan Accepted',
+                      message: house.name + ' accepts the private loan of ' + amount + '. The contract is now active and repayment will be checked at the due date.',
+                      image: this.houseCrestIcon(society, house),
+                      options: [
+                        { text: 'Private loans', action: { event: this.event, method: 'openPrivateLoans', context: { page: page || 0 } } },
+                        { text: 'House', action: { event: this.event, method: 'openHouse', context: { houseId } } }
+                      ]
+                    })
+                    return
+                  }
+                  house.relation = this.clamp((house.relation || 0) - (amount > (house.wealth || 100) * 0.45 ? 2 : 0), -100, 100)
+                  house.lastFamilyEvent = 'Refuses a private loan offer from your household.'
+                  house.lastFamilyKind = 'bank'
+                  this.log(society, house.name + ' refuses your private loan offer of ' + amount + '.', 'bank', house.id)
+                  this.save(society)
+                  this.pushModal({
+                    societyMenu: true,
+                    title: 'Loan Refused',
+                    message: house.name + ' refuses the private loan of ' + amount + '. No cash is spent. Lower amounts, better relations, or greater need make acceptance more likely.',
+                    image: this.houseCrestIcon(society, house),
+                    options: [
+                      { text: 'Try another amount', action: { event: this.event, method: 'openPrivateLoanOffer', context: { houseId, page: page || 0 } } },
+                      { text: 'Private loans', action: { event: this.event, method: 'openPrivateLoans', context: { page: page || 0 } } }
+                    ]
+                  })
                 },
         openHouseholdSlaves() {
                   let society = this.ensure()
@@ -2753,6 +3238,7 @@
                   let known = this.knownEnslavedCandidates(society, state)
                   let pageSize = 7
                   let shown = known.slice(page * pageSize, page * pageSize + pageSize)
+                  let knownNavOptions = []
                   let options = shown.map((item) => {
                     let name = this.slaveDisplayName(item.character, null, state)
                     let houseName = item.house && item.house.name || ''
@@ -2771,13 +3257,13 @@
                     }
                   })
                   if (page * pageSize + pageSize < known.length) {
-                    options.push({
+                    knownNavOptions.push({
                       text: 'Next known people',
                       action: { event: this.event, method: 'openSlaveMarket', context: { page: page + 1 } }
                     })
                   }
                   if (page > 0) {
-                    options.push({
+                    knownNavOptions.push({
                       text: 'Previous known people',
                       action: { event: this.event, method: 'openSlaveMarket', context: { page: page - 1 } }
                     })
@@ -2810,6 +3296,7 @@
                     })
                     this.save(society)
                   }
+                  options = options.concat(knownNavOptions)
                   options.push({
                     text: 'Back',
                     action: { event: this.event, method: 'openHouseholdSlaves' }

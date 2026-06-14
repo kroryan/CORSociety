@@ -128,7 +128,7 @@
                   }
                   let currentDynastyId = this.currentCharacterDynastyId(state)
                   let type = this.slaveTypeFromCharacter(character)
-                  let visible = !!(character && (character.corSocietySlave || character.corSocietyOrigin === 'enslaved_dependant' || (house && house.stratum === 'poor')))
+                  let visible = !!(character && (this.isSlaveCharacter(character, house) || (house && house.stratum === 'poor' && (!currentDynastyId || String(character.dynastyId || '') !== String(currentDynastyId)))))
                   let cost = this.enslavedCharacterCost(society, state, house, character)
                   let cash = parseFloat(((state || {}).current || {}).cash || 0)
                   let reason = ''
@@ -921,9 +921,61 @@
                   })
                   this.openPerson({ houseId, characterId })
                 },
+        supportKinshipCharacter({ houseId, characterId, visitKind } = {}) {
+                  let result = false
+                  this.withHouse(houseId, (society, house) => {
+                    let state = daapi.getState()
+                    let currentId = this.currentCharacterId(state)
+                    let character = state.characters && state.characters[characterId]
+                    if (!character || this.sameCharacterId(currentId, characterId)) {
+                      return
+                    }
+                    character.id = character.id || characterId
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: visitKind || 'family', label: 'Family' }
+                    let kind = visitKind || kinship.kind || 'family'
+                    let social = this.characterSocialRecord(society, characterId, true)
+                    let relationGain = kind === 'spouse' ? 12 : kind === 'family' ? 9 : kind === 'house' ? 7 : 5
+                    let houseGain = kind === 'spouse' ? 1 : kind === 'family' ? 2 : kind === 'house' ? 5 : 4
+                    social.introduced = true
+                    social.bond = this.clamp((social.bond || 0) + relationGain, -100, 100)
+                    house.relation = this.clamp((house.relation || 0) + houseGain, -100, 100)
+                    this.changePersonalRelation(society, currentId, characterId, relationGain, kind === 'spouse' ? 'bestFriend' : kind === 'family' ? 'friend' : 'admirer')
+                    if (kind === 'spouse' || kind === 'family') {
+                      this.applyStats({ prestige: 1 })
+                    } else {
+                      this.applyStats({ influence: 4 })
+                    }
+                    let title = kind === 'spouse' ? 'Spouse supported' : kind === 'family' ? 'Family supported' : kind === 'house' ? 'House ties reinforced' : 'Dynasty ties reinforced'
+                    let message = this.characterName(character, state) + ' receives direct support. Personal relation improves, and the relevant house ties strengthen modestly.'
+                    house.lastFamilyEvent = title + '.'
+                    house.lastFamilyKind = 'support'
+                    this.log(society, title + ': ' + this.characterName(character, state) + '.', 'support', house.id)
+                    result = { title, message, image: this.characterPortrait(character, state, house) }
+                  })
+                  if (result) {
+                    this.pushModal({
+                      societyMenu: true,
+                      title: result.title,
+                      message: result.message,
+                      image: result.image,
+                      options: [{ text: 'Back', action: { event: this.event, method: 'openPerson', context: { houseId, characterId } } }]
+                    })
+                  } else {
+                    this.openPerson({ houseId, characterId })
+                  }
+                },
         requestIntroduction({ houseId, characterId }) {
                   let alreadyIntroduced = false
+                  let kinshipKind = ''
                   this.withHouse(houseId, (society, house) => {
+                    let state = daapi.getState()
+                    let character = state.characters && state.characters[characterId]
+                    if (character) character.id = character.id || characterId
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: 'outsider' }
+                    if (kinship.kind && kinship.kind !== 'outsider') {
+                      kinshipKind = kinship.kind
+                      return
+                    }
                     let social = this.characterSocialRecord(society, characterId, true)
                     if (social.introduced) {
                       alreadyIntroduced = true
@@ -939,13 +991,15 @@
                     this.applyStats({ influence: 35 })
                     this.log(society, house.name + ' introduces you to useful contacts.')
                   })
-                  if (alreadyIntroduced) {
+                  if (kinshipKind) {
+                    this.inviteHomeTalk({ houseId, characterId, visitKind: kinshipKind })
+                  } else if (alreadyIntroduced) {
                     this.inviteHomeTalk({ houseId, characterId })
                   } else {
                     this.openPerson({ houseId, characterId })
                   }
                 },
-        inviteHomeTalk({ houseId, characterId }) {
+        inviteHomeTalk({ houseId, characterId, visitKind } = {}) {
                   let result = false
                   this.withHouse(houseId, (society, house) => {
                     let state = daapi.getState()
@@ -955,6 +1009,8 @@
                     }
                     character.id = character.id || characterId
                     let social = this.characterSocialRecord(society, characterId, true)
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: 'outsider' }
+                    visitKind = visitKind || (kinship.kind && kinship.kind !== 'outsider' ? kinship.kind : '')
                     if (!social.introduced) {
                       social.introduced = true
                       social.introductionMonth = this.monthKey(state)
@@ -967,12 +1023,13 @@
                       }
                       return
                     }
-                    let rapport = this.randomInt(4, 12)
-                    let relation = this.randomInt(2, 8)
-                    let gossip = Math.random() < 0.08 + Math.max(0, (house.heat || 0)) * 0.015
+                    let familyVisit = ['spouse', 'family', 'house', 'dynasty'].indexOf(visitKind) >= 0
+                    let rapport = familyVisit ? this.randomInt(5, 14) : this.randomInt(4, 12)
+                    let relation = visitKind === 'spouse' || visitKind === 'family' ? this.randomInt(0, 3) : visitKind === 'house' ? this.randomInt(3, 8) : visitKind === 'dynasty' ? this.randomInt(2, 6) : this.randomInt(2, 8)
+                    let gossip = familyVisit ? false : Math.random() < 0.08 + Math.max(0, (house.heat || 0)) * 0.015
                     social.bond = this.clamp((social.bond || 0) + rapport, -100, 100)
                     social.lastVisitMonth = this.monthKey(state)
-                    social.nextInviteMonth = this.futureMonthKey(4)
+                    social.nextInviteMonth = this.futureMonthKey(familyVisit ? 3 : 4)
                     house.relation = this.clamp((house.relation || 0) + relation, -100, 100)
                     let currentId = this.currentCharacterId(state)
                     let player = state.characters[currentId] || state.current || {}
@@ -988,12 +1045,27 @@
                       }
                       this.log(society, 'A private visit with ' + this.characterName(character, state) + ' creates gossip around ' + house.name + '.', 'romance', house.id)
                     } else {
+                      let title = 'Private conversation'
+                      let message = this.characterName(character, state) + ' spends an evening in conversation. Rapport and house relation improve.'
+                      if (visitKind === 'spouse') {
+                        title = 'Time with spouse'
+                        message = 'You spend private family time with ' + this.characterName(character, state) + '. Personal rapport improves without any formal introduction.'
+                      } else if (visitKind === 'family') {
+                        title = 'Family conversation'
+                        message = this.characterName(character, state) + ' joins a family conversation. Rapport improves inside the household.'
+                      } else if (visitKind === 'house') {
+                        title = 'Household council'
+                        message = this.characterName(character, state) + ' joins a household council. House relation and personal rapport improve.'
+                      } else if (visitKind === 'dynasty') {
+                        title = 'Dynasty audience'
+                        message = this.characterName(character, state) + ' attends a wider dynasty audience. Dynasty ties improve modestly.'
+                      }
                       result = {
-                        title: 'Private conversation',
-                        message: this.characterName(character, state) + ' spends an evening in conversation. Rapport and house relation improve.',
+                        title,
+                        message,
                         image: this.characterPortrait(character, state, house)
                       }
-                      this.log(society, 'You invite ' + this.characterName(character, state) + ' of ' + house.name + ' home to talk.')
+                      this.log(society, familyVisit ? 'You hold a ' + (kinship.label || 'family') + ' meeting with ' + this.characterName(character, state) + '.' : 'You invite ' + this.characterName(character, state) + ' of ' + house.name + ' home to talk.')
                     }
                   })
                   if (result) {
