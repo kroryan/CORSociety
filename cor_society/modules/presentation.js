@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -659,6 +659,8 @@
                   if (method === 'sendGift' && house) return { cash: -this.actionCost(house, 'gift') }
                   if (method === 'hostDinner' && house) return { cash: -this.actionCost(house, 'dinner'), prestige: 12 }
                   if (method === 'askSupport' && house) return { influence: Math.max(20, Math.round((profile.support || 50) + (house.strength || 0) * 2)) }
+                  if (method === 'callFamilyCouncil') return { influence: 12, prestige: 6 }
+                  if (method === 'holdHouseholdRites') return { cash: -Math.max(20, Math.round(parseFloat(context.cost || (house ? this.actionCost(house, 'dinner') * 0.45 : 20)))), prestige: 12, influence: 4 }
                   if (method === 'offerPatronage' && house) return { prestige: 8 }
                   if (method === 'seekPatronage' && house) return { influence: Math.max(60, Math.round((house.strength || 20) * 3)), prestige: -5 }
                   if (method === 'startRivalry') return { prestige: 10, influence: 25 }
@@ -779,6 +781,8 @@
                     let support = Math.max(20, Math.round((profile.support || 50) + ((house && house.strength) || 0) * 2))
                     return this.effectLine(['+' + support + ' influence', (house && house.favor > 0) ? '-1 favor, -4 house relation' : '-16 house relation', '+1 house heat'])
                   }
+                  if (method === 'callFamilyCouncil') return this.effectLine(['+12 influence', '+6 prestige', '+house stability', '+close-family relations', '6 month cooldown'])
+                  if (method === 'holdHouseholdRites') return this.effectLine(['cash cost', '+12 prestige', '+4 influence', '+house stability', 'lowers household heat', '8 month cooldown'])
                   if (method === 'tradeDeal') {
                     let amount = Math.max(8, Math.round((profile.revenue || 20) + ((house && house.strength) || 0) / 3))
                     return this.effectLine(['+' + amount + ' monthly revenue for 12 months', '+5 house relation'])
@@ -889,7 +893,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.303'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -15,6 +15,21 @@
                   state = state || daapi.getState()
                   let current = state.characters && state.characters[this.currentCharacterId(state)]
                   return (current && current.dynastyId) || ((state.current || {}).dynastyId) || ''
+                },
+        isCurrentPlayerHouse(house, state) {
+                  if (!house || !house.id) {
+                    return false
+                  }
+                  state = state || daapi.getState()
+                  let currentId = this.currentCharacterId(state)
+                  let current = state.characters && state.characters[currentId]
+                  let possibleIds = [
+                    this.currentCharacterDynastyId(state),
+                    current && current.corSocietyHouseId,
+                    current && current.dynastyId,
+                    (state.current || {}).dynastyId
+                  ].filter(Boolean)
+                  return possibleIds.some((id) => String(id) === String(house.id))
                 },
         playerCloseFamilyIdMap(state) {
                   state = state || daapi.getState()
@@ -639,6 +654,57 @@
                     house.heat = (house.heat || 0) + 1
                     this.log(society, house.name + ' backs you publicly: +' + amount + ' influence.')
                   })
+                  this.openHouse({ houseId })
+                },
+        callFamilyCouncil({ houseId }) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  if (!house || !this.isCurrentPlayerHouse(house, state)) {
+                    this.openHouse({ houseId })
+                    return
+                  }
+                  if (house.nextFamilyCouncilMonth && !this.monthKeyReached(house.nextFamilyCouncilMonth, state)) {
+                    this.openHouse({ houseId })
+                    return
+                  }
+                  let currentId = this.currentCharacterId(state)
+                  this.applyStats({ influence: 12, prestige: 6 })
+                  house.stability = this.clamp((house.stability || 50) + 5, 0, 100)
+                  house.nextFamilyCouncilMonth = this.futureMonthKey(6)
+                  ;(this.playerFamilyMemberIds(state) || []).slice(0, 24).forEach((characterId) => {
+                    if (currentId && !this.sameCharacterId(currentId, characterId)) {
+                      this.changePersonalRelation(society, currentId, characterId, 4, 'family')
+                    }
+                  })
+                  house.lastFamilyEvent = 'Your household holds a family council.'
+                  house.lastFamilyKind = 'familyTree'
+                  this.log(society, 'Your household holds a family council: influence, prestige, stability, and close-family relations improve.', 'familyTree', house.id)
+                  this.save(society)
+                  this.openHouse({ houseId })
+                },
+        holdHouseholdRites({ houseId, cost } = {}) {
+                  let society = this.loadForAction()
+                  let state = daapi.getState()
+                  let house = society.houses && society.houses[houseId]
+                  if (!house || !this.isCurrentPlayerHouse(house, state)) {
+                    this.openHouse({ houseId })
+                    return
+                  }
+                  cost = Math.max(20, Math.round(parseFloat(cost || this.actionCost(house, 'dinner') * 0.45)))
+                  let cash = parseFloat(((state || {}).current || {}).cash || 0)
+                  if ((house.nextHouseholdRitesMonth && !this.monthKeyReached(house.nextHouseholdRitesMonth, state)) || cash < cost) {
+                    this.openHouse({ houseId })
+                    return
+                  }
+                  this.applyStats({ cash: -cost, prestige: 12, influence: 4 })
+                  house.stability = this.clamp((house.stability || 50) + 6, 0, 100)
+                  house.heat = Math.max(0, (house.heat || 0) - 2)
+                  house.nextHouseholdRitesMonth = this.futureMonthKey(8)
+                  house.lastFamilyEvent = 'Your household sponsors domestic rites and hospitality.'
+                  house.lastFamilyKind = 'prestige'
+                  this.log(society, 'Your household sponsors rites: prestige and influence rise, while internal heat cools.', 'prestige', house.id)
+                  this.save(society)
                   this.openHouse({ houseId })
                 },
         tradeDeal({ houseId }) {
@@ -2220,7 +2286,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.303'
     }
   }
 }

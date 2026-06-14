@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -29,6 +29,7 @@
                   this.syncPlayerWorldEffects(society, state)
                   this.repairFalsePlayerSlaveFlags(society, state)
                   this.syncPlayerHouseRecord(society, state)
+                  this.repairDynastyHouseSystem(society, state)
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.processBankYear(society, state)
                   this.simulatePrivateLoans(society, state)
@@ -644,7 +645,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.303'
     }
   }
 }

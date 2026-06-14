@@ -484,6 +484,14 @@
   transform-origin: top center;
 }
 
+.cor-society-family-tree-forest {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1rem;
+  min-width: 100%;
+}
+
 .cor-society-tree-family {
   position: relative;
   display: flex;
@@ -547,7 +555,7 @@
   width: 15.6rem;
   max-width: 25vw;
   min-width: 12.5rem;
-  height: 4.8rem;
+  height: 5.35rem;
   padding: 0.45rem 0.55rem;
   overflow: hidden;
   color: var(--cor-society-tree-text);
@@ -607,6 +615,37 @@
   color: var(--cor-society-tree-muted);
   font-size: 0.74rem;
   text-overflow: ellipsis;
+}
+
+.cor-society-tree-card-house {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  margin-top: 0.12rem;
+  color: var(--cor-society-tree-muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.cor-society-tree-card-house img {
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  object-fit: contain;
+}
+
+.cor-society-tree-card-house span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cor-society-tree-card.is-origin-house {
+  border-bottom-color: rgba(218, 173, 67, 0.9);
+}
+
+.cor-society-tree-card.is-cadet-house {
+  border-bottom-color: rgba(94, 162, 211, 0.9);
 }
 
 .cor-society-tree-empty-card {

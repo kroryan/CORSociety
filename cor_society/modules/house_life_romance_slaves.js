@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -2680,38 +2680,29 @@
                   return 3
                 },
         houseKnownMemberIds(society, state, house) {
-                  let seen = {}
-                  let ids = []
-                  let add = (characterId) => {
-                    if (!characterId || seen[characterId]) {
-                      return
-                    }
-                    seen[characterId] = true
-                    ids.push(characterId)
+                  if (this.resolvedHouseMemberIds) {
+                    return this.resolvedHouseMemberIds(society, state, house, {
+                      includeKnown: true,
+                      includeDead: true,
+                      includeSlaves: true,
+                      repair: false
+                    })
                   }
-                  ;(house.memberIds || []).forEach(add)
-                  ;(house.notableIds || []).forEach(add)
-                  ;(house.slaveIds || []).forEach(add)
-                  ;(house.knownMemberIds || []).forEach(add)
-                  ;(house.deadMemberIds || []).forEach(add)
-                  let dynastyId = this.gameDynastyIdForHouse(house)
-                  if (dynastyId && state.dynasties && state.dynasties[dynastyId]) {
-                    ;(state.dynasties[dynastyId].memberIds || []).forEach(add)
-                  }
-                  ;(society.generatedCharacterIds || []).forEach((characterId) => {
-                    let character = state.characters && state.characters[characterId]
-                    if (this.characterBelongsToHouse(character, house)) {
-                      add(characterId)
-                    }
-                  })
-                  return ids
+                  return this.uniqueIds((house.memberIds || []).concat(house.notableIds || [], house.slaveIds || [], house.knownMemberIds || [], house.deadMemberIds || []))
                 },
         houseLivingMemberIds(society, state, house) {
-                  return this.houseKnownMemberIds(society, state, house)
-                    .filter((characterId) => {
-                      let character = state.characters && state.characters[characterId]
-                      return character && !character.isDead && this.characterBelongsToHouse(character, house)
+                  if (this.resolvedHouseMemberIds) {
+                    return this.resolvedHouseMemberIds(society, state, house, {
+                      includeKnown: true,
+                      includeDead: false,
+                      includeSlaves: false,
+                      repair: false
                     })
+                  }
+                  return this.houseKnownMemberIds(society, state, house).filter((characterId) => {
+                    let character = state.characters && state.characters[characterId]
+                    return character && !character.isDead && this.characterBelongsToHouse(character, house)
+                  })
                 },
         houseLivingGenderCounts(society, state, house) {
                   let counts = { male: 0, female: 0 }
@@ -2794,17 +2785,12 @@
                   if (!character || !house) {
                     return false
                   }
-                  if (house.isPlayerHouse) {
-                    let state = daapi.getState()
-                    let characterId = character.id || character.characterId || ''
-                    if (characterId && this.isPlayerFreeFamilyCharacter && this.isPlayerFreeFamilyCharacter(state, characterId, character)) {
-                      return true
-                    }
-                  }
-                  if (character.corSocietyHouseId) {
-                    return String(character.corSocietyHouseId) === String(house.id)
-                  }
-                  return !!(house.originHouse && character.dynastyId && String(character.dynastyId) === String(this.gameDynastyIdForHouse(house)))
+                  let state = daapi.getState()
+                  let society = this.load()
+                  let resolvedHouseId = this.resolveCharacterHouseId
+                    ? this.resolveCharacterHouseId(character, state, society, { repair: false, includeSlaves: true })
+                    : character.corSocietyHouseId
+                  return !!(resolvedHouseId && String(resolvedHouseId) === String(house.id))
                 },
         refreshHouseMemberLists(society, state, house) {
                   if (!house || !house.id || !state || !state.characters) {
@@ -2812,7 +2798,22 @@
                   }
                   let month = this.monthKey(state)
                   let dynastyId = this.gameDynastyIdForHouse(house)
-                  let dynastyMembers = dynastyId && state.dynasties && state.dynasties[dynastyId] && state.dynasties[dynastyId].memberIds ? state.dynasties[dynastyId].memberIds : []
+                  let sourceIds = this.canonicalHouseMemberSourceIds
+                    ? this.canonicalHouseMemberSourceIds(society, state, house, { includeKnown: true, includeSlaves: true })
+                    : ((house.knownMemberIds || []).concat(house.memberIds || [], house.notableIds || [], house.slaveIds || []))
+                  let refreshSignature = [
+                    month,
+                    dynastyId,
+                    (house.memberIds || []).join('|'),
+                    (house.notableIds || []).join('|'),
+                    (house.slaveIds || []).join('|'),
+                    sourceIds.join('|')
+                  ].join('::')
+                  if (house._lastRefreshedSignature === refreshSignature && house.memberIds && house.memberIds.length) {
+                    return
+                  }
+                  let seen = {}
+                  let ids = []
                   let knownSeen = {}
                   let knownIds = []
                   let remember = (characterId) => {
@@ -2822,41 +2823,34 @@
                     knownSeen[characterId] = true
                     knownIds.push(characterId)
                   }
-                  ;(house.knownMemberIds || []).forEach(remember)
-                  ;(house.memberIds || []).forEach(remember)
-                  ;(house.notableIds || []).forEach(remember)
-                  ;(house.slaveIds || []).forEach(remember)
-                  dynastyMembers.forEach(remember)
-                  if (knownIds.length) {
-                    house.knownMemberIds = knownIds.slice(-160)
-                  }
-                  let refreshSignature = [
-                    month,
-                    (house.memberIds || []).join('|'),
-                    (house.notableIds || []).join('|'),
-                    (house.slaveIds || []).join('|'),
-                    dynastyMembers.join('|')
-                  ].join('::')
-                  if (house._lastRefreshedSignature === refreshSignature && house.memberIds && house.memberIds.length) {
-                    return
-                  }
-                  let seen = {}
-                  let ids = []
                   let add = (characterId) => {
                     if (!characterId || seen[characterId]) {
                       return
                     }
                     let character = state.characters[characterId]
-                    if (!character || character.isDead || !this.characterBelongsToHouse(character, house)) {
+                    if (!character) {
+                      return
+                    }
+                    let resolvedKnownHouseId = this.resolveCharacterHouseId
+                      ? this.resolveCharacterHouseId(character, state, society, { repair: true, includeSlaves: true })
+                      : (character.corSocietyHouseId || '')
+                    if (resolvedKnownHouseId && String(resolvedKnownHouseId) === String(house.id)) {
+                      remember(characterId)
+                    }
+                    let resolvedHouseId = this.resolveCharacterHouseId
+                      ? this.resolveCharacterHouseId(character, state, society, { repair: false })
+                      : resolvedKnownHouseId
+                    if (character.isDead || !resolvedHouseId || String(resolvedHouseId) !== String(house.id)) {
                       return
                     }
                     character.id = character.id || characterId
                     seen[characterId] = true
                     ids.push(characterId)
                   }
-                  ;(house.memberIds || []).forEach(add)
-                  ;(house.notableIds || []).forEach(add)
-                  dynastyMembers.forEach(add)
+                  sourceIds.forEach(add)
+                  if (knownIds.length) {
+                    house.knownMemberIds = knownIds.slice(-160)
+                  }
                   house.memberIds = ids
                   house.notableIds = ids
                     .slice()
@@ -3163,7 +3157,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.303'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -145,6 +145,7 @@
                   let patronage = society.patronage || []
                   let currentId = this.currentCharacterId(state)
                   let current = state.characters && state.characters[currentId]
+                  let dynastyHouseValidation = this.validateDynastyHouseSystem ? this.validateDynastyHouseSystem(society, state, { limit: section === 'full' ? 120 : 30 }) : false
                   let snapshot = {
                     version: this.version,
                     section,
@@ -184,7 +185,8 @@
                       activeVentures: activeVentures.slice(0, 20),
                       pendingSteals: society.pendingSteals || {},
                       tradeCompacts: society.tradeCompacts || {},
-                      patronage: patronage.slice ? patronage.slice(0, 20) : patronage
+                      patronage: patronage.slice ? patronage.slice(0, 20) : patronage,
+                      dynastyHouseValidation
                     },
                     recentLog: (society.log || []).slice(0, 30),
                     errors: {
@@ -405,7 +407,7 @@
                   return picked
                 }
       })
-      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.303'
     }
   }
 }

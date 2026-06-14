@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -26,6 +26,7 @@
                   }
                   this.normalizeDynastyHouseModel(society, state)
                   this.syncPlayerHouseRecord(society, state)
+                  this.repairDynastyHouseSystem(society, state)
                   let monthKey = this.monthKey(state)
                   let ensureKey = this.ensureKey(society, state)
                   let monthChanged = society.lastProcessedStatusMonth !== monthKey
@@ -72,6 +73,7 @@
                   state = daapi.getState()
                   this.repairFalsePlayerSlaveFlags(society, state)
                   this.syncPlayerHouseRecord(society, state)
+                  this.repairDynastyHouseSystem(society, state)
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.ensureVisibleHouseMembers(society, state)
                   this.retireDeadHouses(society, state, { notify: false })
@@ -696,7 +698,7 @@
                   return society
                 }
       })
-      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.303'
     }
   }
 }

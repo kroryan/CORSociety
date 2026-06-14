@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -82,6 +82,12 @@
                   house.name = this.houseName(daapi.getState().dynasties[head.dynastyId] || {}, head.dynastyId)
                   house.stratum = stratum
                   house.generated = true
+                  house.founderId = headId
+                  house.branchRootId = headId
+                  house.parentHouseId = ''
+                  house.type = 'origin'
+                  house.houseKind = 'origin'
+                  house.createdAtTurn = this.monthKey(state)
                   house.relation = this.randomInt(-8, 12)
                   house.memberIds = [headId]
                   house.notableIds = [headId]
@@ -311,6 +317,20 @@
                   let relativeAge = canBeChild ? this.randomInt(0, Math.min(30, headAge - 18)) : this.randomInt(16, 30)
                   let job = relativeAge >= 16 ? this.pick(profile.jobs) : ''
                   let traits = relativeAge >= 12 ? this.generatedTraitsForStratum(stratum, job) : []
+                  let spouse = head.spouseId && state.characters[head.spouseId] ? state.characters[head.spouseId] : false
+                  let fatherId = ''
+                  let motherId = ''
+                  if (canBeChild) {
+                    if (headIsMale) {
+                      fatherId = head.id
+                      motherId = spouse && !this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostParent(society, state, head, false)
+                    } else {
+                      motherId = head.id
+                      fatherId = spouse && this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostParent(society, state, head, true)
+                    }
+                  }
+                  let motherLook = motherId && state.characters[motherId] ? state.characters[motherId] : (headIsMale ? spouse : head)
+                  let fatherLook = fatherId && state.characters[fatherId] ? state.characters[fatherId] : (headIsMale ? head : spouse)
                   let relativeId = daapi.generateCharacter({
                     characterFeatures: {
                       gender: isMale ? 'male' : 'female',
@@ -318,15 +338,15 @@
                       praenomen: isMale ? this.pick(this.maleNames) : this.pick(this.femaleNames),
                       birthMonth: this.randomInt(0, 11),
                       birthYear: state.year - relativeAge,
-                      look: canBeChild ? this.inheritedVanillaLook(isMale, headIsMale ? null : head, headIsMale ? head : null, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge) : this.generatedVanillaLook(isMale, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge),
+                      look: canBeChild ? this.inheritedVanillaLook(isMale, motherLook, fatherLook, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge) : this.generatedVanillaLook(isMale, stratum + '-' + house.id + '-' + head.id + '-' + relativeAge),
                       job,
                       jobLevel: job ? this.randomInt(0, 5) : 0,
                       traits,
                       skills: this.skillsForStratum(stratum),
                       corSocietyGenerated: true,
                       flagDoNotCull: true,
-                      fatherId: canBeChild && headIsMale ? head.id : null,
-                      motherId: canBeChild && !headIsMale ? head.id : null,
+                      fatherId: fatherId || null,
+                      motherId: motherId || null,
                       childrenIds: []
                     },
                     dynastyFeatures: this.dynastyFeaturesForHouse(house, state)
@@ -336,21 +356,13 @@
                     character: {
                       dynastyId: this.gameDynastyIdForHouse(house),
                       corSocietyHouseId: house.id,
-                      fatherId: canBeChild && headIsMale ? head.id : null,
-                      motherId: canBeChild && !headIsMale ? head.id : null
+                      fatherId: fatherId || null,
+                      motherId: motherId || null
                     }
                   })
                   if (canBeChild) {
-                    let headChildren = (head.childrenIds || []).slice()
-                    if (headChildren.indexOf(relativeId) < 0) {
-                      headChildren.push(relativeId)
-                    }
-                    daapi.updateCharacter({
-                      characterId: head.id,
-                      character: {
-                        childrenIds: headChildren
-                      }
-                    })
+                    this.addChildToParent(state, fatherId, relativeId)
+                    this.addChildToParent(state, motherId, relativeId)
                   }
                   house.memberIds = house.memberIds || []
                   house.notableIds = house.notableIds || []
@@ -752,11 +764,203 @@
                     }
                     this.ensureHouseCommonTree(society, state, house, { allowLivingExtras: true })
                     state = daapi.getState()
+                    this.ensureDynastyCommonTree(society, state, this.gameDynastyIdForHouse(house), { budget: 8 })
+                    state = daapi.getState()
                     checked += 1
                     if (checked >= 4) {
                       break
                     }
                   }
+                },
+        ensureDynastyCommonTree(society, state, dynastyId, options) {
+                  if (!society || !state || !state.characters || !dynastyId) {
+                    return false
+                  }
+                  options = options || {}
+                  society.dynastyTreeRepairMonths = society.dynastyTreeRepairMonths || {}
+                  society.repairingDynastyIds = society.repairingDynastyIds || {}
+                  if (society.repairingDynastyIds[dynastyId]) {
+                    return false
+                  }
+                  let repairKey = this.version + ':' + this.monthKey(state)
+                  if (!options.force && society.dynastyTreeRepairMonths[dynastyId] === repairKey) {
+                    return false
+                  }
+                  society.dynastyTreeRepairMonths[dynastyId] = repairKey
+                  society.repairingDynastyIds[dynastyId] = true
+                  let finishRepair = (value) => {
+                    delete society.repairingDynastyIds[dynastyId]
+                    return value
+                  }
+                  try {
+                  let houses = this.housesForDynasty ? this.housesForDynasty(society, dynastyId) : []
+                  if (!houses.length) {
+                    return finishRepair(false)
+                  }
+                  let seeds = []
+                  let seen = {}
+                  let addSeed = (id) => {
+                    if (!id || seen[id] || !state.characters[id]) {
+                      return
+                    }
+                    let character = state.characters[id]
+                    if (!character || character.isDead || !character.dynastyId || String(character.dynastyId) !== String(dynastyId)) {
+                      return
+                    }
+                    seen[id] = true
+                    character.id = character.id || id
+                    seeds.push(character)
+                  }
+                  houses.forEach((house) => {
+                    let ids = ((house && house.notableIds) || []).concat((house && house.memberIds) || [])
+                    for (let i = 0; i < ids.length; i += 1) {
+                      let character = state.characters[ids[i]]
+                      if (character && !character.isDead) {
+                        addSeed(ids[i])
+                        break
+                      }
+                    }
+                  })
+                  if (state.dynasties && state.dynasties[dynastyId] && state.dynasties[dynastyId].memberIds) {
+                    ;(state.dynasties[dynastyId].memberIds || []).slice(0, 80).forEach(addSeed)
+                  }
+                  if (seeds.length < 2) {
+                    return finishRepair(false)
+                  }
+                  seeds.forEach((character) => {
+                    this.ensureDeadParentsAndGrandparents(society, state, character)
+                    state = daapi.getState()
+                  })
+                  let components = this.dynastyTreeComponents(state, seeds.map((character) => character.id), 4)
+                  if (components.length <= 1) {
+                    return finishRepair(false)
+                  }
+                  let anchor = state.characters[components[0][0]]
+                  if (!anchor) {
+                    return finishRepair(false)
+                  }
+                  anchor.id = anchor.id || components[0][0]
+                  this.ensureDeadParentsAndGrandparents(society, state, anchor)
+                  state = daapi.getState()
+                  anchor = state.characters[anchor.id] || anchor
+                  let anchorParent = (anchor.fatherId && state.characters[anchor.fatherId]) || (anchor.motherId && state.characters[anchor.motherId])
+                  if (!anchorParent) {
+                    return finishRepair(false)
+                  }
+                  anchorParent.id = anchorParent.id || anchor.fatherId || anchor.motherId
+                  let grandFatherId = anchorParent.fatherId || ''
+                  let grandMotherId = anchorParent.motherId || ''
+                  if (!grandFatherId || !grandMotherId) {
+                    this.ensureDeadParentsAndGrandparents(society, state, anchorParent)
+                    state = daapi.getState()
+                    anchorParent = state.characters[anchorParent.id] || anchorParent
+                    grandFatherId = anchorParent.fatherId || ''
+                    grandMotherId = anchorParent.motherId || ''
+                  }
+                  if (!grandFatherId || !grandMotherId) {
+                    return finishRepair(false)
+                  }
+                  let changed = false
+                  let budget = Math.max(1, parseInt(options.budget || 4, 10))
+                  for (let i = 1; i < components.length && budget > 0; i += 1) {
+                    let targetId = components[i][0]
+                    let target = state.characters[targetId]
+                    if (!target || target.isDead) {
+                      continue
+                    }
+                    target.id = target.id || targetId
+                    if (this.sharesAncestorWithin(state, anchor.id, target.id, 5)) {
+                      continue
+                    }
+                    let house = target.corSocietyHouseId && society.houses ? society.houses[target.corSocietyHouseId] : this.primaryHouseForDynasty(society, dynastyId)
+                    if (this.connectCharacterThroughCollateralBranch(society, state, house, anchor, target.id, grandFatherId, grandMotherId)) {
+                      changed = true
+                      budget -= 1
+                      state = daapi.getState()
+                    }
+                  }
+                  if (changed) {
+                    houses.forEach((house) => {
+                      this.refreshHouseMemberLists(society, state, house)
+                    })
+                  }
+                  return finishRepair(changed)
+                  } catch (err) {
+                    console.warn(err)
+                    return finishRepair(false)
+                  }
+                },
+        dynastyTreeComponents(state, seedIds, depthLimit) {
+                  let ids = (seedIds || []).filter((id) => id && state.characters && state.characters[id])
+                  let allowed = {}
+                  ids.forEach((id) => {
+                    allowed[String(id)] = true
+                  })
+                  ids.forEach((id) => {
+                    let ancestors = this.ancestorSet(state, id, depthLimit || 4)
+                    Object.keys(ancestors || {}).forEach((ancestorId) => {
+                      if (state.characters[ancestorId]) {
+                        allowed[String(ancestorId)] = true
+                      }
+                    })
+                  })
+                  let childIndex = {}
+                  Object.keys(allowed).forEach((id) => {
+                    let character = state.characters[id]
+                    if (!character) return
+                    ;[character.fatherId, character.motherId].forEach((parentId) => {
+                      if (!parentId || !allowed[String(parentId)]) return
+                      childIndex[String(parentId)] = childIndex[String(parentId)] || []
+                      childIndex[String(parentId)].push(id)
+                    })
+                  })
+                  let seen = {}
+                  let components = []
+                  let seedMap = {}
+                  ids.forEach((id) => {
+                    seedMap[String(id)] = true
+                  })
+                  ids.forEach((startId) => {
+                    startId = String(startId)
+                    if (seen[startId]) {
+                      return
+                    }
+                    let queue = [startId]
+                    let componentSeeds = []
+                    while (queue.length) {
+                      let id = String(queue.shift())
+                      if (!allowed[id] || seen[id]) {
+                        continue
+                      }
+                      seen[id] = true
+                      if (seedMap[id]) {
+                        componentSeeds.push(id)
+                      }
+                      let character = state.characters[id]
+                      if (!character) {
+                        continue
+                      }
+                      ;[character.fatherId, character.motherId, character.spouseId].forEach((nextId) => {
+                        if (nextId && allowed[String(nextId)] && !seen[String(nextId)]) {
+                          queue.push(String(nextId))
+                        }
+                      })
+                      ;(character.childrenIds || []).forEach((nextId) => {
+                        if (nextId && allowed[String(nextId)] && !seen[String(nextId)]) {
+                          queue.push(String(nextId))
+                        }
+                      })
+                      ;(childIndex[id] || []).forEach((nextId) => {
+                        if (nextId && allowed[String(nextId)] && !seen[String(nextId)]) {
+                          queue.push(String(nextId))
+                        }
+                      })
+                    }
+                    if (componentSeeds.length) {
+                      components.push(componentSeeds)
+                    }
+                  })
+                  return components.sort((a, b) => b.length - a.length)
                 },
         ensureHouseCommonTree(society, state, house, options) {
                   if (!society || !house || !house.id || !state || !state.characters) {
@@ -1018,6 +1222,7 @@
                       corSocietyGenerated: true,
                       corSocietyGhostParent: true,
                       corSocietyCollateralAncestor: true,
+                      corSocietyGeneratedConnector: true,
                       flagDoNotCull: true,
                       fatherId: grandFatherId,
                       motherId: grandMotherId,
@@ -1036,6 +1241,7 @@
                         corSocietyGenerated: true,
                         corSocietyGhostParent: true,
                         corSocietyCollateralAncestor: true,
+                        corSocietyGeneratedConnector: true,
                         fatherId: grandFatherId,
                         motherId: grandMotherId,
                         childrenIds: [child.id],
@@ -1137,6 +1343,8 @@
                       look: this.inheritedVanillaLook(isMale, child, child, 'ghost-parent-' + child.id + '-' + (isMale ? 'father' : 'mother')),
                       corSocietyGenerated: true,
                       corSocietyGhostParent: true,
+                      corSocietyGeneratedConnector: true,
+                      corSocietyHouseId: child.corSocietyHouseId || '',
                       flagDoNotCull: true,
                       childrenIds: [child.id]
                     },
@@ -1146,11 +1354,13 @@
                     daapi.updateCharacter({
                       characterId: parentId,
                       character: {
-                        dynastyId: child.dynastyId,
+                      dynastyId: child.dynastyId,
+                        corSocietyHouseId: child.corSocietyHouseId || '',
                         isDead: true,
                         deathCause: 'old age',
                         corSocietyGenerated: true,
                         corSocietyGhostParent: true,
+                        corSocietyGeneratedConnector: true,
                         childrenIds: [child.id]
                       }
                     })
@@ -1333,6 +1543,13 @@
                   if (!character || !society || !society.houses) {
                     return false
                   }
+                  if (this.resolveCharacterHouseId) {
+                    let state = daapi.getState()
+                    let houseId = this.resolveCharacterHouseId(character, state, society, { repair: false })
+                    if (houseId && society.houses[houseId]) {
+                      return society.houses[houseId]
+                    }
+                  }
                   if (character.corSocietyHouseId && society.houses[character.corSocietyHouseId]) {
                     return society.houses[character.corSocietyHouseId]
                   }
@@ -1477,7 +1694,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.303'
     }
   }
 }

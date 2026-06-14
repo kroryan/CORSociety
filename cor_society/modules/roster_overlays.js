@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.295') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -428,21 +428,13 @@
                   if (!character) {
                     return ''
                   }
-                  let characterId = character.id || character.characterId || ''
-                  let playerHouseId = this.currentCharacterDynastyId(state)
-                  if (society && playerHouseId && characterId && this.isPlayerFreeFamilyCharacter && this.isPlayerFreeFamilyCharacter(state, characterId, character)) {
-                    if (!society.houses[playerHouseId] && this.syncPlayerHouseRecord) {
-                      this.syncPlayerHouseRecord(society, state)
+                  society = society || this.load()
+                  state = state || daapi.getState()
+                  if (this.resolveCharacterHouseId) {
+                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: true })
+                    if (resolvedHouseId) {
+                      return resolvedHouseId
                     }
-                    if (society.houses[playerHouseId]) {
-                      return playerHouseId
-                    }
-                  }
-                  if (character.corSocietyHouseId && society.houses[character.corSocietyHouseId]) {
-                    return character.corSocietyHouseId
-                  }
-                  if (character.dynastyId && society.houses[character.dynastyId]) {
-                    return character.dynastyId
                   }
                   let dynastyId = character.dynastyId
                   if (dynastyId) {
@@ -1083,7 +1075,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.295'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.303'
     }
   }
 }

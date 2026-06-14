@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.295') {
+      if (window.corSociety && window.corSociety.version === '1.1.303') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
@@ -44,7 +44,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.295',
+        version: '1.1.303',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
@@ -379,6 +379,12 @@
     },
     askSupport(args) {
       window.corSociety.runAction('askSupport', args || {})
+    },
+    callFamilyCouncil(args) {
+      window.corSociety.runAction('callFamilyCouncil', args || {})
+    },
+    holdHouseholdRites(args) {
+      window.corSociety.runAction('holdHouseholdRites', args || {})
     },
     tradeDeal(args) {
       window.corSociety.runAction('tradeDeal', args || {})
