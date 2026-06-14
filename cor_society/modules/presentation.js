@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.307') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -751,7 +751,7 @@
                   if (method === 'openPrivateLoanRequest') return 'Consequences: opens possible loan request amounts; no stats change yet.'
                   if (method === 'openHouseholdSlaves') return 'Consequences: opens household slave management; no stats change yet.'
                   if (method === 'openMatchmaker') return 'Consequences: opens matchmaker offers for this character; no stats change yet.'
-                  if (method === 'openPlayerFamilyTree') return 'Consequences: opens your Society-style house tree; no stats or family records change.'
+                  if (method === 'openPlayerFamilyTree') return 'Consequences: opens your Society-style dynasty tree; may add missing dead ancestors and up to a few living kin if absent.'
                   if (method === 'openWardrobeCharacter') return 'Consequences: opens clothing choices for this family member; no stats change.'
                   if (method === 'applyWardrobeOutfit') return 'Consequences: changes Society portrait clothing only; no stats change.'
                   if (method === 'openLog') return 'Consequences: opens past affairs; no stats change.'
@@ -765,7 +765,7 @@
                   if (method === 'openFamilyCharacterSheet') return 'Consequences: opens this family member in Roman Society; no stats change.'
                   if (method === 'openVanillaActions') return 'Consequences: opens this character\'s vanilla / other mods actions; no stats change yet.'
                   if (method === 'openVanillaKnownFamily') return 'Consequences: opens the vanilla known-family screen if the game route is available; no stats change.'
-                  if (method === 'openVanillaFullFamilyTree') return 'Consequences: opens the vanilla dynasty-tree screen if the game route is available; no stats change.'
+                  if (method === 'openVanillaFullFamilyTree') return 'Consequences: opens the vanilla full-family-tree screen if the game route is available; no stats change.'
                   if (method === 'openFamilyTree') return 'Consequences: opens Society\'s graphical family-tree view; no stats change.'
                   if (method === 'openMarriageHousehold') return 'Consequences: chooses one of your unmarried adult family members; no stats change yet.'
                   if (method === 'openMarriageCandidates') return 'Consequences: chooses possible spouses from this house; no stats change yet.'
@@ -893,7 +893,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.307'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.303'
     }
   }
 }

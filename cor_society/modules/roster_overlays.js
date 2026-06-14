@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.307') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -430,20 +430,24 @@
                   }
                   society = society || this.load()
                   state = state || daapi.getState()
-                  if (this.treeHouseIdForCharacter) {
-                    let treeHouseId = this.treeHouseIdForCharacter(character, state, society)
-                    if (treeHouseId && society.houses && society.houses[treeHouseId]) {
-                      return treeHouseId
-                    }
-                  }
                   if (this.resolveCharacterHouseId) {
-                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: false })
+                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: true })
                     if (resolvedHouseId) {
                       return resolvedHouseId
                     }
                   }
                   let dynastyId = character.dynastyId
-                  if (dynastyId && society.houses && society.houses[dynastyId]) {
+                  if (dynastyId) {
+                    let house = this.createHouseRecord(dynastyId)
+                    let dynasty = state.dynasties[dynastyId] || {}
+                    house.name = this.houseName(dynasty, dynastyId)
+                    house.stratum = this.classifyHouse(dynasty, [character], this.characterScore(character, state), this.isSenatorialCharacter(character, state))
+                    house.memberIds = [character.id]
+                    house.notableIds = [character.id]
+                    house.generated = false
+                    society.houses[dynastyId] = house
+                    this.refreshHouseMemberLists(society, state, house)
+                    this.save(society)
                     return dynastyId
                   }
                   return ''
@@ -1056,7 +1060,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.307'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.303'
     }
   }
 }

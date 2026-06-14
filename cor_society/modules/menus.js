@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.307') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -170,8 +170,8 @@
                   if (rootId) {
                     options.push({
                       variant: 'info',
-                      text: 'Dynasty tree',
-                      tooltip: 'Opens the graphical dynasty tree across all known houses.',
+                      text: 'Full dynasty tree',
+                      tooltip: 'Opens the total graphical tree for this dynasty, across all known houses.',
                       icons: [this.affairIcon('familyTree')],
                       action: { event: this.event, method: 'openDynastyTree', context: { dynastyId, stratum, page: page || 0 } }
                     })
@@ -485,8 +485,8 @@
                   if (memberIds.length) {
                     options.push({
                       variant: 'info',
-                      text: 'House tree',
-                      tooltip: 'Open the archived graphical house tree for this extinct house.',
+                      text: 'Full family tree',
+                      tooltip: 'Open the archived graphical tree for this extinct house.',
                       icons: [this.assetIcon('familyTree')],
                       action: { event: this.event, method: 'openDeadHouseFamilyTree', context: { houseId, page } }
                     })
@@ -806,7 +806,7 @@
                       {
                         variant: 'info',
                         text: 'House tree',
-                        tooltip: 'Open this connected house branch as an extracted view from the dynasty tree.',
+                        tooltip: 'Open this house branch as an extracted view from the same complete dynasty tree.',
                         icons: [this.affairIcon('familyTree'), this.houseCrestIcon(society, house)],
                         action: {
                           event: this.event,
@@ -816,8 +816,8 @@
                       },
                       {
                         variant: 'info',
-                        text: 'Dynasty tree',
-                        tooltip: 'Open the graphical dynasty tree, including all known branches and houses of this dynasty.',
+                        text: 'Full dynasty tree',
+                        tooltip: 'Open the complete graphical dynasty tree, including all known branches and houses of this dynasty.',
                         icons: [this.affairIcon('familyTree')],
                         action: {
                           event: this.event,
@@ -1430,7 +1430,7 @@
                     return
                   }
                   character.id = character.id || characterId
-                  let houseId = this.treeHouseIdForCharacter(character, state, society)
+                  let houseId = this.houseIdForCharacter(character, state, society)
                   if (!houseId) {
                     let currentId = this.currentCharacterId(state)
                     let current = state.characters && state.characters[currentId]
@@ -1543,6 +1543,18 @@
                     this.openDynasty({ dynastyId, stratum, page })
                     return
                   }
+                  let currentRepairKey = this.version + ':' + this.monthKey(state)
+                  let beforeRepairKey = society.dynastyTreeRepairMonths && society.dynastyTreeRepairMonths[dynastyId]
+                  let alreadyRepaired = beforeRepairKey === currentRepairKey
+                  let repaired = !alreadyRepaired && this.ensureDynastyCommonTree && this.ensureDynastyCommonTree(society, state, dynastyId, { budget: 8 })
+                  let afterRepairKey = society.dynastyTreeRepairMonths && society.dynastyTreeRepairMonths[dynastyId]
+                  if (repaired || (!alreadyRepaired && beforeRepairKey !== afterRepairKey)) {
+                    state = daapi.getState()
+                    this.clearFamilyTreeRuntimeCache()
+                    this.save(society)
+                    house = this.primaryHouseForDynasty(society, dynastyId)
+                    characterId = this.dynastyTreeFocusId(society, state, dynastyId) || characterId
+                  }
                   this.openGraphicalFamilyTree({
                     society,
                     state,
@@ -1564,10 +1576,16 @@
                     this.openHub()
                     return
                   }
-                  let houseTreeIds = this.houseTreeSeedIds ? this.houseTreeSeedIds(society, state, house) : ((house.notableIds || house.memberIds || []).filter((id) => state.characters && state.characters[id]))
+                  if (this.prepareHouseTreeForOpen(society, state, house)) {
+                    state = daapi.getState()
+                    this.clearFamilyTreeRuntimeCache()
+                    this.save(society)
+                    house = society.houses[houseId] || house
+                  }
+                  this.refreshHouseMemberLists(society, state, house)
                   let characterId = this.isCurrentPlayerHouse(house, state)
                     ? this.currentCharacterId(state)
-                    : houseTreeIds.find((id) => state.characters && state.characters[id])
+                    : (house.notableIds || house.memberIds || []).find((id) => state.characters && state.characters[id])
                   if (!characterId) {
                     this.openHouse({ houseId, returnTo, returnPage })
                     return
@@ -1586,10 +1604,54 @@
                   })
                 },
         prepareHouseTreeForOpen(society, state, house) {
-                  return false
+                  if (!society || !state || !state.characters || !house || !house.id || !this.ensureHouseCommonTree) {
+                    return false
+                  }
+                  society.houseTreeRepairMonths = society.houseTreeRepairMonths || {}
+                  society.repairingHouseIds = society.repairingHouseIds || {}
+                  if (society.repairingHouseIds[house.id]) {
+                    return false
+                  }
+                  let repairKey = this.version + ':' + this.monthKey(state)
+                  if (society.houseTreeRepairMonths[house.id] === repairKey) {
+                    return false
+                  }
+                  society.houseTreeRepairMonths[house.id] = repairKey
+                  society.repairingHouseIds[house.id] = true
+                  try {
+                    if (this.repairHouseMembership) {
+                      this.repairHouseMembership(society, state, house.id)
+                      state = daapi.getState()
+                    }
+                    this.ensureHouseCommonTree(society, state, house, { allowLivingExtras: false })
+                  } finally {
+                    delete society.repairingHouseIds[house.id]
+                  }
+                  return true
                 },
         ensurePlayerDynastyTreeForCurrent(society, state) {
-                  return false
+                  try {
+                    society = society || this.load()
+                    state = state || daapi.getState()
+                    let characterId = this.currentCharacterId(state)
+                    let character = state.characters && state.characters[characterId]
+                    if (!character) {
+                      return false
+                    }
+                    character.id = character.id || characterId
+                    let ok = this.ensurePlayerDynastyTree(society, state, character)
+                    state = daapi.getState()
+                    character = state.characters[characterId] || character
+                    let houseId = this.houseIdForCharacter(character, state, society)
+                    let house = society.houses[houseId]
+                    if (house) {
+                      this.refreshHouseMemberLists(society, state, house)
+                    }
+                    return ok
+                  } catch (err) {
+                    console.warn(err)
+                    return false
+                  }
                 },
         preparePlayerDynastyTreeOnce(society, state) {
                   society = society || this.load()
@@ -1607,8 +1669,15 @@
                   if (!character) {
                     return false
                   }
+                  let needsParents = !character.fatherId || !character.motherId
+                  let needsLivingExtras = (society.playerTreeGeneratedLivingIds || []).filter((id) => state.characters[id] && !state.characters[id].isDead).length < 2
+                  if (!needsParents && !needsLivingExtras) {
+                    society.playerDynastyTreePreparedKey = key
+                    return false
+                  }
+                  let result = this.ensurePlayerDynastyTreeForCurrent(society, state)
                   society.playerDynastyTreePreparedKey = key
-                  return false
+                  return result
                 },
         openPlayerFamilyTree() {
                   let society = this.ensure()
@@ -1620,7 +1689,7 @@
                     return
                   }
                   character.id = character.id || characterId
-                  let houseId = this.treeHouseIdForCharacter(character, state, society)
+                  let houseId = this.houseIdForCharacter(character, state, society)
                   if (!houseId || !society.houses[houseId]) {
                     this.openHub()
                     return
@@ -1628,7 +1697,52 @@
                   this.openHouseFamilyTree({ houseId, returnTo: 'hub' })
                 },
         ensurePlayerDynastyTree(society, state, character) {
-                  return false
+                  if (!society || !state || !state.characters || !character || !character.id) {
+                    return false
+                  }
+                  character.id = character.id || this.currentCharacterId(state)
+                  this.ensureDeadParentsAndGrandparents(society, state, character)
+                  state = daapi.getState()
+                  character = state.characters[character.id] || character
+                  let currentAge = this.age(character, state)
+                  society.playerTreeGeneratedLivingIds = (society.playerTreeGeneratedLivingIds || []).filter((id) => state.characters[id] && !state.characters[id].isDead)
+                  let canAddLiving = society.playerTreeGeneratedLivingIds.length < 4
+                  let hasLivingAuntOrUncle = society.playerTreeGeneratedLivingIds.some((id) => {
+                    let kin = state.characters[id]
+                    return kin && kin.corSocietyPlayerTreeRole === 'auntUncle' && !kin.isDead
+                  })
+                  if (canAddLiving && !hasLivingAuntOrUncle && character.fatherId && state.characters[character.fatherId]) {
+                    let parent = state.characters[character.fatherId]
+                    parent.id = parent.id || character.fatherId
+                    this.ensureDeadParentsAndGrandparents(society, state, parent)
+                    state = daapi.getState()
+                    parent = state.characters[character.fatherId] || parent
+                    if (parent.fatherId && parent.motherId) {
+                      let auntUncleId = this.generatePlayerAuntUncle(society, state, character, parent)
+                      if (auntUncleId) {
+                        society.playerTreeGeneratedLivingIds.push(auntUncleId)
+                      }
+                    }
+                  }
+                  state = daapi.getState()
+                  if (society.playerTreeGeneratedLivingIds.length < 4 && currentAge >= 13) {
+                    let auntUncleId = society.playerTreeGeneratedLivingIds.find((id) => {
+                      let kin = state.characters[id]
+                      return kin && kin.corSocietyPlayerTreeRole === 'auntUncle' && !kin.isDead
+                    })
+                    let auntUncle = auntUncleId && state.characters[auntUncleId]
+                    let hasCousin = society.playerTreeGeneratedLivingIds.some((id) => {
+                      let kin = state.characters[id]
+                      return kin && kin.corSocietyPlayerTreeRole === 'cousin' && !kin.isDead
+                    })
+                    if (auntUncle && !hasCousin) {
+                      let cousinId = this.generatePlayerCousin(society, state, character, auntUncle)
+                      if (cousinId) {
+                        society.playerTreeGeneratedLivingIds.push(cousinId)
+                      }
+                    }
+                  }
+                  return true
                 },
         generatePlayerAuntUncle(society, state, player, parent) {
                   let isMale = Math.random() > 0.5
@@ -1845,8 +1959,24 @@
                   }
                   character.id = character.id || characterId
                   if (!house) {
-                    houseId = this.treeHouseIdForCharacter(character, state, society) || houseId
+                    houseId = this.houseIdForCharacter(character, state, society) || houseId
                     house = society.houses[houseId]
+                  }
+                  if (house) {
+                    this.refreshHouseMemberLists(society, state, house)
+                  }
+                  let currentRepairKey = this.version + ':' + this.monthKey(state)
+                  let beforeRepairKey = character.dynastyId && society.dynastyTreeRepairMonths && society.dynastyTreeRepairMonths[character.dynastyId]
+                  let alreadyRepaired = !!(character.dynastyId && beforeRepairKey === currentRepairKey)
+                  let repaired = !alreadyRepaired && mode === 'full' && character.dynastyId && this.ensureDynastyCommonTree && this.ensureDynastyCommonTree(society, state, character.dynastyId, { budget: 6 })
+                  let afterRepairKey = character.dynastyId && society.dynastyTreeRepairMonths && society.dynastyTreeRepairMonths[character.dynastyId]
+                  if (repaired || (!alreadyRepaired && beforeRepairKey !== afterRepairKey)) {
+                    state = daapi.getState()
+                    this.clearFamilyTreeRuntimeCache()
+                    this.save(society)
+                    if (houseId) {
+                      house = society.houses[houseId]
+                    }
                   }
                   this.openGraphicalFamilyTree({ society, state, house, houseId, characterId, group, page, mode, returnTo, returnPage })
                 },
@@ -1948,7 +2078,7 @@
                   panel.appendChild(canvas)
         
                   let tree = document.createElement('div')
-                  tree.id = 'corSocietyGraphicalTree'
+                  tree.id = 'fullFamilyTree'
                   tree.className = 'cor-society-family-tree vue-family-tree'
                   canvas.appendChild(tree)
         
@@ -2046,7 +2176,7 @@
                       ? 'Known family view: parents, siblings, spouse, and near descendants.'
                       : mode === 'house'
                         ? 'House tree view: this is a filtered house branch from the same dynasty graph.'
-                        : 'Dynasty tree view: only this dynasty is shown, with each known Society house labeled on its members.'
+                        : 'Full dynasty view: only this dynasty is shown, with each known Society house labeled on its members.'
                     if (treeBudget.hidden > 0) {
                       note.textContent += ' ' + treeBudget.hidden + ' distant relatives are hidden for performance.'
                     }
@@ -2113,8 +2243,8 @@
         familyTreeTitle(mode) {
                   if (mode === 'known') return 'Known Family Tree'
                   if (mode === 'house') return 'House Family Tree'
-                  if (mode === 'dynasty') return 'Dynasty Tree'
-                  if (mode === 'full') return 'Dynasty Tree'
+                  if (mode === 'dynasty') return 'Full Dynasty Tree'
+                  if (mode === 'full') return 'Full Dynasty Tree'
                   return 'Society Family Tree'
                 },
         familyTreeStartId(characterId, state, mode) {
@@ -2202,7 +2332,6 @@
                     rootIds = model.rootIds
                   } else {
                     allowedIds = this.dynastyTreeAllowedIdMap(society, state, character.dynastyId || this.gameDynastyIdForHouse(house))
-                    allowedIds = this.connectedTreeAllowedIdMap(allowedIds, state, character.id)
                     rootIds = this.dynastyTreeRootIdsFromAllowed(allowedIds, state, character.id)
                   }
                   if (!rootIds.length) {
@@ -2251,14 +2380,20 @@
                     if (character.corSocietySlave || character.corSocietySlaveActive) {
                       return
                     }
-                    let resolvedHouseId = this.treeHouseIdForCharacter(character, state, society)
+                    let resolvedHouseId = this.resolveCharacterHouseId
+                      ? this.resolveCharacterHouseId(character, state, society, { repair: false })
+                      : (character.corSocietyHouseId || '')
                     if (resolvedHouseId && String(resolvedHouseId) === String(house.id)) {
                       memberMap[String(id)] = true
                       memberIds.push(String(id))
                       addAllowed(id)
                     }
                   }
-                  this.houseTreeSeedIds(society, state, house).forEach(addMember)
+                  if (this.resolvedHouseMemberIds) {
+                    this.resolvedHouseMemberIds(society, state, house, { includeKnown: true, includeDead: true, repair: false }).forEach(addMember)
+                  } else {
+                    this.houseTreeSeedIds(society, state, house).forEach(addMember)
+                  }
                   addMember(house.founderId)
                   addMember(house.branchRootId)
                   if (house.isPlayerHouse && this.playerFamilyMemberIds) {
@@ -2282,7 +2417,9 @@
                       ;[character.fatherId, character.motherId].forEach((parentId) => {
                         if (!parentId || !state.characters[parentId]) return
                         let parent = state.characters[parentId]
-                        let parentHouseId = this.treeHouseIdForCharacter(parent, state, society)
+                        let parentHouseId = this.resolveCharacterHouseId
+                          ? this.resolveCharacterHouseId(parent, state, society, { repair: false })
+                          : (parent.corSocietyHouseId || '')
                         if (parentHouseId && String(parentHouseId) === String(house.id)) {
                           addMember(parentId)
                           queue.push(String(parentId))
@@ -2295,10 +2432,12 @@
                   memberIds.slice(0, 240).forEach((id) => {
                     let character = state.characters[id]
                     if (!character) return
-                    this.treeChildrenIds(character, state).forEach((childId) => {
+                    ;(character.childrenIds || []).forEach((childId) => {
                       let child = state.characters[childId]
                       if (!child) return
-                      let childHouseId = this.treeHouseIdForCharacter(child, state, society)
+                      let childHouseId = this.resolveCharacterHouseId
+                        ? this.resolveCharacterHouseId(child, state, society, { repair: false })
+                        : (child.corSocietyHouseId || '')
                       if (childHouseId && String(childHouseId) === String(house.id)) {
                         addMember(childId)
                         childIndex[String(id)] = childIndex[String(id)] || []
@@ -2306,21 +2445,6 @@
                       }
                     })
                   })
-                  let connectedMemberMap = this.houseTreeConnectedMemberMap(memberIds, memberMap, state, house, focusCharacterId, childIndex)
-                  if (Object.keys(connectedMemberMap).length) {
-                    memberIds = memberIds.filter((id) => connectedMemberMap[String(id)])
-                    memberMap = connectedMemberMap
-                    let filteredChildIndex = {}
-                    Object.keys(childIndex).forEach((parentId) => {
-                      if (!memberMap[String(parentId)]) return
-                      let children = (childIndex[parentId] || []).filter((childId) => memberMap[String(childId)])
-                      if (children.length) {
-                        filteredChildIndex[String(parentId)] = children
-                      }
-                    })
-                    childIndex = filteredChildIndex
-                  }
-                  allowedIds = {}
                   memberIds.slice(0, 260).forEach((id) => {
                     let character = state.characters[id]
                     if (!character) return
@@ -2330,6 +2454,10 @@
                         addAllowed(parentId)
                       }
                     })
+                    let spouseId = this.treeSpouseId(character, state)
+                    if (spouseId && state.characters[spouseId]) {
+                      addAllowed(spouseId)
+                    }
                   })
                   let roots = this.houseTreeRootIdsFromMembers(memberIds, memberMap, state, house, focusCharacterId, childIndex)
                   return {
@@ -2337,85 +2465,6 @@
                     rootIds: roots,
                     memberIds
                   }
-                },
-        houseTreeConnectedMemberMap(memberIds, memberMap, state, house, focusCharacterId, childIndex) {
-                  let seeds = []
-                  let seedSeen = {}
-                  let addSeed = (id) => {
-                    id = id ? String(id) : ''
-                    if (!id || seedSeen[id] || !memberMap[id] || !state.characters[id]) {
-                      return
-                    }
-                    seedSeen[id] = true
-                    seeds.push(id)
-                  }
-                  addSeed(focusCharacterId)
-                  addSeed(house && house.branchRootId)
-                  addSeed(house && house.founderId)
-                  if (!seeds.length) {
-                    let bestId = ''
-                    let bestScore = -1
-                    memberIds.forEach((id) => {
-                      let character = state.characters[id]
-                      if (!character) return
-                      let score = 0
-                      ;[character.fatherId, character.motherId, character.spouseId].forEach((nextId) => {
-                        if (nextId && memberMap[String(nextId)]) score += 1
-                      })
-                      score += ((childIndex && childIndex[String(id)]) || []).length
-                      if (score > bestScore) {
-                        bestScore = score
-                        bestId = String(id)
-                      }
-                    })
-                    addSeed(bestId || memberIds[0])
-                  }
-                  let connected = {}
-                  let queue = seeds.slice()
-                  while (queue.length) {
-                    let id = String(queue.shift())
-                    if (!memberMap[id] || connected[id]) {
-                      continue
-                    }
-                    let character = state.characters[id]
-                    if (!character) {
-                      continue
-                    }
-                    connected[id] = true
-                    ;[character.fatherId, character.motherId, character.spouseId].forEach((nextId) => {
-                      nextId = nextId ? String(nextId) : ''
-                      if (nextId && memberMap[nextId] && !connected[nextId]) {
-                        queue.push(nextId)
-                      }
-                    })
-                    ;(character.siblingIds || []).forEach((nextId) => {
-                      nextId = nextId ? String(nextId) : ''
-                      if (nextId && memberMap[nextId] && !connected[nextId]) {
-                        queue.push(nextId)
-                      }
-                    })
-                    ;(character.childrenIds || []).forEach((nextId) => {
-                      nextId = nextId ? String(nextId) : ''
-                      if (nextId && memberMap[nextId] && !connected[nextId]) {
-                        queue.push(nextId)
-                      }
-                    })
-                    Object.keys(memberMap).forEach((candidateId) => {
-                      if (connected[candidateId]) return
-                      let candidate = state.characters[candidateId]
-                      if (!candidate) return
-                      if (this.sameCharacterId(candidate.spouseId, id) || (candidate.siblingIds || []).some((siblingId) => this.sameCharacterId(siblingId, id))) {
-                        queue.push(String(candidateId))
-                      }
-                    })
-                    ;((childIndex && childIndex[id]) || []).forEach((nextId) => {
-                      nextId = nextId ? String(nextId) : ''
-                      if (nextId && memberMap[nextId] && !connected[nextId]) {
-                        queue.push(nextId)
-                      }
-                    })
-                  }
-                  return connected
                 },
         houseTreeRootIdsFromMembers(memberIds, memberMap, state, house, focusCharacterId, childIndex) {
                   let roots = []
@@ -2494,7 +2543,7 @@
                     if (!character) return
                     add(character.fatherId)
                     add(character.motherId)
-                    this.treeChildrenIds(character, state).forEach(add)
+                    ;(character.childrenIds || []).forEach(add)
                   })
                   return ids.slice(0, 340)
                 },
@@ -2505,11 +2554,13 @@
                   if (character.corSocietySlave || character.corSocietySlaveActive) {
                     return false
                   }
-                  if (character.corSocietyDetachedHouseMember) {
-                    return false
-                  }
                   if (!character.dynastyId || String(character.dynastyId) !== String(dynastyId)) {
                     return false
+                  }
+                  if (this.resolveCharacterHouseId) {
+                    let state = daapi.getState()
+                    let houseId = this.resolveCharacterHouseId(character, state, society || this.load(), { repair: false })
+                    return !houseId || this.houseBelongsToDynasty(society || this.load(), houseId, dynastyId)
                   }
                   return true
                 },
@@ -2532,8 +2583,13 @@
                       return belongsCache[cacheKey]
                     }
                     let belongs = false
-                    if (character && dynastyId && !character.corSocietySlave && !character.corSocietySlaveActive && !character.corSocietyDetachedHouseMember && character.dynastyId && String(character.dynastyId) === String(dynastyId)) {
-                      belongs = true
+                    if (character && dynastyId && !character.corSocietySlave && !character.corSocietySlaveActive && character.dynastyId && String(character.dynastyId) === String(dynastyId)) {
+                      if (this.resolveCharacterHouseId) {
+                        let houseId = this.resolveCharacterHouseId(character, state, society, { repair: false })
+                        belongs = !houseId || !!dynastyHouseIds[String(houseId)]
+                      } else {
+                        belongs = true
+                      }
                     }
                     if (cacheKey) {
                       belongsCache[cacheKey] = belongs
@@ -2568,73 +2624,11 @@
                     let character = state.characters[id]
                     add(id)
                     if (character) {
-                      this.treeChildrenIds(character, state).forEach(add)
+                      ;(character.childrenIds || []).forEach(add)
                     }
                     addAncestors(id)
                   })
-                  Object.keys(state.characters || {}).forEach((id) => {
-                    add(id)
-                  })
                   return allowed
-                },
-        connectedTreeAllowedIdMap(allowedIds, state, focusId) {
-                  if (!allowedIds || !state || !state.characters) {
-                    return allowedIds || {}
-                  }
-                  let focus = focusId && allowedIds[String(focusId)] ? String(focusId) : ''
-                  if (!focus) {
-                    let ids = Object.keys(allowedIds)
-                    if (!ids.length) {
-                      return allowedIds
-                    }
-                    focus = ids.sort((a, b) => {
-                      let first = state.characters[a] || {}
-                      let second = state.characters[b] || {}
-                      return (first.birthYear || 0) - (second.birthYear || 0)
-                    })[0]
-                  }
-                  let connected = {}
-                  let queue = [focus]
-                  let addNeighbor = (id, result) => {
-                    id = id ? String(id) : ''
-                    if (id && allowedIds[id] && state.characters[id] && result.indexOf(id) < 0) {
-                      result.push(id)
-                    }
-                  }
-                  let neighbors = (id) => {
-                    let character = state.characters[id]
-                    let result = []
-                    if (!character) return result
-                    addNeighbor(character.fatherId, result)
-                    addNeighbor(character.motherId, result)
-                    addNeighbor(character.spouseId, result)
-                    ;(character.siblingIds || []).forEach((nextId) => addNeighbor(nextId, result))
-                    this.treeChildrenIds(character, state).forEach((nextId) => addNeighbor(nextId, result))
-                    Object.keys(allowedIds).forEach((candidateId) => {
-                      let candidate = state.characters[candidateId]
-                      if (!candidate) return
-                      if (this.sameCharacterId(candidate.spouseId, id)) {
-                        addNeighbor(candidateId, result)
-                      }
-                      if ((candidate.siblingIds || []).some((nextId) => this.sameCharacterId(nextId, id))) {
-                        addNeighbor(candidateId, result)
-                      }
-                    })
-                    return result
-                  }
-                  while (queue.length) {
-                    let id = String(queue.shift())
-                    if (!allowedIds[id] || connected[id]) {
-                      continue
-                    }
-                    connected[id] = true
-                    neighbors(id).forEach((nextId) => {
-                      if (!connected[nextId]) {
-                        queue.push(nextId)
-                      }
-                    })
-                  }
-                  return connected
                 },
         dynastyTreeRootIdsFromAllowed(allowedIds, state, focusId) {
                   let roots = this.treeRootIdsFromAllowed(allowedIds, state, '', 24)
@@ -2670,9 +2664,12 @@
                     seen[id] = true
                     ids.push(id)
                   }
-                  this.houseExplicitTreeMemberIds(house).forEach(add)
-                  ;(house.knownMemberIds || []).forEach(add)
-                  Object.keys(state.characters || {}).forEach(add)
+                  if (this.resolvedHouseMemberIds) {
+                    this.resolvedHouseMemberIds(society, state, house, { includeKnown: true, includeDead: true, repair: false }).forEach(add)
+                  } else {
+                    this.houseExplicitTreeMemberIds(house).forEach(add)
+                    ;(house.knownMemberIds || []).forEach(add)
+                  }
                   if (house.isPlayerHouse) {
                     this.playerFamilyMemberIds(state).forEach(add)
                   }
@@ -2700,7 +2697,9 @@
                   if (character.corSocietySlave || character.corSocietySlaveActive) {
                     return false
                   }
-                  let houseId = this.treeHouseIdForCharacter(character, state, society)
+                  let houseId = this.resolveCharacterHouseId
+                    ? this.resolveCharacterHouseId(character, state, society, { repair: false })
+                    : this.treeHouseIdForCharacter(character, state, society)
                   return !!(houseId && String(houseId) === String(house.id))
                 },
         treeHouseIdForCharacter(character, state, society) {
@@ -2710,29 +2709,9 @@
                   if (character.corSocietySlave || character.corSocietySlaveActive) {
                     return ''
                   }
-                  if (character.corSocietyDetachedHouseMember) {
-                    return ''
-                  }
-                  society = society || this.load()
-                  let characterId = String(character.id || character.characterId || '')
-                  let playerHouseId = this.currentCharacterDynastyId ? this.currentCharacterDynastyId(state) : ''
-                  if (playerHouseId && characterId && this.isPlayerFreeFamilyCharacter && this.isPlayerFreeFamilyCharacter(state, characterId, character)) {
-                    if (character.dynastyId && String(character.dynastyId) !== String(playerHouseId)) {
-                      return ''
-                    }
-                    return playerHouseId
-                  }
-                  let explicitHouseId = character.corSocietyHouseId || ''
-                  if (explicitHouseId && society && society.houses && society.houses[explicitHouseId]) {
-                    let explicitHouse = society.houses[explicitHouseId]
-                    if (!character.dynastyId || String(this.gameDynastyIdForHouse(explicitHouse)) === String(character.dynastyId)) {
-                      return explicitHouseId
-                    }
-                  }
-                  if (!character.corSocietyGenerated && character.dynastyId && society && society.houses && society.houses[character.dynastyId]) {
-                    return character.dynastyId
-                  }
-                  return ''
+                  return this.resolveCharacterHouseId
+                    ? this.resolveCharacterHouseId(character, state, society || this.load(), { repair: false })
+                    : (character.corSocietyHouseId || '')
                 },
         houseTreeAllowedIdMap(society, state, house) {
                   let allowed = {}
@@ -2768,7 +2747,7 @@
                     add(id)
                     if (character) {
                       add(character.spouseId)
-                      this.treeChildrenIds(character, state).forEach((childId) => {
+                      ;(character.childrenIds || []).forEach((childId) => {
                         let child = state.characters[childId]
                         if (child && this.characterBelongsToHouseTree(child, state, society, house)) {
                           add(childId)
@@ -2816,7 +2795,6 @@
                     let character = state.characters[id]
                     let hasAllowedFamilyEdge = !!(
                       (character.spouseId && allowedIds[String(character.spouseId)]) ||
-                      ((character.siblingIds || []).some((siblingId) => allowedIds[String(siblingId)])) ||
                       ((childIndex[id] || []).length)
                     )
                     if (ids.length > 1 && !this.sameCharacterId(id, focusId) && !hasAllowedFamilyEdge) {
@@ -2883,21 +2861,9 @@
                           queue.push(String(nextId))
                         }
                       })
-                      ;(character.siblingIds || []).forEach((nextId) => {
+                      ;(character.childrenIds || []).forEach((nextId) => {
                         if (nextId && allowedIds[String(nextId)] && !component[String(nextId)]) {
                           queue.push(String(nextId))
-                        }
-                      })
-                      this.treeChildrenIds(character, state).forEach((nextId) => {
-                        if (nextId && allowedIds[String(nextId)] && !component[String(nextId)]) {
-                          queue.push(String(nextId))
-                        }
-                      })
-                      Object.keys(allowedIds).forEach((candidateId) => {
-                        let candidate = state.characters[candidateId]
-                        if (!candidate || component[String(candidateId)]) return
-                        if (this.sameCharacterId(candidate.spouseId, id) || (candidate.siblingIds || []).some((siblingId) => this.sameCharacterId(siblingId, id))) {
-                          queue.push(String(candidateId))
                         }
                       })
                       ;(childIndex[id] || []).forEach((nextId) => {
@@ -3125,7 +3091,7 @@
                   return branch
                 },
         createFamilyTreeCharacterCard(character, state, society, fallbackHouse, role, focusId, returnTo, returnPage, mode, isTreeGuest) {
-                  let house = this.treeHouseForCharacter(character, state, society, isTreeGuest ? false : fallbackHouse)
+                  let house = this.treeHouseForCharacter(character, state, society, fallbackHouse)
                   let card = document.createElement('button')
                   card.type = 'button'
                   card.id = 'familyTreeCharacterBox_' + character.id
@@ -3145,12 +3111,8 @@
                   }
                   card.title = this.characterTooltip(character, state)
                   card.addEventListener('click', () => {
-                    let nextHouseId = this.treeHouseIdForCharacter(character, state, society) || (house && house.id) || ''
-                    let nextHouse = society.houses[nextHouseId] || house || (isTreeGuest ? false : fallbackHouse)
-                    if (isTreeGuest && !nextHouse && character.dynastyId && society.houses && society.houses[character.dynastyId]) {
-                      nextHouseId = character.dynastyId
-                      nextHouse = society.houses[nextHouseId]
-                    }
+                    let nextHouseId = this.houseIdForCharacter(character, state, society) || (house && house.id) || ''
+                    let nextHouse = society.houses[nextHouseId] || house || fallbackHouse
                     let nextMode = mode === 'house' ? 'house' : 'full'
                     if (isTreeGuest && mode !== 'house') {
                       nextMode = 'full'
@@ -3271,13 +3233,6 @@
                     ids.push(id)
                   }
                   ;(character.childrenIds || []).forEach(add)
-                  Object.keys(state.characters || {}).forEach((id) => {
-                    let child = state.characters[id]
-                    if (!child) return
-                    if (this.sameCharacterId(child.fatherId, character.id) || this.sameCharacterId(child.motherId, character.id)) {
-                      add(id)
-                    }
-                  })
                   return ids.sort((a, b) => {
                     let first = state.characters[a] || {}
                     let second = state.characters[b] || {}
@@ -3336,7 +3291,7 @@
                   })
                   this.pushModal({
                     societyMenu: true,
-                    title: mode === 'known' ? 'Known Family' : mode === 'full' ? 'Dynasty Tree' : 'Family Tree',
+                    title: mode === 'known' ? 'Known Family' : mode === 'full' ? 'Full Family Tree' : 'Family Tree',
                     message,
                     image: this.characterPortrait(character, state, house),
                     options: relativeOptions
@@ -5062,7 +5017,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.307'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.303'
     }
   }
 }

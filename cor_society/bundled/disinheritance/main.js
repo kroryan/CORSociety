@@ -4,22 +4,12 @@
   checkAndAct(characterId) {
     let character = daapi.getCharacter({ characterId })
     let player = daapi.getCharacter({ characterId: daapi.getState().current.id }) // Obtiene el personaje jugador
-    let deleteAction = () => {
-      for (let i = 0; i < 12; i += 1) {
-        try {
-          daapi.deleteCharacterAction({ characterId, key: 'Disinherit' })
-        } catch (err) {
-          break
-        }
-      }
-    }
 
     if (
       !character.isDead &&
       !character.flagWasGivenInheritance &&
       character.id !== player.id // Verifica que no sea el personaje jugador
     ) {
-      deleteAction()
       daapi.addCharacterAction({
         characterId,
         key: 'Disinherit',
@@ -38,7 +28,10 @@
         }
       })
     } else {
-      deleteAction()
+      daapi.deleteCharacterAction({
+        characterId,
+        key: 'Disinherit'
+      })
     }
   },
   methods: {

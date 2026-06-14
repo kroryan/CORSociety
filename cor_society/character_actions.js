@@ -9,26 +9,8 @@
       return
     }
 
-    let deleteAction = (key) => {
-      if (!daapi.deleteCharacterAction) {
-        return
-      }
-      for (let i = 0; i < 12; i += 1) {
-        try {
-          daapi.deleteCharacterAction({ characterId, key })
-        } catch (err) {
-          try {
-            daapi.deleteCharacterAction(characterId, key)
-          } catch (innerErr) {
-            break
-          }
-        }
-      }
-    }
-
     let addAction = (key, title, tooltip, icon, method, context) => {
       try {
-        deleteAction(key)
         daapi.addCharacterAction({
           characterId,
           key,

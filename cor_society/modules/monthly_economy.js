@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.307') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -41,6 +41,7 @@
                   }
                   this.retireDeadHouses(society, state, { notify: true })
                   state = daapi.getState()
+                  this.ensureMinimumHouses(society, state)
                   state = daapi.getState()
                   this.maybeCreateNpcCadetHouses(society, state)
                   this.updateDynastyHeadship(society, state)
@@ -650,7 +651,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.307'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.303'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.307') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.303') {
         return
       }
       Object.assign(window.corSociety, {
@@ -2632,13 +2632,12 @@
                     return false
                   }
                   head.id = head.id || headId
-                  let changed = this.tryHousePregnancy ? this.tryHousePregnancy(society, state, house) : false
-                  if (changed) {
-                    house.lastFamilyEvent = house.name + ' may grow through an existing family pregnancy.'
-                  }
-                  return changed
+                  this.generateRelative(society, state, house, house.stratum || 'plebeian', head)
+                  house.lastFamilyEvent = house.name + ' expands its household through marriage and dependants.'
+                  return true
                 },
         ensureVisibleHouseMembers(society, state) {
+                  let totalGeneratedThisTick = 0
                   for (let houseId in society.houses) {
                     if (!society.houses.hasOwnProperty(houseId)) {
                       continue
@@ -2650,6 +2649,27 @@
                       if (this.retireHouse(society, state, house, { notify: false })) {
                         continue
                       }
+                    }
+                    let genderCounts = this.houseLivingGenderCounts(society, state, house)
+                    if (!genderCounts.male || !genderCounts.female) {
+                      continue
+                    }
+                    while (visible.length < this.minimumVisibleMembers(house) && (society.generatedCharacterIds || []).length < 260 && totalGeneratedThisTick < 6) {
+                      let headId = visible[0]
+                      let head = state.characters[headId]
+                      if (!head) {
+                        break
+                      }
+                      head.id = head.id || headId
+                      if (!head.spouseId && this.age(head, state) >= 20 && Math.random() < 0.35) {
+                        this.generateHouseSpouse(society, state, house, house.stratum || 'plebeian', head)
+                      } else {
+                        this.generateRelative(society, state, house, house.stratum || 'plebeian', head)
+                      }
+                      state = daapi.getState()
+                      this.refreshHouseMemberLists(society, state, house)
+                      visible = this.visibleHousePeople(house, state)
+                      totalGeneratedThisTick++
                     }
                   }
                 },
@@ -2708,68 +2728,15 @@
                   }
                   options = options || {}
                   let retired = 0
-                  let retiredSnapshots = []
-                  let houseOptions = { ...options, notify: false, suppressLog: !!options.notify, retiredSnapshots }
                   Object.keys(society.houses).forEach((houseId) => {
                     let house = society.houses[houseId]
                     if (this.shouldRetireHouse(society, state, house)) {
-                      if (this.retireHouse(society, state, house, houseOptions)) {
+                      if (this.retireHouse(society, state, house, options)) {
                         retired += 1
                       }
                     }
                   })
-                  if (options.notify && retiredSnapshots.length) {
-                    if (retiredSnapshots.length === 1) {
-                      this.log(society, 'House ' + retiredSnapshots[0].name + ' becomes extinct; its records move to the dead-house archive.', 'death', retiredSnapshots[0].id)
-                    } else {
-                      let names = retiredSnapshots.slice(0, 4).map((house) => house.name).join(', ')
-                      if (retiredSnapshots.length > 4) names += ', and ' + (retiredSnapshots.length - 4) + ' more'
-                      this.log(society, retiredSnapshots.length + ' houses become extinct and move to the dead-house archive: ' + names + '.', 'death')
-                    }
-                    this.notifyRetiredDeadHouses(society, state, retiredSnapshots)
-                  }
                   return retired
-                },
-        notifyRetiredDeadHouses(society, state, retiredSnapshots) {
-                  retiredSnapshots = (retiredSnapshots || []).filter(Boolean)
-                  if (!retiredSnapshots.length) {
-                    return false
-                  }
-                  society.deadHouseNoticeKeys = society.deadHouseNoticeKeys || {}
-                  let month = this.monthKey(state || daapi.getState())
-                  let ids = retiredSnapshots.map((house) => String(house.id || '')).filter(Boolean).sort().join(',')
-                  let noticeKey = month + ':' + ids
-                  if (society.deadHouseNoticeKeys[noticeKey]) {
-                    return false
-                  }
-                  society.deadHouseNoticeKeys[noticeKey] = true
-                  let keys = Object.keys(society.deadHouseNoticeKeys)
-                  if (keys.length > 24) {
-                    keys.sort().slice(0, keys.length - 24).forEach((key) => { delete society.deadHouseNoticeKeys[key] })
-                  }
-                  let title = retiredSnapshots.length === 1 ? 'House Extinguished' : retiredSnapshots.length + ' Houses Extinguished'
-                  let names = retiredSnapshots.slice(0, 5).map((house) => house.name).join(', ')
-                  if (retiredSnapshots.length > 5) {
-                    names += ', and ' + (retiredSnapshots.length - 5) + ' more'
-                  }
-                  let message = retiredSnapshots.length === 1
-                    ? retiredSnapshots[0].name + ' has no living known members. The house has been removed from active Society lists and archived under Past Affairs.'
-                    : names + ' have no living known members. They have been archived under Past Affairs in one batch.'
-                  this.pushModal({
-                    title,
-                    message,
-                    image: this.houseCrestIcon(society, retiredSnapshots[0]),
-                    options: [
-                      {
-                        text: 'Open dead houses',
-                        action: { event: this.event, method: 'openDeadHouses' }
-                      },
-                      {
-                        text: 'Dismiss'
-                      }
-                    ]
-                  })
-                  return true
                 },
         retireHouse(society, state, house, options) {
                   if (!house || !house.id || !society.houses || !society.houses[house.id]) {
@@ -2778,11 +2745,6 @@
                   options = options || {}
                   society.deadHouses = society.deadHouses || {}
                   society.deadHouseIds = society.deadHouseIds || []
-                  if (society.deadHouses[house.id]) {
-                    delete society.houses[house.id]
-                    society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(house.id))
-                    return false
-                  }
                   let deadMemberIds = this.houseKnownMemberIds(society, state, house)
                   let snapshot = {
                     ...house,
@@ -2800,13 +2762,22 @@
                   society.deadHouseIds = [house.id].concat((society.deadHouseIds || []).filter((id) => String(id) !== String(house.id))).slice(0, 80)
                   delete society.houses[house.id]
                   society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(house.id))
-                  if (!options.suppressLog) {
-                    this.log(society, 'House ' + house.name + ' becomes extinct; its records move to the dead-house archive.', 'death', house.id)
-                  }
-                  if (options.retiredSnapshots) {
-                    options.retiredSnapshots.push(snapshot)
-                  } else if (options.notify) {
-                    this.notifyRetiredDeadHouses(society, state, [snapshot])
+                  this.log(society, 'House ' + house.name + ' becomes extinct; its records move to the dead-house archive.', 'death', house.id)
+                  if (options.notify) {
+                    this.pushModal({
+                      title: 'House Extinguished',
+                      message: house.name + ' has no living known members. The house has been removed from active Society lists and archived under Past Affairs.',
+                      image: this.houseCrestIcon(society, snapshot),
+                      options: [
+                        {
+                          text: 'Open dead houses',
+                          action: { event: this.event, method: 'openDeadHouses' }
+                        },
+                        {
+                          text: 'Dismiss'
+                        }
+                      ]
+                    })
                   }
                   return true
                 },
@@ -2861,7 +2832,7 @@
                       return
                     }
                     let resolvedKnownHouseId = this.resolveCharacterHouseId
-                      ? this.resolveCharacterHouseId(character, state, society, { repair: false, includeSlaves: true })
+                      ? this.resolveCharacterHouseId(character, state, society, { repair: true, includeSlaves: true })
                       : (character.corSocietyHouseId || '')
                     if (resolvedKnownHouseId && String(resolvedKnownHouseId) === String(house.id)) {
                       remember(characterId)
@@ -3186,7 +3157,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.307'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.303'
     }
   }
 }
