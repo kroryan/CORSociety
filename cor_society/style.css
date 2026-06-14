@@ -261,7 +261,7 @@
 }
 
 .cor-society-relation-anchor-text {
-  padding-right: clamp(2.6rem, 24%, 5.4rem);
+  padding-right: clamp(2.6rem, 24%, 5.4rem) !important;
 }
 
 .cor-society-relation-anchor-text > .cor-society-vanilla-relation-badge {
@@ -289,7 +289,7 @@
   }
 
   .cor-society-relation-anchor-text {
-    padding-right: 2.8rem;
+    padding-right: 2.8rem !important;
   }
 }
 
