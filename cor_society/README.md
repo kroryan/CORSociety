@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.289` adds a bounded extended-kin visibility window so the base game can keep simulating and showing more of the player's related NPC world without turning every distant cousin into an always-active character. Society trees now render deeper dynasty branches with a strict node budget, while monthly NPC house simulation rotates priority houses so allies, rivals, and pending-event houses do not permanently starve neutral houses. This version also resolves the remaining items from `ANALISIS COMPLETO.MD`, including safer adult-only romance/slave pregnancy checks, cadet-house lookup fixes, player-family protection from silent NPC feud murder, cleaned non-persisted status caches, queued bundled murder modals, and lighter DAAPI calls in hot paths.
+`1.1.290` keeps the bounded extended-kin visibility window from `1.1.289` and moves NPC house property play onto vanilla Citizen of Rome property math. Society houses now store `propertyDetails` by vanilla property key, buy to vanilla stewardship limits, sell at the vanilla sale rate, apply the vanilla property revenue table, and stop using old abstract land/animal/trade income as the balance source.
 
 ## Features
 
@@ -43,6 +43,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Enslaved player characters reached through Play As get a current-character `Path to Freedom` action with extra work, patron-seeking, petitions, escape attempts, savings, and manumission into a free Freedmen house.
 - Lets manumitted freedmen houses occasionally try to buy and free enslaved close relatives when they can afford it.
 - Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
+- Lets NPC houses use vanilla Citizen of Rome property economics: the same property keys, values, revenue, stewardship limits, economy-of-scale factor, sale rate, and senatorial commercial-property restriction used by the base game.
 - Injects a Bank of Rome loan option into negative-cash forced-sale/debt notices when possible, so debt can be covered by a balanced loan in the same flow instead of a separate follow-up prompt.
 - Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
 - Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.

@@ -2,11 +2,11 @@
 
 CORSociety is the standalone repository for the Roman Society mod for Citizen of Rome.
 
-The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.289.zip`.
+The source mod lives in `cor_society/`. The installable release archive contains that whole folder and is published with the mod version in the file name, for example `Releases/CORSociety-v1.1.290.zip`.
 
 ## Install
 
-1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.289.zip`.
+1. Download the latest versioned archive from `Releases/`, for example `CORSociety-v1.1.290.zip`.
 2. Install it as a Citizen of Rome mod.
 3. Enable `Roman Society` in-game.
 
@@ -37,6 +37,7 @@ The archive is intentionally built with a top-level `cor_society/` folder. After
 - Rare Roman slave origins can exist through debt, condemnation, or renegade status; those slavery-specific explanations are cleared after liberation.
 - Bank of Rome debt relief is integrated into negative-cash forced-sale/debt notices when possible, giving the player a loan route in the same flow before selling assets.
 - NPC houses can borrow from the bank, buy and manage slaves, seek marriages, and suffer consequences from hostile social actions; cheat-style systems are not used for NPC simulation.
+- NPC house property management uses the same Citizen of Rome property table as vanilla: farmland, vineyards, orchards, prime estates, latifundia, insulae, livestock, fishing boats, trade ships, values, sale rate, revenue, stewardship limits, economy-of-scale modifier, and the senatorial commercial-property ban.
 - Android-focused safety rules: old unstable Society-only data can be repaired, migrated, or discarded when needed to protect loading performance and save stability.
 
 ## Project Rule
@@ -45,14 +46,14 @@ Performance, stability, Android safety, and visual quality take priority over co
 
 ## Performance Notes
 
-Version `1.1.289` expands Society genealogy without removing the base game's performance guardrails: Roman Society now maintains a bounded extended-kin visibility window around the player's household so NPC families can keep having visible children across more generations, while graphical Society trees can show deeper dynasty branches with a hard render budget. It also applies the fixes from `ANALISIS COMPLETO.MD`: safer romance and slave pregnancy rules, cadet-house portrait lookup, protected player-family feud targets, cleaned relationship/slave caches, rotating NPC simulation priority, queued bundled murder modals, and smaller DAAPI hot-path reads.
+Version `1.1.290` keeps the bounded extended-kin visibility window from `1.1.289` and moves NPC house property play onto vanilla Citizen of Rome property math. Society houses now store `propertyDetails` by vanilla property key, buy to vanilla stewardship limits, sell at the vanilla sale rate, apply the vanilla property revenue table, and stop using old abstract land/animal/trade income as the balance source.
 
 ## Development
 
 Build the release zip from the repository root:
 
 ```powershell
-tar.exe -a -c -f 'Releases\CORSociety-v1.1.289.zip' 'cor_society'
+tar.exe -a -c -f 'Releases\CORSociety-v1.1.290.zip' 'cor_society'
 ```
 
 Use `tar.exe -a` on Windows instead of `Compress-Archive`: it preserves zip paths as `cor_society/main.js`, which is safer for Android extraction.

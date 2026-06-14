@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.289') {
+      if (window.corSociety && window.corSociety.version === '1.1.290') {
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
@@ -42,7 +42,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.289',
+        version: '1.1.290',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen',
@@ -1180,7 +1180,9 @@
           ]
         },
         houseSummaryOptions(society, state, house, profile, tradeActive) {
-          let property = (house.ai && house.ai.property) || {}
+          let propertySummary = this.housePropertySummary(house)
+          let propertyValue = this.housePropertyValue(house)
+          let propertyRevenue = this.housePropertyRevenue(house, state)
           let status = house.rivalry ? 'Rivalry' : ((house.relation || 0) >= 55 ? 'Ally' : 'Neutral')
           let relationVisual = {
             icon: this.relationIcon(house.relation || 0, house.rivalry ? 'rival' : this.relationshipTypeFromScore(house.relation || 0))
@@ -1200,9 +1202,9 @@
             ),
             this.summaryOption(
               'Estate',
-              'AI cash ' + Math.round((house.ai && house.ai.cash) || 0) + '; influence ' + Math.round((house.ai && house.ai.influence) || 0) + '; property L' + Math.round(property.land || 0) + ' A' + Math.round(property.animals || 0) + ' T' + Math.round(property.trade || 0) + '.',
+              'AI cash ' + Math.round((house.ai && house.ai.cash) || 0) + '; influence ' + Math.round((house.ai && house.ai.influence) || 0) + '; property value ' + Math.round(propertyValue) + '; revenue ' + Math.round(propertyRevenue) + '; ' + propertySummary + '.',
               [this.affairIcon('coins'), this.affairIcon('trade')],
-              'Internal estate resources used by the house simulation.'
+              'Internal estate resources use vanilla Citizen of Rome property values, limits, sale rate, and revenue formulas.'
             ),
             this.summaryOption(
               'Relations',
@@ -1279,7 +1281,9 @@
             '</div>'
         },
         houseSummaryHtml(society, state, house, profile, tradeActive) {
-          let property = (house.ai && house.ai.property) || {}
+          let propertySummary = this.housePropertySummary(house)
+          let propertyValue = this.housePropertyValue(house)
+          let propertyRevenue = this.housePropertyRevenue(house, state)
           let relationTone = this.scoreTone(house.relation || 0)
           let status = house.rivalry ? 'Rivalry' : ((house.relation || 0) >= 55 ? 'Ally' : 'Neutral')
           return '<div class="cor-society-summary cor-society-summary-house">' +
@@ -1299,7 +1303,9 @@
             this.summaryMeter('Relation', house.relation || 0, -100, 100, this.affairIcon('support'), relationTone) +
             this.summaryMeter('Stability', house.stability || 0, 0, 100, this.affairIcon('familyTree'), (house.stability || 0) >= 55 ? 'good' : ((house.stability || 0) < 30 ? 'warn' : 'calm')) +
             this.summarySection('House economy', this.affairIcon('trade'), '<div class="cor-society-summary-chip-row">' +
-              this.summaryChip('Property', 'L' + Math.round(property.land || 0) + ' A' + Math.round(property.animals || 0) + ' T' + Math.round(property.trade || 0), this.affairIcon('coins'), 'neutral') +
+              this.summaryChip('Property value', Math.round(propertyValue), this.affairIcon('coins'), 'neutral') +
+              this.summaryChip('Property revenue', Math.round(propertyRevenue), this.affairIcon('trade'), propertyRevenue > 0 ? 'good' : 'neutral') +
+              this.summaryChip('Holdings', propertySummary, this.affairIcon('familyTree'), 'neutral') +
               this.summaryChip('Favors owed', house.favor || 0, this.affairIcon('gift'), (house.favor || 0) > 0 ? 'good' : 'neutral') +
               this.summaryChip('Trade compact', tradeActive ? 'active' : 'none', this.affairIcon('trade'), tradeActive ? 'good' : 'neutral') +
               '</div>') +
@@ -3510,7 +3516,7 @@
           activeHouses.forEach((house) => {
             this.refreshHouseMemberLists(society, state, house)
             this.initHouseAI(house)
-            this.runHouseEconomy(house)
+            this.runHouseEconomy(society, state, house)
             this.simulateHouseBanking(society, state, house)
             
             if (house.stratum !== 'poor' && house.ai.cash > 180) {
@@ -3534,13 +3540,13 @@
               }
             } else if (house.agenda === 'wealth') {
               if (house.ai.cash > (profile.cost || 200) && Math.random() < 0.35) {
-                this.aiBuyProperty(house)
+                this.aiBuyProperty(house, {}, state)
               }
               house.wealth += this.randomInt(10, profile.revenue || 40)
               if (Math.random() < 0.12) {
                 event = 'tradeVenture'
                 house.wealth += profile.revenue || 20
-                house.ai.property.trade += 1
+                this.aiBuyProperty(house, { preferred: ['tradeships', 'seafaringTradeships', 'insulae', 'fishingBoat'] }, state)
               }
             } else if (house.agenda === 'marriage') {
               house.stability += this.randomInt(0, 4)
@@ -3587,7 +3593,7 @@
             house.ai.cash = Math.max(0, Math.round(house.ai.cash))
             house.ai.influence = Math.max(0, Math.round(house.ai.influence))
             house.ai.prestige = Math.max(0, Math.round(house.ai.prestige))
-            house.wealth = Math.max(house.wealth || 0, Math.round(house.ai.cash + house.ai.property.land * 60 + house.ai.property.animals * 20 + house.ai.property.trade * 140))
+            house.wealth = Math.max(0, Math.round(house.ai.cash + this.housePropertyValue(house)))
             house.power = Math.max(house.power || 0, Math.round(house.ai.influence / 18 + house.ai.prestige / 2500))
             house.strength = Math.max(1, Math.round((house.strength || 0) * 0.85 + (house.power || 0) * 0.25 + (house.wealth || 0) / 160 + (house.stability || 0) / 8))
             this.updateHouseStratumFromAI(society, house)
@@ -3693,6 +3699,317 @@
             this.log(society, house.name + ' moves from ' + this.stratumTitle(previous) + ' to ' + this.stratumTitle(next) + '.', strength >= 18 ? 'support' : 'scandal', house.id)
           }
         },
+        vanillaPropertyGroups() {
+          return {
+            land: ['farmland', 'vinyard', 'orchard', 'primeFarmland', 'primeVinyard', 'primeOrchard'],
+            animal: ['horse', 'donkey', 'pig', 'goat', 'sheep', 'cattle', 'duck', 'chicken'],
+            boat: ['fishingBoat', 'tradeships', 'seafaringTradeships'],
+            estate: ['insulae', 'latifundiumFood', 'latifundiumAnimal', 'latifundiumFish', 'latifundiumOil']
+          }
+        },
+        vanillaPropertyTypes() {
+          return {
+            farmland: { value: 250, revenue: 1.7496, group: 'land', title: 'Farmland' },
+            vinyard: { value: 360, revenue: 2.5272, group: 'land', title: 'Vinyard' },
+            orchard: { value: 420, revenue: 2.7864, group: 'land', title: 'Orchard' },
+            primeFarmland: { value: 2700, revenue: 17.253, group: 'land', title: 'Prime farmland' },
+            primeVinyard: { value: 3300, revenue: 21.978, group: 'land', title: 'Prime vinyard' },
+            primeOrchard: { value: 3900, revenue: 27.027, group: 'land', title: 'Prime orchard' },
+            latifundiumFood: { value: 11000, revenue: 67.32, group: 'estate', title: 'Food latifundium' },
+            latifundiumAnimal: { value: 14000, revenue: 88.2, group: 'estate', title: 'Animal latifundium' },
+            latifundiumFish: { value: 17000, revenue: 113.22, group: 'estate', title: 'Fish latifundium' },
+            latifundiumOil: { value: 21000, revenue: 145.53, group: 'estate', title: 'Oil latifundium' },
+            insulae: { value: 4500, revenue: 27.945, group: 'estate', title: 'Insulae' },
+            fishingBoat: { value: 41, revenue: 0.29799, group: 'boat', title: 'Fishing boat', baseMax: 0.54 },
+            tradeships: { value: 630, revenue: 4.71744, group: 'boat', title: 'Trade ship', isCommercial: true },
+            seafaringTradeships: { value: 7500, revenue: 54, group: 'boat', title: 'Seafaring trade ship', isCommercial: true },
+            horse: { value: 125, revenue: 0.324, group: 'animal', title: 'Horse' },
+            donkey: { value: 28, revenue: 0.216, group: 'animal', title: 'Donkey' },
+            pig: { value: 26, revenue: 0.2016, group: 'animal', title: 'Pig' },
+            goat: { value: 32, revenue: 0.2304, group: 'animal', title: 'Goat' },
+            sheep: { value: 36, revenue: 0.252, group: 'animal', title: 'Sheep' },
+            cattle: { value: 40, revenue: 0.288, group: 'animal', title: 'Cattle' },
+            duck: { value: 15, revenue: 0.10368, group: 'animal', title: 'Duck' },
+            chicken: { value: 10, revenue: 0.072, group: 'animal', title: 'Chicken' }
+          }
+        },
+        seedHousePropertyDetails(house) {
+          let property = (house && house.ai && house.ai.property) || {}
+          let strength = Math.max(1, Math.round((house && house.strength) || 10))
+          let details = {}
+          let add = (key, count) => {
+            count = Math.max(0, Math.round(parseFloat(count || 0)))
+            if (count) details[key] = (details[key] || 0) + count
+          }
+          let land = Math.max(0, Math.round(parseFloat(property.land || 0)))
+          let animals = Math.max(0, Math.round(parseFloat(property.animals || 0)))
+          let trade = Math.max(0, Math.round(parseFloat(property.trade || 0)))
+          if (!land && strength >= 18 && house.stratum !== 'poor') land = Math.max(1, Math.round(strength / 26))
+          if (!animals && strength >= 10 && house.stratum !== 'poor') animals = Math.max(1, Math.round(strength / 34))
+          if (!trade && (house.stratum === 'equestrian' || house.stratum === 'senatorial' || house.agenda === 'wealth')) trade = 1
+          for (let i = 0; i < land; i++) {
+            if (house.stratum === 'senatorial' && strength > 90 && Math.random() < 0.22) add(this.pick(['primeFarmland', 'primeVinyard', 'primeOrchard']), 1)
+            else if ((house.stratum === 'equestrian' || house.stratum === 'civic') && Math.random() < 0.16) add(this.pick(['vinyard', 'orchard']), 1)
+            else add(this.pick(['farmland', 'vinyard', 'orchard']), 1)
+          }
+          for (let i = 0; i < animals; i++) {
+            add(this.pick(['chicken', 'duck', 'goat', 'sheep', 'pig', 'cattle', 'donkey', 'horse']), i % 3 === 0 ? 2 : 1)
+          }
+          for (let i = 0; i < trade; i++) {
+            if (house.stratum === 'senatorial' && strength > 115 && Math.random() < 0.18) add(this.pick(['insulae', 'latifundiumFood', 'latifundiumAnimal', 'latifundiumFish', 'latifundiumOil']), 1)
+            else if (house.stratum === 'senatorial') add(this.pick(['insulae', 'primeFarmland', 'primeVinyard', 'primeOrchard']), 1)
+            else if (house.stratum === 'equestrian' && Math.random() < 0.24) add('tradeships', 1)
+            else add(this.pick(['fishingBoat', 'tradeships']), 1)
+          }
+          return details
+        },
+        normalizeHousePropertyDetails(house) {
+          if (!house || !house.ai) {
+            return {}
+          }
+          let types = this.vanillaPropertyTypes()
+          let details = house.ai.propertyDetails || this.seedHousePropertyDetails(house)
+          let clean = {}
+          Object.keys(details || {}).forEach((key) => {
+            if (!types[key]) return
+            let count = Math.max(0, Math.round(parseFloat(details[key] || 0)))
+            if (count) clean[key] = count
+          })
+          house.ai.propertyDetails = clean
+          this.syncAggregateHouseProperty(house)
+          return clean
+        },
+        syncAggregateHouseProperty(house) {
+          let details = (house && house.ai && house.ai.propertyDetails) || {}
+          let types = this.vanillaPropertyTypes()
+          let aggregate = { land: 0, animals: 0, trade: 0 }
+          Object.keys(details).forEach((key) => {
+            let def = types[key]
+            let count = Math.max(0, Math.round(parseFloat(details[key] || 0)))
+            if (!def || !count) return
+            if (def.group === 'land') aggregate.land += count
+            else if (def.group === 'animal') aggregate.animals += count
+            else if (def.group === 'boat' || def.group === 'estate') aggregate.trade += count
+          })
+          house.ai.property = aggregate
+          return aggregate
+        },
+        housePropertyValue(house) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let total = 0
+          Object.keys(details).forEach((key) => {
+            total += Math.max(0, Math.round(parseFloat(details[key] || 0))) * ((types[key] && types[key].value) || 0)
+          })
+          return Math.round(total)
+        },
+        housePropertyClass(house) {
+          if (house && house.stratum === 'senatorial') return 7
+          let total = this.housePropertyValue(house) + Math.max(0, Math.round(parseFloat((house && house.ai && house.ai.cash) || 0)))
+          return total < 1100 ? 0 : total < 2500 ? 1 : total < 5000 ? 2 : total < 7500 ? 3 : total < 10000 ? 4 : total < 25000 ? 5 : 6
+        },
+        housePropertyClassProgress(house, usePreviousBand) {
+          let limits = [1100, 2500, 5000, 7500, 10000, 25000]
+          let propertyValue = this.housePropertyValue(house)
+          let cash = Math.max(0, Math.round(parseFloat((house && house.ai && house.ai.cash) || 0)))
+          let classIndex = this.housePropertyClass(house)
+          if (limits.length <= classIndex) return 1
+          let lower = !usePreviousBand && classIndex > 0 ? limits[classIndex - 1] : 0
+          let progress = (propertyValue + cash - lower) / (limits[classIndex] - lower)
+          return this.clamp(progress, 0, 1)
+        },
+        houseClassStewardshipFactor(house) {
+          return 1 + Math.max(0, this.housePropertyClass(house) + this.housePropertyClassProgress(house) - 1) / 2.25
+        },
+        houseHeadCharacter(house, state) {
+          let ids = (house && house.notableIds && house.notableIds.length ? house.notableIds : (house && house.memberIds) || [])
+          for (let i = 0; i < ids.length; i++) {
+            let character = state && state.characters && state.characters[ids[i]]
+            if (character && !character.isDead) return character
+          }
+          return false
+        },
+        houseCharacterStewardshipContribution(house, state, characterId) {
+          let character = state && state.characters && state.characters[characterId]
+          if (!character) return 0
+          let head = this.houseHeadCharacter(house, state)
+          let headId = head && (head.id || characterId)
+          let age = this.age(character, state)
+          let skills = character.skills || {}
+          let stewardship = parseFloat(skills.stewardship || 0)
+          if (this.sameCharacterId(headId, characterId) && age < 7) {
+            return stewardship / 9
+          }
+          if (character.isDead || character.hasMovedOut || character.hasMovedout || character.flagIsAway || (!this.sameCharacterId(headId, characterId) && age < 7)) {
+            return 0
+          }
+          let weight = 1 / 6
+          if (this.sameCharacterId(headId, characterId)) {
+            weight = 1
+          } else if (head && this.sameCharacterId(head.spouseId, characterId)) {
+            weight = 0.5
+          } else if (head && (head.childrenIds || []).map(String).indexOf(String(characterId)) >= 0) {
+            weight = 0.25
+          }
+          if (!character.job) weight *= 1.35
+          if (character.flagIsBusy) weight /= 4.5
+          return stewardship * weight * this.houseClassStewardshipFactor(house)
+        },
+        houseHouseholdStewardship(house, state) {
+          let total = 0
+          ;((house && house.memberIds) || []).forEach((characterId) => {
+            total += this.houseCharacterStewardshipContribution(house, state, characterId)
+          })
+          let caretakerId = house && house.ai && house.ai.caretakerCharacterId
+          let caretaker = caretakerId && state && state.characters && state.characters[caretakerId]
+          if (caretaker) {
+            let inHouse = ((house.memberIds || []).map(String).indexOf(String(caretakerId)) >= 0)
+            total += (parseFloat((caretaker.skills || {}).stewardship || 0) / 1.8) * (inHouse ? 0.5 : 1) * this.houseClassStewardshipFactor(house)
+          }
+          return Math.max(5, total)
+        },
+        housePropertyMaxCount(house, key, state) {
+          let types = this.vanillaPropertyTypes()
+          let groups = this.vanillaPropertyGroups()
+          let def = types[key] || {}
+          if (def.isCommercial && house && house.stratum === 'senatorial') return 0
+          let group = groups[def.group] ? def.group : ''
+          let baseMax = def.baseMax || (group === 'land' ? 0.45 : group === 'animal' ? 1.251 : group === 'boat' ? 0.126 : group === 'estate' ? 0.18 : 0)
+          return baseMax * this.houseHouseholdStewardship(house, state || daapi.getState()) || 0
+        },
+        housePropertyExcessLoss(house, key, state, extra) {
+          let types = this.vanillaPropertyTypes()
+          let details = this.normalizeHousePropertyDetails(house)
+          let count = Math.max(0, parseFloat(details[key] || 0)) + Math.max(0, parseFloat(extra || 0))
+          return 0.05 * ((types[key] || {}).revenue || 0) * (count - this.housePropertyMaxCount(house, key, state || daapi.getState())) || 0
+        },
+        houseModifierFactor(house, key, state) {
+          let modifiers = house && house.ai && house.ai.modifiers && house.ai.modifiers[key]
+          if (!modifiers || !modifiers.length) return 1
+          let kept = []
+          let factor = 1
+          ;(modifiers || []).forEach((modifier) => {
+            if (!modifier) return
+            if (modifier.until && this.monthKeyReached(modifier.until, state || daapi.getState())) return
+            kept.push(modifier)
+            factor *= parseFloat(modifier.factor || 1)
+          })
+          house.ai.modifiers[key] = kept
+          return factor || 0
+        },
+        houseAdditiveModifier(house, key, state) {
+          let modifiers = house && house.ai && house.ai.additiveModifiers && house.ai.additiveModifiers[key]
+          if (!modifiers || !modifiers.length) return 0
+          let kept = []
+          let total = 0
+          ;(modifiers || []).forEach((modifier) => {
+            if (!modifier) return
+            if (modifier.until && this.monthKeyReached(modifier.until, state || daapi.getState())) return
+            kept.push(modifier)
+            total += parseFloat(modifier.amount || 0)
+          })
+          house.ai.additiveModifiers[key] = kept
+          return total
+        },
+        houseEconomyOfScaleFactor(house, key, state) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let def = types[key] || {}
+          let groupBase = def.group === 'land' ? 0.45 : def.group === 'animal' ? 1.251 : def.group === 'boat' ? 0.126 : def.group === 'estate' ? 0.18 : 0
+          let baseMax = def.baseMax || groupBase
+          if (!baseMax) return 1
+          let maxCount = this.housePropertyMaxCount(house, key, state || daapi.getState())
+          let count = Math.max(0, parseFloat(details[key] || 0))
+          let perStewardshipMax = baseMax
+          let ratio = count / 810 / perStewardshipMax
+          if (count <= maxCount) return 1 + ratio
+          if (count <= 1.26 * maxCount) return 1 + ratio / 1.5
+          if (count <= 1.53 * maxCount) return 1 + ratio / 2
+          if (count <= 2.17 * maxCount) return 1 + ratio / 5
+          if (count <= 2.53 * maxCount) return 1 + ratio / 15
+          return 1
+        },
+        houseUnemployedHouseholdersFactor(house, state) {
+          state = state || daapi.getState()
+          let factor = 1
+          let head = this.houseHeadCharacter(house, state)
+          let headId = head && head.id
+          ;((house && house.memberIds) || []).forEach((characterId) => {
+            let character = state && state.characters && state.characters[characterId]
+            if (!character || character.isDead || character.hasMovedOut || character.hasMovedout || character.flagIsBusy || character.flagIsAway || character.job || character.startedPregnancyTime) return
+            if (!this.sameCharacterId(headId, characterId) && this.age(character, state) < 7) return
+            factor += parseFloat((character.skills || {}).stewardship || 0) / 900
+          })
+          return factor
+        },
+        housePropertyModifierFactor(house, key, state) {
+          return this.houseModifierFactor(house, 'property_' + key, state) *
+            this.houseModifierFactor(house, 'revenue', state) *
+            this.houseEconomyOfScaleFactor(house, key, state) *
+            this.houseUnemployedHouseholdersFactor(house, state || daapi.getState())
+        },
+        housePropertyRevenueForKey(house, key, state) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let def = types[key] || {}
+          let maxCount = this.housePropertyMaxCount(house, key, state || daapi.getState())
+          let count = Math.max(0, parseFloat(details[key] || 0))
+          let revenue = Math.min(count, maxCount) * (def.revenue || 0)
+          if (count > maxCount) {
+            revenue -= this.housePropertyExcessLoss(house, key, state)
+          }
+          revenue *= this.housePropertyModifierFactor(house, key, state || daapi.getState())
+          return revenue || 0
+        },
+        housePropertyRevenue(house, state) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let total = 0
+          Object.keys(details).forEach((key) => {
+            total += this.housePropertyRevenueForKey(house, key, state || daapi.getState())
+          })
+          return total
+        },
+        housePropertySummary(house) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let groups = this.vanillaPropertyGroups()
+          let groupTotals = {}
+          Object.keys(groups).forEach((group) => {
+            groupTotals[group] = groups[group].reduce((sum, key) => sum + Math.max(0, Math.round(parseFloat(details[key] || 0))), 0)
+          })
+          let chips = []
+          if (groupTotals.land) chips.push('land ' + groupTotals.land)
+          if (groupTotals.animal) chips.push('animals ' + groupTotals.animal)
+          if (groupTotals.boat) chips.push('boats ' + groupTotals.boat)
+          if (groupTotals.estate) chips.push('estates ' + groupTotals.estate)
+          return chips.length ? chips.join(', ') : 'none'
+        },
+        allowedHousePropertyKeys(house, state) {
+          let types = this.vanillaPropertyTypes()
+          state = state || daapi.getState()
+          return Object.keys(types).filter((key) => {
+            return this.housePropertyMaxCount(house, key, state) > 0
+          })
+        },
+        aiPropertyInvestmentChoice(house, options, state) {
+          let types = this.vanillaPropertyTypes()
+          let details = this.normalizeHousePropertyDetails(house)
+          let cash = Math.max(0, Math.floor(parseFloat((house.ai && house.ai.cash) || 0)))
+          state = state || daapi.getState()
+          let keys = this.allowedHousePropertyKeys(house, state)
+          let preferred = this.uniqueIds(((options && options.preferred) || []).filter((key) => types[key]))
+          if (preferred.length) {
+            keys = preferred.concat(keys.filter((key) => preferred.indexOf(key) < 0))
+          }
+          let candidates = keys.filter((key) => {
+            let def = types[key]
+            if (!def || def.value > cash) return false
+            let limit = Math.floor(this.housePropertyMaxCount(house, key, state))
+            return limit > Math.max(0, Math.floor(parseFloat(details[key] || 0)))
+          })
+          if (!candidates.length) return false
+          let preferredCandidates = candidates.filter((key) => preferred.indexOf(key) >= 0)
+          return this.pick(preferredCandidates.length ? preferredCandidates : candidates)
+        },
         initHouseAI(house) {
           if (!house.agenda) {
             house.agenda = this.pick(['office', 'wealth', 'honor', 'marriage', 'security', 'revenge'])
@@ -3727,6 +4044,9 @@
           }
           house.ai.focus = house.ai.focus || house.agenda
           house.ai.controlledBy = 'cor_society_ai'
+          house.ai.modifiers = house.ai.modifiers || {}
+          house.ai.additiveModifiers = house.ai.additiveModifiers || {}
+          this.normalizeHousePropertyDetails(house)
         },
         simulateHouseFamilyLife(society, state, house, houses) {
           if (!house || !house.memberIds || !house.memberIds.length) {
@@ -5655,38 +5975,109 @@
           this.log(society, buyerHouse.name + ' purchases ' + this.characterName(state.characters[character.id] || character, state) + ' from ' + sellerHouse.name + '.', 'slaves', buyerHouse.id)
           return true
         },
-        runHouseEconomy(house) {
+        runHouseEconomy(society, state, house) {
           let profile = this.strata[house.stratum] || this.strata.plebeian
-          let property = house.ai.property || { land: 0, animals: 0, trade: 0 }
+          this.normalizeHousePropertyDetails(house)
+          this.aiSellExcessProperty(house, state)
           let members = (house.memberIds || []).length || 1
-          let income = property.land * 5 + property.animals * 2 + property.trade * 12 + Math.round((profile.revenue || 20) / 4)
+          let propertyIncome = this.housePropertyRevenue(house, state)
+          let baseIncome = 0.5 + this.houseAdditiveModifier(house, 'revenue', state)
+          let officeIncome = Math.max(0, Math.round((profile.revenue || 20) / 10))
+          let income = propertyIncome + baseIncome + officeIncome
           let expenses = members * (house.stratum === 'senatorial' ? 10 : house.stratum === 'equestrian' ? 7 : 4)
+          house.ai.lastPropertyRevenue = propertyIncome
+          house.ai.lastTotalRevenue = income - expenses
           house.ai.cash += income - expenses
+          if (house.ai.cash < 0) {
+            this.aiSellPropertyForCash(house, state, Math.abs(house.ai.cash) + 10)
+          }
           if (house.ai.cash < 0) {
             house.ai.influence = Math.max(0, house.ai.influence - 8)
             house.stability -= 3
+          }
+          let cashLimit = this.houseEffectiveMaxCashHolding(house, state)
+          let investmentThreshold = Math.min(25000, Math.max(80, cashLimit / 5))
+          if (house.ai.cash > investmentThreshold && Math.random() < (house.agenda === 'wealth' ? 0.18 : 0.08)) {
+            this.aiBuyProperty(house, {}, state)
           }
           if (house.ai.cash > (profile.cost || 200) * 3 && Math.random() < 0.08) {
             house.agenda = this.pick(['office', 'wealth', 'marriage', 'security'])
             house.ai.focus = house.agenda
           }
         },
-        aiBuyProperty(house) {
-          let profile = this.strata[house.stratum] || this.strata.plebeian
-          let cost = Math.max(100, Math.round((profile.cost || 200) * 0.7))
-          if (house.ai.cash < cost) {
+        houseEffectiveMaxCashHolding(house, state) {
+          let classWealthLimits = [1100, 2500, 5000, 7500, 10000, 25000]
+          let stewardship = this.houseHouseholdStewardship(house, state || daapi.getState())
+          let max = 9819 * stewardship
+          let classLimit = classWealthLimits[this.housePropertyClass(house)]
+          return classLimit ? Math.min(max, classLimit) : max
+        },
+        aiSellExcessProperty(house, state) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let sold = false
+          Object.keys(details).forEach((key) => {
+            let limit = Math.max(0, Math.floor(this.housePropertyMaxCount(house, key, state || daapi.getState())))
+            let count = Math.max(0, Math.floor(parseFloat(details[key] || 0)))
+            if (count <= limit) return
+            let excess = count - limit
+            details[key] = limit
+            house.ai.cash += excess * ((types[key] && types[key].value) || 0) * 0.9
+            sold = true
+          })
+          if (sold) {
+            this.normalizeHousePropertyDetails(house)
+            house.lastFamilyEvent = 'Sells excess property above vanilla management limits.'
+            house.lastFamilyKind = 'trade'
+          }
+          return sold
+        },
+        aiSellPropertyForCash(house, state, targetCash) {
+          let details = this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let keys = Object.keys(details).filter((key) => details[key] > 0 && types[key]).sort((a, b) => {
+            let va = (types[a].value || 0) / Math.max(0.01, types[a].revenue || 0.01)
+            let vb = (types[b].value || 0) / Math.max(0.01, types[b].revenue || 0.01)
+            return vb - va
+          })
+          for (let i = 0; i < keys.length && house.ai.cash < targetCash; i++) {
+            let key = keys[i]
+            while (house.ai.cash < targetCash) {
+              let count = Math.max(0, Math.floor(parseFloat(details[key] || 0)))
+              if (!count) break
+              details[key] = count - 1
+              house.ai.cash += ((types[key] && types[key].value) || 0) * 0.9
+            }
+          }
+          this.normalizeHousePropertyDetails(house)
+          return house.ai.cash >= targetCash
+        },
+        aiBuyProperty(house, options, state) {
+          state = state || daapi.getState()
+          this.normalizeHousePropertyDetails(house)
+          let types = this.vanillaPropertyTypes()
+          let details = house.ai.propertyDetails || {}
+          let key = this.aiPropertyInvestmentChoice(house, options || {}, state)
+          let def = key && types[key]
+          if (!def) {
             return false
           }
-          house.ai.cash -= cost
-          let roll = Math.random()
-          if (roll < 0.45) {
-            house.ai.property.land += 1
-          } else if (roll < 0.75) {
-            house.ai.property.animals += 2
-          } else {
-            house.ai.property.trade += 1
+          let limit = Math.max(0, Math.floor(this.housePropertyMaxCount(house, key, state)))
+          let owned = Math.max(0, Math.floor(parseFloat(details[key] || 0)))
+          let maxAffordable = Math.floor(Math.max(0, parseFloat(house.ai.cash || 0)) / def.value)
+          let quantity = Math.min(Math.max(0, limit - owned), maxAffordable)
+          if (options && options.maxQuantity) {
+            quantity = Math.min(quantity, Math.max(1, Math.floor(parseFloat(options.maxQuantity || 1))))
           }
+          if (quantity <= 0) {
+            return false
+          }
+          house.ai.cash -= quantity * def.value
+          details[key] = owned + quantity
+          this.normalizeHousePropertyDetails(house)
           house.stability = this.clamp((house.stability || 50) + 1, 0, 100)
+          house.lastFamilyEvent = 'Buys ' + quantity + ' ' + def.title + (quantity > 1 ? ' holdings' : ' holding') + ' using vanilla property limits.'
+          house.lastFamilyKind = 'trade'
           return true
         },
         generateHouseMember(society, state, house) {
