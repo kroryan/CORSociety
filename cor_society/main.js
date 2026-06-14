@@ -94,7 +94,7 @@
         })
       } catch (err) {
         daapi.pushInteractionModalQueue({
-          title: 'Player Dynasty Tree error',
+          title: 'House Tree error',
           message: err.name + ': ' + err.message,
           image: daapi.requireImage('/cor_society/icon.svg')
         })

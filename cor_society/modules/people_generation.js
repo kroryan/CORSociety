@@ -694,12 +694,13 @@
                     }
                     character.id = character.id || characterId
                     let patch = {}
-                    if (!character.fatherId) {
-                      patch.fatherId = this.generateGhostParent(society, state, character, true)
+                    let generatedParents = this.ensureGeneratedParentPair(society, state, character)
+                    if (generatedParents.fatherId && !character.fatherId) {
+                      patch.fatherId = generatedParents.fatherId
                       generatedThisTick++
                     }
-                    if (!character.motherId && generatedThisTick < 10) {
-                      patch.motherId = this.generateGhostParent(society, state, character, false)
+                    if (generatedParents.motherId && !character.motherId) {
+                      patch.motherId = generatedParents.motherId
                       generatedThisTick++
                     }
                     if (patch.fatherId || patch.motherId) {
@@ -738,12 +739,11 @@
                     if (hasFather && hasMother) {
                       continue
                     }
-                    if (!hasFather && !hasMother) {
-                      continue
-                    }
-                    let fatherId = hasFather ? character.fatherId : this.generateGhostParent(society, state, character, true)
-                    let motherId = hasMother ? character.motherId : this.generateGhostParent(society, state, character, false)
+                    let parents = this.ensureGeneratedParentPair(society, state, character)
+                    let fatherId = hasFather ? character.fatherId : parents.fatherId
+                    let motherId = hasMother ? character.motherId : parents.motherId
                     if (fatherId && motherId && this.connectCharacterToParents(state, characterId, fatherId, motherId)) {
+                      this.linkParentPair(state, fatherId, motherId)
                       repaired += 1
                     }
                   }
@@ -1039,18 +1039,22 @@
                   if (!character.id) {
                     return false
                   }
+                  let parents = this.ensureGeneratedParentPair(society, state, character)
                   let patch = {}
-                  if (!character.fatherId) {
-                    patch.fatherId = this.generateGhostParent(society, state, character, true)
+                  if (!character.fatherId && parents.fatherId) {
+                    patch.fatherId = parents.fatherId
                   }
-                  if (!character.motherId) {
-                    patch.motherId = this.generateGhostParent(society, state, character, false)
+                  if (!character.motherId && parents.motherId) {
+                    patch.motherId = parents.motherId
                   }
                   if (patch.fatherId || patch.motherId) {
                     try {
                       daapi.updateCharacter({ characterId: character.id, character: patch })
                       if (patch.fatherId) character.fatherId = patch.fatherId
                       if (patch.motherId) character.motherId = patch.motherId
+                      this.addChildToParent(state, character.fatherId, character.id)
+                      this.addChildToParent(state, character.motherId, character.id)
+                      this.linkParentPair(state, character.fatherId, character.motherId)
                     } catch (err) {
                       console.warn(err)
                     }
@@ -1062,16 +1066,22 @@
                       return
                     }
                     parent.id = parent.id || parentId
+                    let parentParents = this.ensureGeneratedParentPair(society, state, parent)
                     let parentPatch = {}
-                    if (!parent.fatherId) {
-                      parentPatch.fatherId = this.generateGhostParent(society, state, parent, true)
+                    if (!parent.fatherId && parentParents.fatherId) {
+                      parentPatch.fatherId = parentParents.fatherId
                     }
-                    if (!parent.motherId) {
-                      parentPatch.motherId = this.generateGhostParent(society, state, parent, false)
+                    if (!parent.motherId && parentParents.motherId) {
+                      parentPatch.motherId = parentParents.motherId
                     }
                     if (parentPatch.fatherId || parentPatch.motherId) {
                       try {
                         daapi.updateCharacter({ characterId: parentId, character: parentPatch })
+                        if (parentPatch.fatherId) parent.fatherId = parentPatch.fatherId
+                        if (parentPatch.motherId) parent.motherId = parentPatch.motherId
+                        this.addChildToParent(state, parent.fatherId, parent.id)
+                        this.addChildToParent(state, parent.motherId, parent.id)
+                        this.linkParentPair(state, parent.fatherId, parent.motherId)
                       } catch (err) {
                         console.warn(err)
                       }
@@ -1197,9 +1207,10 @@
                   if (!branchParentId) {
                     return false
                   }
-                  let otherParentId = this.generateGhostParent(society, state, character, !this.characterIsMale(state.characters[branchParentId]))
+                  let otherParentId = this.generateGhostParent(society, state, character, !this.characterIsMale(state.characters[branchParentId]), branchParentId)
                   let fatherId = this.characterIsMale(state.characters[branchParentId]) ? branchParentId : otherParentId
                   let motherId = this.characterIsMale(state.characters[branchParentId]) ? otherParentId : branchParentId
+                  this.linkParentPair(state, fatherId, motherId)
                   return this.connectCharacterToParents(state, characterId, fatherId, motherId)
                 },
         generateCollateralGhostParent(society, state, child, house, grandFatherId, grandMotherId) {
@@ -1322,7 +1333,53 @@
                   })
                   society.generatedNormalizationVersion = this.version
                 },
-        generateGhostParent(society, state, child, isMale) {
+        ensureGeneratedParentPair(society, state, child) {
+                  if (!child || !child.id) {
+                    return { fatherId: '', motherId: '' }
+                  }
+                  let fatherId = child.fatherId && state.characters && state.characters[child.fatherId] ? child.fatherId : ''
+                  let motherId = child.motherId && state.characters && state.characters[child.motherId] ? child.motherId : ''
+                  if (!fatherId && !motherId) {
+                    fatherId = this.generateGhostParent(society, state, child, true)
+                    motherId = this.generateGhostParent(society, state, child, false, fatherId)
+                    this.linkParentPair(state, fatherId, motherId)
+                  } else if (!fatherId) {
+                    fatherId = this.generateGhostParent(society, state, child, true, motherId)
+                    this.linkParentPair(state, fatherId, motherId)
+                  } else if (!motherId) {
+                    motherId = this.generateGhostParent(society, state, child, false, fatherId)
+                    this.linkParentPair(state, fatherId, motherId)
+                  }
+                  return { fatherId, motherId }
+                },
+        linkParentPair(state, fatherId, motherId) {
+                  if (!fatherId || !motherId || !state || !state.characters) {
+                    return false
+                  }
+                  let father = state.characters[fatherId]
+                  let mother = state.characters[motherId]
+                  let changed = false
+                  if (!father || !father.spouseId) {
+                    try {
+                      daapi.updateCharacter({ characterId: fatherId, character: { spouseId: motherId } })
+                      if (father) father.spouseId = motherId
+                      changed = true
+                    } catch (err) {
+                      console.warn(err)
+                    }
+                  }
+                  if (!mother || !mother.spouseId) {
+                    try {
+                      daapi.updateCharacter({ characterId: motherId, character: { spouseId: fatherId } })
+                      if (mother) mother.spouseId = fatherId
+                      changed = true
+                    } catch (err) {
+                      console.warn(err)
+                    }
+                  }
+                  return changed
+                },
+        generateGhostParent(society, state, child, isMale, spouseId) {
                   let childBirthYear = parseInt(child.birthYear || state.year || 0, 10)
                   let parentAgeAtBirth = this.randomInt(19, 34)
                   let birthYear = childBirthYear - parentAgeAtBirth
@@ -1346,7 +1403,8 @@
                       corSocietyGeneratedConnector: true,
                       corSocietyHouseId: child.corSocietyHouseId || '',
                       flagDoNotCull: true,
-                      childrenIds: [child.id]
+                      childrenIds: [child.id],
+                      spouseId: spouseId || ''
                     },
                     dynastyFeatures: this.dynastyFeaturesForCharacter(child, state)
                   })
@@ -1354,14 +1412,15 @@
                     daapi.updateCharacter({
                       characterId: parentId,
                       character: {
-                      dynastyId: child.dynastyId,
+                        dynastyId: child.dynastyId,
                         corSocietyHouseId: child.corSocietyHouseId || '',
                         isDead: true,
                         deathCause: 'old age',
                         corSocietyGenerated: true,
                         corSocietyGhostParent: true,
                         corSocietyGeneratedConnector: true,
-                        childrenIds: [child.id]
+                        childrenIds: [child.id],
+                        spouseId: spouseId || ''
                       }
                     })
                   } catch (err) {

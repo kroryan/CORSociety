@@ -48,7 +48,6 @@
                   if (!options || !options.force) {
                     if (society.lastEnsureKey === ensureKey) {
                       this.registerPlayerEntryActions(state)
-                      this.preparePlayerDynastyTreeOnce(society, state)
                       this.registerSocietyTraitDefinitions()
                       if (monthChanged) {
                         this.repairFalsePlayerSlaveFlags(society, state)
@@ -374,7 +373,7 @@
                     this.registerCurrentCharacterAction(state, 'cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
                     this.registerCurrentCharacterAction(state, 'cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', this.bundledIcon('bank_of_rome', 'money'), 'openBankOfRome')
                     this.registerCurrentCharacterAction(state, 'cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', this.slaveTypeIcon('household'), 'openHouseholdSlaves')
-                    this.registerPlayerDynastyTreeAction(state)
+                    this.unregisterPlayerDynastyTreeAction(state)
                     this.registerFamilyCharacterSheetActions(state, familyActionIds)
                     if (current && this.isSlaveCharacter(current)) {
                       this.registerCurrentCharacterAction(state, 'cor_society_slave_path', 'Path to Freedom', 'Open slave-focused Society actions for earning or negotiating freedom.', this.slaveTypeIcon(current.corSocietySlaveType || 'labor'), 'openPlayerSlavePath')
@@ -444,31 +443,21 @@
                     console.warn(err)
                   }
                 },
-        registerPlayerDynastyTreeAction(state) {
+        unregisterPlayerDynastyTreeAction(state) {
                   try {
                     state = state || daapi.getState()
                     let characterId = state && state.current && state.current.id
-                    if (!characterId) {
-                      return
+                    if (!characterId || !daapi.deleteCharacterAction) {
+                      return false
                     }
-                    daapi.addCharacterAction({
-                      characterId,
-                      key: 'cor_society_player_tree',
-                      action: {
-                        title: 'Player Dynasty Tree',
-                        tooltip: 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.',
-                        icon: daapi.requireImage('/cor_society/assets/familyTree.svg'),
-                        isAvailable: true,
-                        hideWhenBusy: false,
-                        process: {
-                          event: this.event,
-                          method: 'openPlayerFamilyTree',
-                          context: { characterId }
-                        }
-                      }
-                    })
+                    try {
+                      daapi.deleteCharacterAction({ characterId, key: 'cor_society_player_tree' })
+                    } catch (err) {
+                      daapi.deleteCharacterAction(characterId, 'cor_society_player_tree')
+                    }
+                    return true
                   } catch (err) {
-                    console.warn(err)
+                    return false
                   }
                 },
         registerBundledBankActions() {

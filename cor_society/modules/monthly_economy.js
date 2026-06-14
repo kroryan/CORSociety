@@ -36,6 +36,9 @@
                   this.processPlayerSlaves(society, state)
                   this.simulateHouseTurns(society, state)
                   this.repairIncompleteGeneratedParentPairs(society, state)
+                  if (this.preparePlayerDynastyTreeOnce && this.preparePlayerDynastyTreeOnce(society, state)) {
+                    state = daapi.getState()
+                  }
                   this.retireDeadHouses(society, state, { notify: true })
                   state = daapi.getState()
                   this.ensureMinimumHouses(society, state)
@@ -54,6 +57,9 @@
                   let familyCareQueued = this.queueFamilyCareEvent(society, state)
                   if (society.settings.monthlyEvents && Math.random() < (familyCareQueued ? 0.32 : 0.64)) {
                     this.queueMonthlyEvent(society, state)
+                  }
+                  if (this.clearFamilyTreeRuntimeCache) {
+                    this.clearFamilyTreeRuntimeCache()
                   }
                   this.save(society)
                 },

@@ -39,7 +39,6 @@
       addAction('cor_society_wardrobe', 'Family Wardrobe', 'Change Society portrait clothing for members of your household. Consequences: visual clothing changes only; no stats change.', daapi.requireImage('/cor_society/assets/wardrobe.svg'), 'openWardrobe')
       addAction('cor_society_bank_of_rome', 'Bank of Rome', 'Open Society banking. Consequences happen only when taking or repaying a loan.', daapi.requireImage('/cor_society/bundled/bank_of_rome/money.svg'), 'openBankOfRome')
       addAction('cor_society_household_slaves', 'Household Slaves', 'Open Society household slave management. Slaves are real generated characters.', daapi.requireImage('/cor_society/bundled/household_slaves/household.svg'), 'openHouseholdSlaves')
-      addAction('cor_society_player_tree', 'Player Dynasty Tree', 'Opens your Society-style dynasty tree. Consequences: no stat changes; missing ancestors are prepared by Roman Society in the background.', daapi.requireImage('/cor_society/assets/familyTree.svg'), 'openPlayerFamilyTree')
       if (character.corSocietySlave || character.corSocietySlaveActive) {
         addAction('cor_society_slave_path', 'Path to Freedom', 'Open slave-focused Society actions for earning or negotiating freedom.', daapi.requireImage('/cor_society/assets/poor.svg'), 'openPlayerSlavePath')
       }
