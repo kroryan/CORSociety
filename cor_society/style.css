@@ -261,7 +261,7 @@
 }
 
 .cor-society-relation-anchor-text {
-  padding-right: 5.6rem !important;
+  padding-right: clamp(2.6rem, 24%, 5.4rem);
 }
 
 .cor-society-relation-anchor-text > .cor-society-vanilla-relation-badge {
@@ -289,7 +289,7 @@
   }
 
   .cor-society-relation-anchor-text {
-    padding-right: 3.2rem !important;
+    padding-right: 2.8rem;
   }
 }
 
@@ -436,7 +436,7 @@
 
 .cor-society-family-tree {
   min-height: 75vh;
-  min-width: 860px;
+  min-width: min(860px, calc(100vw - 1.4rem));
 }
 
 .cor-society-family-tree-zoom-target {
@@ -608,7 +608,7 @@
   }
 
   .cor-society-family-tree {
-    min-width: 720px;
+    min-width: min(720px, calc(100vw - 1.4rem));
   }
 
   .cor-society-tree-card {

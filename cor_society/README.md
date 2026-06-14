@@ -8,7 +8,7 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 
 ## Performance
 
-`1.1.290` keeps the bounded extended-kin visibility window from `1.1.289` and moves NPC house property play onto vanilla Citizen of Rome property math. Society houses now store `propertyDetails` by vanilla property key, buy to vanilla stewardship limits, sell at the vanilla sale rate, apply the vanilla property revenue table, and stop using old abstract land/animal/trade income as the balance source.
+`1.1.291` fixes the issues reviewed in `ANALISIS COMPLETO2.MD`: NPC Society traits now sync from `characterSocial`, generated family members inherit correct dynasty features, fertility-blocking flags are respected, freedman rescue attempts no longer depend on one brittle flag, monthly care events no longer stop the rest of the monthly event pipeline, wardrobe repair is schema-gated instead of version-gated, and the base game's mod-used achievement flag is no longer cleared by Society.
 
 ## Features
 
@@ -108,7 +108,7 @@ Each month, houses pursue their own agenda. Some affairs only change the social 
 
 Roman Society does not use `setCurrentCharacter` and does not take control away from the human player. Vanilla family screens are opened by setting the game's `selectedCharacterId`, which selects the tree being viewed without changing the current playable character. NPC houses are simulated by the mod as separate virtual players, marked internally as `cor_society_ai`; they can rise or fall between social orders as their simulated wealth, power, and stability change.
 
-The base game blocks external platform achievements when `current.flagUsedMods` is true. Society clears that mod-used flag during its own tick so achievements can remain available while using this mod, but vanilla easy mode and sandbox mode still block achievements.
+The base game blocks external platform achievements when `current.flagUsedMods` is true. Society no longer clears that vanilla mod-used flag, because doing so every tick can leave irreversible achievement-state side effects in a save. If Citizen of Rome exposes an official achievement-safe mod API later, Society should use that instead.
 
 The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gallic, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Judean, Punic, Dacian, Germanic, Anatolian, Roman debt-bond, Roman condemned, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, clear slavery-specific origin notes, become `roman_freedman` Society characters, and enter a new Freedmen house of their own. Freed slaves may later spend house resources to rescue close relatives who are still enslaved.
 
