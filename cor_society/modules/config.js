@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyConfigVersion === '1.1.317') {
+      if (window.corSociety._mixinCorSocietyConfigVersion === '1.1.321') {
         return
       }
       Object.assign(window.corSociety, {
@@ -209,9 +209,15 @@
                   silver: '#d8dde1',
                   bone: '#eee0c4',
                   copper: '#c87545'
-                }
+                },
+        romanRoads: ['the Via Sacra', 'the Via Appia', 'the Via Latina', 'the Via Flaminia', 'the Via Aurelia', 'the Via Ostiensis', 'the Via Salaria', 'the Via Tiburtina', 'the Clivus Capitolinus', 'the Vicus Tuscus', 'the Argiletum', 'the Vicus Iugarius', 'the Clivus Argentarius'],
+        romanDistricts: ['the Subura', 'the Velabrum', 'the Forum Boarium', 'the Forum Holitorium', 'the Campus Martius', 'the Velia', 'the Carinae', 'the Vicus Patricius', 'the Argiletum', 'Trans Tiberim'],
+        romanHills: ['the Palatine', 'the Aventine', 'the Caelian', 'the Esquiline', 'the Viminal', 'the Quirinal', 'the Capitoline', 'the Janiculum'],
+        romanLandmarks: ['the Forum Romanum', 'the Theatre of Pompey', 'the Circus Maximus', 'the Tiber wharves', 'the Aemilian warehouses', 'the Porticus Aemilia', 'the salt works at Ostia', 'the Emporium docks'],
+        romanRegions: ['Latium', 'Campania', 'Etruria', 'Umbria', 'Samnium', 'Apulia', 'Picenum', 'Sicilia', 'Sardinia', 'Hispania', 'Gallia Cisalpina', 'Africa', 'Achaea', 'Asia'],
+        romanEstateLocations: ['an estate on the Palatine', 'a townhouse in the Subura', 'a warehouse by the Emporium docks', 'a workshop along the Argiletum', 'a villa in Campania', 'farmland in Latium', 'an insula near the Forum Boarium', 'orchards on the Caelian', 'vineyards in Etruria', 'a granary at Ostia', 'a tannery in Trans Tiberim', 'a horrea on the Aventine']
       })
-      window.corSociety._mixinCorSocietyConfigVersion = '1.1.317'
+      window.corSociety._mixinCorSocietyConfigVersion = '1.1.321'
     }
   }
 }

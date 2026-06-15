@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.317') {
+      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.321') {
         return
       }
       Object.assign(window.corSociety, {
@@ -485,6 +485,27 @@
                   }
                   return text.slice(0, Math.max(8, maxLength - 3)).replace(/\s+\S*$/, '') + '...'
                 },
+        romanPlace(kind) {
+                  let pools = {
+                    road: this.romanRoads,
+                    district: this.romanDistricts,
+                    hill: this.romanHills,
+                    landmark: this.romanLandmarks,
+                    region: this.romanRegions,
+                    estate: this.romanEstateLocations
+                  }
+                  let pool = pools[kind]
+                  if (!pool || !pool.length) {
+                    pool = [].concat(this.romanDistricts || [], this.romanLandmarks || [], this.romanRoads || [])
+                  }
+                  if (!pool || !pool.length) {
+                    return 'the city'
+                  }
+                  return this.pick(pool)
+                },
+        romanEstateLocation() {
+                  return this.romanPlace('estate')
+                },
         monthKey(state) {
                   return String(state.year || 0) + '-' + String(state.month || 0)
                 },
@@ -527,7 +548,7 @@
                   return picked
                 }
       })
-      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.317'
+      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.321'
     }
   }
 }

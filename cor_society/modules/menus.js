@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.317') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.321') {
         return
       }
       Object.assign(window.corSociety, {
@@ -25,6 +25,23 @@
                     societySummaryOptions: this.hubSummaryOptions(state, society, counts, rivals, allies, playerStatus),
                     image: daapi.requireImage('/cor_society/icon.svg'),
                     options: [
+                      (this.playerPoliticsUnlocked && !this.playerPoliticsUnlocked(state)) ? {
+                        variant: 'info',
+                        text: 'Senate & Politics (Equestrian order required)',
+                        icons: [this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator')],
+                        disabled: true,
+                        showDisabledWithTooltip: true,
+                        tooltip: 'Unlocks when you reach the Equestrian order (equites).',
+                        action: { event: this.event, method: 'openPolitics' }
+                      } : {
+                        variant: 'info',
+                        text: 'Senate & Politics',
+                        icons: [this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator')],
+                        action: {
+                          event: this.event,
+                          method: 'openPolitics'
+                        }
+                      },
                       {
                         variant: 'info',
                         text: 'Bank of Rome',
@@ -1415,6 +1432,16 @@
                           context: { houseId, characterId }
                         }
                       },
+                      (this.playerIsEmperor && this.playerIsEmperor(society, state)) ? {
+                        variant: 'info',
+                        text: 'Imperial justice (investigate, judge)',
+                        icons: [this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator')],
+                        action: {
+                          event: this.event,
+                          method: 'politicsAction',
+                          context: { action: 'openImperialActions', houseId, characterId }
+                        }
+                      } : false,
                       {
                         text: 'Back',
                         action: backAction
@@ -5381,7 +5408,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.317'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.321'
     }
   }
 }

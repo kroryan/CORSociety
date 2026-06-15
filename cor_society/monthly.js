@@ -13,6 +13,7 @@
   '/cor_society/modules/portraits_wardrobe',
   '/cor_society/modules/roster_overlays',
   '/cor_society/modules/log_utils',
+  '/cor_society/modules/politics',
   '/cor_society/character_actions',
   '/cor_society/main',
   '/cor_society/bundled/play_as/main',
@@ -24,5 +25,6 @@
   '/cor_society/bundled/restoreInheritance/main',
   '/cor_society/bundled/bank_of_rome/main',
   '/cor_society/bundled/coemptio/main',
-  '/cor_society/bundled/household_slaves/main'
+  '/cor_society/bundled/household_slaves/main',
+  '/cor_society/bundled/cor_translator/main'
 ]

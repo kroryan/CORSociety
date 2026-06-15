@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.317') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.321') {
         return
       }
       Object.assign(window.corSociety, {
@@ -742,7 +742,7 @@
                     house.tradeUntil = this.futureMonthKey(12)
                     house.tradeAmount = amount
                     house.relation = this.clamp((house.relation || 0) + 5, -100, 100)
-                    this.log(society, 'Trade deal with ' + house.name + ': +' + amount + ' monthly revenue for one year.')
+                    this.log(society, 'Trade deal with ' + house.name + ' over goods moving through ' + (this.romanPlace ? this.romanPlace('landmark') : 'the city') + ': +' + amount + ' monthly revenue for one year.', 'tradeVenture', house.id)
                   })
                   if (!handled) {
                     this.openHouse({ houseId })
@@ -1634,14 +1634,16 @@
                       house.relation = this.clamp((house.relation || 0) + 4, -100, 100)
                       house.wealth = (house.wealth || 0) + Math.round(venture.payout / 2)
                     }
-                    this.log(society, 'A trade venture pays your household ' + venture.payout + ' cash.', 'tradeVenture', venture.houseId)
-                    message = 'The trade venture pays your household ' + venture.payout + ' cash.'
+                    let venturePlace = this.romanEstateLocation ? this.romanEstateLocation() : 'the city'
+                    this.log(society, 'A trade venture out of ' + venturePlace + ' pays your household ' + venture.payout + ' cash.', 'tradeVenture', venture.houseId)
+                    message = 'The trade venture out of ' + venturePlace + ' pays your household ' + venture.payout + ' cash.'
                   } else {
                     if (house) {
                       house.stability = this.clamp((house.stability || 50) - 2, 0, 100)
                     }
-                    this.log(society, 'A trade venture closes without profit.', 'tradeVenture', venture.houseId)
-                    message = 'The trade venture closes without profit.'
+                    let venturePlace = this.romanEstateLocation ? this.romanEstateLocation() : 'the city'
+                    this.log(society, 'A trade venture out of ' + venturePlace + ' closes without profit.', 'tradeVenture', venture.houseId)
+                    message = 'The trade venture out of ' + venturePlace + ' closes without profit.'
                   }
                   society.pendingVentures.splice(index, 1)
                   this.save(society)
@@ -2308,7 +2310,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.317'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.321'
     }
   }
 }

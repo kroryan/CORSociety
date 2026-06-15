@@ -2,11 +2,15 @@
 
 This folder is the installable Roman Society mod package.
 
-Current runtime version: `1.1.317`.
+Current runtime version: `1.1.321`.
 
 Use the root documentation as the source of truth:
 
 - [Roman Society README](../README.md)
+- [1.1.321 changelog](../logs/1.1.321.md)
+- [1.1.320 changelog](../logs/1.1.320.md)
+- [1.1.319 changelog](../logs/1.1.319.md)
+- [1.1.318 changelog](../logs/1.1.318.md)
 - [1.1.317 changelog](../logs/1.1.317.md)
 - [1.1.316 changelog](../logs/1.1.316.md)
 - [1.1.315 changelog](../logs/1.1.315.md)
@@ -18,6 +22,22 @@ Use the root documentation as the source of truth:
 - [1.1.309 changelog](../logs/1.1.309.md)
 - [1.1.308 changelog](../logs/1.1.308.md)
 - [1.1.307 changelog](../logs/1.1.307.md)
+
+## Testing console commands (vanilla command console)
+
+Paste these into the game's daapi command console to jump straight to a rank (for
+testing the Senate & Politics system):
+
+```js
+// Become Dictator immediately:
+daapi.invokeMethod({ event: "/cor_society/engine", method: "debugMakeDictator" })
+
+// Become Emperor (Imperator) immediately:
+daapi.invokeMethod({ event: "/cor_society/engine", method: "debugMakeEmperor" })
+```
+
+Both open the Senate & Politics screen afterwards. The Emperor command also marks
+you as having been Dictator (the first Emperor must pass through the dictatorship).
 
 ## Module Layout
 

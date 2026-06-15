@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.317') {
+      if (window.corSociety && window.corSociety.version === '1.1.321') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
@@ -47,7 +47,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.317',
+        version: '1.1.321',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
@@ -79,7 +79,8 @@
         { event: '/cor_society/modules/crests', method: '_mixinCorSocietyCrests' },
         { event: '/cor_society/modules/portraits_wardrobe', method: '_mixinCorSocietyPortraitsWardrobe' },
         { event: '/cor_society/modules/roster_overlays', method: '_mixinCorSocietyRosterOverlays' },
-        { event: '/cor_society/modules/log_utils', method: '_mixinCorSocietyLogUtils' }
+        { event: '/cor_society/modules/log_utils', method: '_mixinCorSocietyLogUtils' },
+        { event: '/cor_society/modules/politics', method: '_mixinCorSocietyPolitics' }
       ]
       mixins.forEach((mixin) => {
         try {
@@ -193,6 +194,27 @@
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
       }
       window.corSociety.runAction('openFamilyCharacterSheet', args || {})
+    },
+    openPolitics(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      window.corSociety.runAction('openPolitics', args || {})
+    },
+    politicsAction(args) {
+      window.corSociety.runAction('politicsAction', args || {})
+    },
+    debugMakeDictator(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      return window.corSociety.runAction('debugMakeDictator', args || {})
+    },
+    debugMakeEmperor(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      return window.corSociety.runAction('debugMakeEmperor', args || {})
     },
     openVanillaActions(args) {
       window.corSociety.runAction('openVanillaActions', args || {})

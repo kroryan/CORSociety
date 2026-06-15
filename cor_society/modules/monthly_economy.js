@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.317') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.321') {
         return
       }
       Object.assign(window.corSociety, {
@@ -61,6 +61,10 @@
                   this.driftRelations(society)
                   this.resolveTradeCompacts(society, state)
                   this.applyNetworkModifiers(society)
+                  if (this.simulatePoliticsMonthly) {
+                    this.simulatePoliticsMonthly(society, daapi.getState())
+                    state = daapi.getState()
+                  }
                   this.maintainDynastyHouseSystem(society, daapi.getState(), { force: true, phase: 'monthly-final', repairCadetBranches: true })
                   let familyCareQueued = this.queueFamilyCareEvent(society, state)
                   if (society.settings.monthlyEvents && Math.random() < (familyCareQueued ? 0.32 : 0.64)) {
@@ -659,7 +663,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.317'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.321'
     }
   }
 }
