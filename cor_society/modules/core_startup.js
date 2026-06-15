@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.313') {
         return
       }
       Object.assign(window.corSociety, {
@@ -27,6 +27,7 @@
                   this.normalizeDynastyHouseModel(society, state)
                   this.syncPlayerHouseRecord(society, state)
                   this.repairDynastyHouseSystem(society, state)
+                  this.maintainDynastyHouseSystem(society, state, { phase: 'ensure-start' })
                   let monthKey = this.monthKey(state)
                   let ensureKey = this.ensureKey(society, state)
                   let monthChanged = society.lastProcessedStatusMonth !== monthKey
@@ -52,6 +53,7 @@
                       if (monthChanged) {
                         this.repairFalsePlayerSlaveFlags(society, state)
                         this.syncPlayerHouseRecord(society, state)
+                        this.maintainDynastyHouseSystem(society, state, { phase: 'status-month' })
                         this.syncExtendedKinVisibility(society, state)
                         this.ensureSlaveOrderPeople(society, state)
                         this.syncSocietyTraitsWithVanilla(society, state)
@@ -73,6 +75,7 @@
                   this.repairFalsePlayerSlaveFlags(society, state)
                   this.syncPlayerHouseRecord(society, state)
                   this.repairDynastyHouseSystem(society, state)
+                  this.maintainDynastyHouseSystem(society, state, { phase: 'ensure-main' })
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.ensureVisibleHouseMembers(society, state)
                   this.retireDeadHouses(society, state, { notify: false })
@@ -87,6 +90,10 @@
                   this.normalizeGeneratedPeople(society, state)
                   this.ensureGeneratedParents(society, state)
                   this.repairIncompleteGeneratedParentPairs(society, state)
+                  if (this.repairFamilyLinkIntegrity) {
+                    this.repairFamilyLinkIntegrity(society, state)
+                    state = daapi.getState()
+                  }
                   this.ensureGeneratedDynastyTrees(society, state)
                   this.ensureGeneratedLooks(society, state)
                   this.ensureCrests(society, state)
@@ -95,6 +102,7 @@
                   this.syncSocietyTraitsWithVanilla(society, state)
                   this.syncFamilyRelationStatuses(society, state)
                   this.syncSlaveStatuses(society, state)
+                  this.maintainDynastyHouseSystem(society, daapi.getState(), { force: true, phase: 'ensure-final', repairCadetBranches: true })
                   society.lastProcessedStatusMonth = monthKey
                   this.restoreSocietyPortraitLooks(state)
                   this.allowAchievementsWithSociety(state)
@@ -300,6 +308,9 @@
                     result.push(id)
                   })
                   return result
+                },
+        sameCharacterId(first, second) {
+                  return first !== undefined && first !== null && second !== undefined && second !== null && String(first) === String(second)
                 },
         legacyGlobalActionKeys() {
                   return [
@@ -687,7 +698,7 @@
                   return society
                 }
       })
-      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.313'
     }
   }
 }

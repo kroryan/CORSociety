@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.313') {
         return
       }
       Object.assign(window.corSociety, {
@@ -100,7 +100,7 @@
                   let pairs = []
                   firstCandidates.forEach((first) => {
                     secondCandidates.forEach((second) => {
-                      if (this.isMarriageCompatible(first, second)) {
+                      if (this.isMarriageCompatible(first, second, state)) {
                         pairs.push({ first, second })
                       }
                     })
@@ -113,8 +113,8 @@
                   let second = pair.second
                   let mother = this.characterIsMale(first) ? second : first
                   let father = this.characterIsMale(first) ? first : second
-                  let motherHouse = mother.dynastyId === firstHouse.id ? firstHouse : secondHouse
-                  let fatherHouse = father.dynastyId === firstHouse.id ? firstHouse : secondHouse
+                  let motherHouse = this.sameCharacterId(mother.id, first.id) ? firstHouse : secondHouse
+                  let fatherHouse = this.sameCharacterId(father.id, first.id) ? firstHouse : secondHouse
                   let isMatrilineal = this.socialLevel(motherHouse.stratum) >= this.socialLevel(fatherHouse.stratum)
                   try {
                     daapi.performMarriage({
@@ -2636,6 +2636,50 @@
                   house.lastFamilyEvent = house.name + ' expands its household through marriage and dependants.'
                   return true
                 },
+        repairHouseGenderViability(society, state, house) {
+                  // Give a struggling house (living members, but only one gender left) a chance to
+                  // continue instead of dwindling to extinction. Returns true if a member was added.
+                  if (!house || !house.id || !state || !state.characters) {
+                    return false
+                  }
+                  let living = this.houseLivingMemberIds(society, state, house)
+                  if (!living.length) {
+                    return false
+                  }
+                  let counts = this.houseLivingGenderCounts(society, state, house)
+                  if (counts.male && counts.female) {
+                    return false
+                  }
+                  let gender = counts.male ? 'female' : 'male'
+                  this.generateHouseSeedMember(society, state, house, { gender })
+                  this.refreshHouseMemberLists(society, daapi.getState(), house)
+                  return true
+                },
+        sustainStrugglingHouses(society, state, options) {
+                  // Monthly safety net: before retiring houses, let single-gender households recover
+                  // a breeding pair so they do not slowly dilute and go extinct without recourse.
+                  if (!society || !society.houses || !state || !state.characters) {
+                    return 0
+                  }
+                  options = options || {}
+                  let budget = options.budget || 4
+                  let generated = 0
+                  let houseIds = Object.keys(society.houses)
+                  for (let i = 0; i < houseIds.length; i++) {
+                    if (generated >= budget || (society.generatedCharacterIds || []).length >= 260) {
+                      break
+                    }
+                    let house = society.houses[houseIds[i]]
+                    if (!house) {
+                      continue
+                    }
+                    if (this.repairHouseGenderViability(society, state, house)) {
+                      state = daapi.getState()
+                      generated += 1
+                    }
+                  }
+                  return generated
+                },
         ensureVisibleHouseMembers(society, state) {
                   let totalGeneratedThisTick = 0
                   for (let houseId in society.houses) {
@@ -2652,7 +2696,18 @@
                     }
                     let genderCounts = this.houseLivingGenderCounts(society, state, house)
                     if (!genderCounts.male || !genderCounts.female) {
-                      continue
+                      // A house that lost one gender used to be left to die out. Give it a chance
+                      // to recover by generating an adult of the missing gender instead of skipping.
+                      if (totalGeneratedThisTick < 6 && (society.generatedCharacterIds || []).length < 260 && this.repairHouseGenderViability(society, state, house)) {
+                        state = daapi.getState()
+                        totalGeneratedThisTick++
+                        this.refreshHouseMemberLists(society, state, house)
+                        visible = this.visibleHousePeople(house, state)
+                        genderCounts = this.houseLivingGenderCounts(society, state, house)
+                      }
+                      if (!genderCounts.male || !genderCounts.female) {
+                        continue
+                      }
                     }
                     while (visible.length < this.minimumVisibleMembers(house) && (society.generatedCharacterIds || []).length < 260 && totalGeneratedThisTick < 6) {
                       let headId = visible[0]
@@ -2728,14 +2783,33 @@
                   }
                   options = options || {}
                   let retired = 0
+                  let retiredNames = []
                   Object.keys(society.houses).forEach((houseId) => {
                     let house = society.houses[houseId]
                     if (this.shouldRetireHouse(society, state, house)) {
-                      if (this.retireHouse(society, state, house, options)) {
+                      let name = house.name
+                      // Suppress per-house modals; we show one consolidated notice below to avoid
+                      // a stack of modals when several houses go extinct in the same tick.
+                      if (this.retireHouse(society, state, house, { ...options, notify: false })) {
                         retired += 1
+                        if (name) retiredNames.push(name)
                       }
                     }
                   })
+                  if (options.notify && retiredNames.length) {
+                    this.pushModal({
+                      title: retiredNames.length === 1 ? 'House Extinguished' : 'Houses Extinguished',
+                      message: (retiredNames.length === 1
+                        ? retiredNames[0] + ' has no living known members.'
+                        : retiredNames.length + ' houses lost their last living known members: ' + retiredNames.slice(0, 8).join(', ') + (retiredNames.length > 8 ? ', and others.' : '.')) +
+                        ' Their records are archived under Past Affairs.',
+                      image: this.affairIcon('death'),
+                      options: [
+                        { text: 'Open dead houses', action: { event: this.event, method: 'openDeadHouses' } },
+                        { text: 'Dismiss' }
+                      ]
+                    })
+                  }
                   return retired
                 },
         retireHouse(society, state, house, options) {
@@ -2760,8 +2834,22 @@
                   }
                   society.deadHouses[house.id] = snapshot
                   society.deadHouseIds = [house.id].concat((society.deadHouseIds || []).filter((id) => String(id) !== String(house.id))).slice(0, 80)
+                  let dynastyId = this.gameDynastyIdForHouse ? this.gameDynastyIdForHouse(house) : (house.dynastyId || house.id)
                   delete society.houses[house.id]
                   society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(house.id))
+                  if (dynastyId && society.dynasties && society.dynasties[dynastyId]) {
+                    let dynasty = society.dynasties[dynastyId]
+                    dynasty.houseIds = (dynasty.houseIds || []).filter((id) => String(id) !== String(house.id))
+                    if (String(dynasty.headHouseId || '') === String(house.id)) {
+                      dynasty.headHouseId = ''
+                    }
+                    if (String(dynasty.originHouseId || '') === String(house.id)) {
+                      dynasty.originHouseId = ''
+                    }
+                  }
+                  if (this.maintainDynastyHouseSystem) {
+                    this.maintainDynastyHouseSystem(society, state, { force: true, phase: 'retire' })
+                  }
                   this.log(society, 'House ' + house.name + ' becomes extinct; its records move to the dead-house archive.', 'death', house.id)
                   if (options.notify) {
                     this.pushModal({
@@ -3157,7 +3245,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.313'
     }
   }
 }
