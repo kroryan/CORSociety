@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1496,16 +1496,26 @@
                   })
                 },
         openVanillaKnownFamily({ houseId, characterId, group, page, returnTo, returnPage, origin } = {}) {
+                  // The "Known Family Tree" (vanilla known-family view / Society 'known' mode) is
+                  // disabled: it does not represent Society's houses/dynasties or generated kin
+                  // coherently. Route the player to the working House Family Tree instead.
                   let society = this.ensure()
                   let state = daapi.getState()
-                  let house = society.houses[houseId]
-                  if (this.preferSocietyTree(characterId, society, house, state)) {
-                    this.openFamilyTree({ houseId, characterId, group, page, mode: 'known', returnTo, returnPage, origin })
+                  let character = characterId && state.characters ? state.characters[characterId] : false
+                  let resolvedHouseId = houseId && society.houses[houseId] ? houseId : ''
+                  if (!resolvedHouseId && character) {
+                    character.id = character.id || characterId
+                    resolvedHouseId = this.houseIdForCharacter(character, state, society) || ''
+                  }
+                  if (resolvedHouseId && society.houses[resolvedHouseId]) {
+                    this.openHouseFamilyTree({ houseId: resolvedHouseId, returnTo, returnPage, origin })
                     return
                   }
-                  if (!this.openVanillaFamilyRoute(characterId, '#/knownFamily')) {
-                    this.openFamilyTree({ houseId, characterId, group, page, mode: 'known', returnTo, returnPage, origin })
+                  if (houseId && characterId) {
+                    this.openPerson({ houseId, characterId, group, page: page || 0, returnTo, returnPage })
+                    return
                   }
+                  this.openHub()
                 },
         openVanillaFullFamilyTree({ houseId, characterId, group, page, returnTo, returnPage, origin } = {}) {
                   let society = this.ensure()
@@ -2136,6 +2146,11 @@
                       remaining: mode === 'known' ? 70 : mode === 'house' ? 120 : 220,
                       hidden: 0
                     }
+                    // Many characters in one dynasty share the exact display name (praenomen +
+                    // dynasty name) because Roman praenomina repeat. Detect names that belong to more
+                    // than one distinct id in this tree so the cards can disambiguate them; otherwise
+                    // distinct relatives look like the same person rendered several times.
+                    let collidingNames = this.collectFamilyTreeNameCollisions(rootIds, character.id, state, treeFilterIds)
                     let forest = document.createElement('div')
                     forest.className = 'cor-society-family-tree-forest'
                     let sharedVisited = {}
@@ -2158,7 +2173,8 @@
                         visited: sharedVisited,
                         returnTo,
                         returnPage,
-                        origin
+                        origin,
+                        nameMap: collidingNames
                       })
                     if (branch && branch.childNodes && branch.childNodes.length) {
                       // The first branch is the main line (focus first). Any further branches are
@@ -2193,7 +2209,8 @@
                         visited: {},
                         returnTo,
                         returnPage,
-                        origin
+                        origin,
+                        nameMap: collidingNames
                       })
                       if (fallbackBranch && fallbackBranch.childNodes && fallbackBranch.childNodes.length) {
                         forest.appendChild(fallbackBranch)
@@ -3207,7 +3224,64 @@
                   }
                   return current && current.id ? current.id : characterId
                 },
-        createFamilyTreeBranch({ rootId, focusId, state, society, fallbackHouse, depth, depthLimit, treeBudget, mode, allowedIds, visited, returnTo, returnPage, origin }) {
+        collectFamilyTreeNameCollisions(rootIds, focusId, state, allowedIds) {
+                  let collisions = {}
+                  if (!state || !state.characters) {
+                    return collisions
+                  }
+                  let seen = {}
+                  let nameIds = {}
+                  let queue = (rootIds || []).map((id) => String(id))
+                  if (focusId !== undefined && focusId !== null && focusId !== '') {
+                    queue.push(String(focusId))
+                  }
+                  let guard = 0
+                  while (queue.length && guard < 2000) {
+                    guard += 1
+                    let id = String(queue.shift())
+                    if (!id || seen[id] || !state.characters[id]) {
+                      continue
+                    }
+                    seen[id] = true
+                    let character = state.characters[id]
+                    let name = this.characterName({ ...character, id }, state)
+                    nameIds[name] = nameIds[name] || {}
+                    nameIds[name][id] = true
+                    let spouseId = this.treeSpouseId(character, state)
+                    if (spouseId && state.characters[spouseId] && !seen[String(spouseId)]) {
+                      queue.push(String(spouseId))
+                    }
+                    this.treeChildrenIds(character, state).forEach((childId) => {
+                      if (allowedIds && !allowedIds[String(childId)]) {
+                        return
+                      }
+                      if (!seen[String(childId)]) {
+                        queue.push(String(childId))
+                      }
+                    })
+                  }
+                  Object.keys(nameIds).forEach((name) => {
+                    if (Object.keys(nameIds[name]).length > 1) {
+                      collisions[name] = true
+                    }
+                  })
+                  return collisions
+                },
+        familyTreeDisplayName(character, state, nameMap) {
+                  let name = this.characterName(character, state)
+                  if (!nameMap || !nameMap[name]) {
+                    return name
+                  }
+                  // Disambiguate distinct people who share the same praenomen + dynasty name.
+                  if (character.isDead && character.deathYear) {
+                    return name + ' (d. ' + character.deathYear + ')'
+                  }
+                  if (character.birthYear) {
+                    return name + ' (b. ' + character.birthYear + ')'
+                  }
+                  return name + ' #' + String(character.id || '').slice(-4)
+                },
+        createFamilyTreeBranch({ rootId, focusId, state, society, fallbackHouse, depth, depthLimit, treeBudget, mode, allowedIds, visited, returnTo, returnPage, origin, nameMap }) {
                   let character = state.characters[rootId]
                   let branch = document.createElement('div')
                   branch.className = 'cor-society-tree-family'
@@ -3252,9 +3326,9 @@
         
                   let couple = document.createElement('div')
                   couple.className = 'cor-society-tree-couple' + (children.length ? ' has-children' : '')
-                  couple.appendChild(this.createFamilyTreeCharacterCard(character, state, society, fallbackHouse, this.treeRoleLabel(character, focusId, depth, false, mode), focusId, returnTo, returnPage, mode, false, origin))
+                  couple.appendChild(this.createFamilyTreeCharacterCard(character, state, society, fallbackHouse, this.treeRoleLabel(character, focusId, depth, false, mode), focusId, returnTo, returnPage, mode, false, origin, nameMap))
                   if (spouse && !this.sameCharacterId(spouse.id, character.id)) {
-                    couple.appendChild(this.createFamilyTreeCharacterCard(spouse, state, society, fallbackHouse, this.treeRoleLabel(spouse, focusId, depth, true, mode, spouseIsTreeGuest), focusId, returnTo, returnPage, mode, spouseIsTreeGuest, origin))
+                    couple.appendChild(this.createFamilyTreeCharacterCard(spouse, state, society, fallbackHouse, this.treeRoleLabel(spouse, focusId, depth, true, mode, spouseIsTreeGuest), focusId, returnTo, returnPage, mode, spouseIsTreeGuest, origin, nameMap))
                   }
                   branch.appendChild(couple)
         
@@ -3276,7 +3350,8 @@
                         visited,
                         returnTo,
                         returnPage,
-                        origin
+                        origin,
+                        nameMap
                       })
                       if (childBranch && childBranch.childNodes && childBranch.childNodes.length) {
                         childrenWrap.appendChild(childBranch)
@@ -3288,7 +3363,7 @@
                   }
                   return branch
                 },
-        createFamilyTreeCharacterCard(character, state, society, fallbackHouse, role, focusId, returnTo, returnPage, mode, isTreeGuest, origin) {
+        createFamilyTreeCharacterCard(character, state, society, fallbackHouse, role, focusId, returnTo, returnPage, mode, isTreeGuest, origin, nameMap) {
                   let house = this.treeHouseForCharacter(character, state, society, fallbackHouse)
                   let card = document.createElement('button')
                   card.type = 'button'
@@ -3347,7 +3422,7 @@
         
                   let nameEl = document.createElement('span')
                   nameEl.className = 'cor-society-tree-card-name'
-                  nameEl.textContent = this.characterName(character, state)
+                  nameEl.textContent = this.familyTreeDisplayName(character, state, nameMap)
                   text.appendChild(nameEl)
         
                   let metaEl = document.createElement('span')
@@ -5220,7 +5295,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.316'
     }
   }
 }

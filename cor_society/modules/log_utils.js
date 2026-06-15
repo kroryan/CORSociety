@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -297,7 +297,21 @@
                       issues.push('possible-duplicate [' + key + ']: ' + byKey[key].join(', '))
                     }
                   })
-                  return { currentId: String(currentId || ''), houseId: houseId || '', dynastyId: dynastyId || '', count: members.length, issueCount: issues.length, issues, members }
+                  // Distinct characters that share the exact display name (the usual reason the same
+                  // name appears several times in a tree: Roman praenomina repeat within a dynasty).
+                  let byName = {}
+                  members.forEach((member) => {
+                    byName[member.name] = byName[member.name] || []
+                    byName[member.name].push(member.id)
+                  })
+                  let nameCollisions = {}
+                  Object.keys(byName).forEach((name) => {
+                    if (byName[name].length > 1) {
+                      nameCollisions[name] = byName[name]
+                      issues.push('same-name-different-ids [' + name + ']: ' + byName[name].join(', '))
+                    }
+                  })
+                  return { currentId: String(currentId || ''), houseId: houseId || '', dynastyId: dynastyId || '', count: members.length, issueCount: issues.length, issues, nameCollisions, members }
                 },
         debugSectionOptions(section) {
                   let sections = [
@@ -513,7 +527,7 @@
                   return picked
                 }
       })
-      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.316'
     }
   }
 }

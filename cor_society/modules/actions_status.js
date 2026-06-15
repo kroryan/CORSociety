@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -2308,7 +2308,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.316'
     }
   }
 }

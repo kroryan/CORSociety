@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -893,7 +893,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.316'
     }
   }
 }

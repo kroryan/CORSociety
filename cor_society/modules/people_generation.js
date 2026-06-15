@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1436,9 +1436,37 @@
                   }
                   return changed
                 },
+        isSelfAncestor(state, id) {
+                  // Returns true if `id` appears among its own ancestors (a corrupt parent cycle).
+                  if (!state || !state.characters || !id || !state.characters[id]) {
+                    return false
+                  }
+                  let target = String(id)
+                  let seen = {}
+                  let start = state.characters[id]
+                  let queue = [start.fatherId, start.motherId].filter(Boolean).map(String)
+                  let guard = 0
+                  while (queue.length && guard < 400) {
+                    guard += 1
+                    let pid = String(queue.shift())
+                    if (!pid || seen[pid]) {
+                      continue
+                    }
+                    if (pid === target || this.sameCharacterId(pid, target)) {
+                      return true
+                    }
+                    seen[pid] = true
+                    let parent = state.characters[pid]
+                    if (parent) {
+                      if (parent.fatherId) queue.push(String(parent.fatherId))
+                      if (parent.motherId) queue.push(String(parent.motherId))
+                    }
+                  }
+                  return false
+                },
         repairFamilyLinkIntegrity(society, state) {
                   // Conservative invariant repair for mod-owned characters. Fixes the asymmetric /
-                  // self-referential links that the over-aggressive 1.1.313 coupling could create in
+                  // self-referential links that the over-aggressive 1.1.316 coupling could create in
                   // existing saves (the cause of a character appearing several times in the vanilla
                   // tree). It only ever edits characters the mod generated; it never edits a living
                   // real character and never touches the OTHER side of a link.
@@ -1468,10 +1496,17 @@
                     } else if (character.spouseId) {
                       let partner = state.characters[character.spouseId]
                       // Non-mutual spouse link: the partner does not point back. Clear ONLY our side
-                      // (the fake claim 1.1.313 may have written). Never edit the partner.
+                      // (the fake claim 1.1.316 may have written). Never edit the partner.
                       if (partner && String(partner.spouseId || '') !== String(id)) {
                         patch.spouseId = null
                       }
+                    }
+                    // Ancestor cycle: if this character is its own ancestor (corrupt data), detach its
+                    // parent links so the family graph is acyclic. A vanilla family tree has no cycle
+                    // guard, so such a cycle would make it render the same person repeatedly.
+                    if (this.isSelfAncestor && this.isSelfAncestor(state, id)) {
+                      patch.fatherId = null
+                      patch.motherId = null
                     }
                     if (Object.keys(patch).length) {
                       try {
@@ -1937,7 +1972,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.316'
     }
   }
 }

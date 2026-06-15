@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.313') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -102,7 +102,25 @@
                   })
                   return Object.keys(actions).map((key) => {
                     return { key, action: actions[key] }
-                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions)
+                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions && !this.isHiddenVanillaFamilyTreeAction(item))
+                },
+        isHiddenVanillaFamilyTreeAction(item) {
+                  // The vanilla "Known Family Tree" screen does not render Society's generated kin
+                  // correctly, so we hide it from the Society "Vanilla / other mods actions" list.
+                  // The player uses the Society House / Dynasty trees instead. (Only the Known tree
+                  // is hidden; other vanilla family/tree actions are left untouched.)
+                  if (!item) {
+                    return false
+                  }
+                  let action = item.action || {}
+                  let haystacks = [
+                    item.key,
+                    action.title,
+                    action.tooltip,
+                    action.process && (action.process.path || action.process.route || action.process.hash || action.process.method),
+                    action.action && (action.action.path || action.action.route || action.action.hash || action.action.method)
+                  ].map((value) => String(value || '').toLowerCase())
+                  return haystacks.some((value) => value.indexOf('knownfamily') >= 0 || value.indexOf('known family') >= 0)
                 },
         bundledCharacterActions(character) {
                   let state = daapi.getState()
@@ -1044,7 +1062,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.313'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.316'
     }
   }
 }
