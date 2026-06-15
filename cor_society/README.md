@@ -2,11 +2,12 @@
 
 This folder is the installable Roman Society mod package.
 
-Current runtime version: `1.1.316`.
+Current runtime version: `1.1.317`.
 
 Use the root documentation as the source of truth:
 
 - [Roman Society README](../README.md)
+- [1.1.317 changelog](../logs/1.1.317.md)
 - [1.1.316 changelog](../logs/1.1.316.md)
 - [1.1.315 changelog](../logs/1.1.315.md)
 - [1.1.314 changelog](../logs/1.1.314.md)

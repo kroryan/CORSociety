@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.316') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.317') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1904,6 +1904,92 @@
                     console.warn(err)
                   }
                   return false
+                },
+        installVanillaFamilyButtonRedirect() {
+                  // The base game's portrait "view this character's family" menu opens the vanilla
+                  // Known Family Tree (route /knownFamily). That view does not render Society's
+                  // houses/dynasties or generated kin coherently, so we intercept that navigation at
+                  // the router level (language-independent: matched on the route path, not the button
+                  // label) and open Society's working House Family Tree for the selected character
+                  // instead. Every other navigation is passed straight through to the game.
+                  try {
+                    let root = this.findGameVueRoot()
+                    if (!root || !root.$router || typeof root.$router.push !== 'function') {
+                      return false
+                    }
+                    let router = root.$router
+                    if (router.__corSocietyFamilyRedirect === this.version) {
+                      return true
+                    }
+                    let self = this
+                    let isKnownFamilyTarget = (to) => {
+                      if (!to) {
+                        return false
+                      }
+                      let path = ''
+                      let name = ''
+                      if (typeof to === 'string') {
+                        path = to
+                      } else if (typeof to === 'object') {
+                        path = to.path || to.fullPath || to.hash || ''
+                        name = to.name || ''
+                      }
+                      path = String(path || '').toLowerCase()
+                      name = String(name || '').toLowerCase()
+                      return path.indexOf('knownfamily') >= 0 || name.indexOf('knownfamily') >= 0
+                    }
+                    let wrap = (methodName) => {
+                      let key = '__corSocietyOriginal_' + methodName
+                      if (typeof router[methodName] !== 'function') {
+                        return
+                      }
+                      router[key] = router[key] || router[methodName]
+                      let original = router[key]
+                      router[methodName] = function(to, onComplete, onAbort) {
+                        try {
+                          if (isKnownFamilyTarget(to)) {
+                            let state = daapi.getState()
+                            let selectedId = (state && state.current && state.current.selectedCharacterId) || ''
+                            if (!selectedId && root.$store && root.$store.state && root.$store.state.current) {
+                              selectedId = root.$store.state.current.selectedCharacterId || ''
+                            }
+                            self.openHouseTreeForVanillaCharacter(selectedId)
+                            return typeof Promise !== 'undefined' ? Promise.resolve(false) : undefined
+                          }
+                        } catch (err) {
+                          console.warn(err)
+                        }
+                        return original.call(this, to, onComplete, onAbort)
+                      }
+                    }
+                    wrap('push')
+                    wrap('replace')
+                    router.__corSocietyFamilyRedirect = this.version
+                    return true
+                  } catch (err) {
+                    console.warn(err)
+                    return false
+                  }
+                },
+        openHouseTreeForVanillaCharacter(characterId) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let character = characterId && state.characters ? state.characters[characterId] : false
+                  if (!character) {
+                    characterId = this.currentCharacterId(state)
+                    character = state.characters && state.characters[characterId]
+                  }
+                  if (!character) {
+                    this.openHub()
+                    return
+                  }
+                  character.id = character.id || characterId
+                  let houseId = this.houseIdForCharacter(character, state, society)
+                  if (houseId && society.houses[houseId]) {
+                    this.openHouseFamilyTree({ houseId })
+                    return
+                  }
+                  this.openHub()
                 },
         findGameVueRoot() {
                   if (this.cachedGameVueRoot && this.isGameVueRoot(this.cachedGameVueRoot)) {
@@ -5295,7 +5381,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.316'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.317'
     }
   }
 }

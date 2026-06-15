@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.316') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.317') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1466,7 +1466,7 @@
                 },
         repairFamilyLinkIntegrity(society, state) {
                   // Conservative invariant repair for mod-owned characters. Fixes the asymmetric /
-                  // self-referential links that the over-aggressive 1.1.316 coupling could create in
+                  // self-referential links that the over-aggressive 1.1.317 coupling could create in
                   // existing saves (the cause of a character appearing several times in the vanilla
                   // tree). It only ever edits characters the mod generated; it never edits a living
                   // real character and never touches the OTHER side of a link.
@@ -1496,7 +1496,7 @@
                     } else if (character.spouseId) {
                       let partner = state.characters[character.spouseId]
                       // Non-mutual spouse link: the partner does not point back. Clear ONLY our side
-                      // (the fake claim 1.1.316 may have written). Never edit the partner.
+                      // (the fake claim 1.1.317 may have written). Never edit the partner.
                       if (partner && String(partner.spouseId || '') !== String(id)) {
                         patch.spouseId = null
                       }
@@ -1972,7 +1972,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.316'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.317'
     }
   }
 }

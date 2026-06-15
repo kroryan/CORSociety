@@ -33,18 +33,21 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.316') {
+      if (window.corSociety && window.corSociety.version === '1.1.317') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
         window.corSociety.startPlayerCrestOverlay()
         window.corSociety.startPlayerStatusOverlay()
+        if (window.corSociety.installVanillaFamilyButtonRedirect) {
+        window.corSociety.installVanillaFamilyButtonRedirect()
+      }
         return
       }
 
       window.corSociety = {
-        version: '1.1.316',
+        version: '1.1.317',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
@@ -57,6 +60,9 @@
       window.corSociety.registerPlayerEntryActions()
       window.corSociety.startPlayerCrestOverlay()
       window.corSociety.startPlayerStatusOverlay()
+      if (window.corSociety.installVanillaFamilyButtonRedirect) {
+        window.corSociety.installVanillaFamilyButtonRedirect()
+      }
     },
     applyRefactorMixins() {
       let mixins = [

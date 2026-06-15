@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCrestsVersion === '1.1.316') {
+      if (window.corSociety._mixinCorSocietyCrestsVersion === '1.1.317') {
         return
       }
       Object.assign(window.corSociety, {
@@ -233,7 +233,7 @@
                     .replace(/"/g, '&quot;')
                 }
       })
-      window.corSociety._mixinCorSocietyCrestsVersion = '1.1.316'
+      window.corSociety._mixinCorSocietyCrestsVersion = '1.1.317'
     }
   }
 }
