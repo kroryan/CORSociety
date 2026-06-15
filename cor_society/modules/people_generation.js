@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -290,6 +290,7 @@
                           childrenIds: children
                         }
                       })
+                      parent.childrenIds = children
                     }
                   })
                   house.memberIds = house.memberIds || []
@@ -323,10 +324,14 @@
                   if (canBeChild) {
                     if (headIsMale) {
                       fatherId = head.id
-                      motherId = spouse && !this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostParent(society, state, head, false)
+                      motherId = spouse && !this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostCoParent(society, state, house, head, false, relativeAge)
                     } else {
                       motherId = head.id
-                      fatherId = spouse && this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostParent(society, state, head, true)
+                      fatherId = spouse && this.characterIsMale(spouse) ? spouse.id || head.spouseId : this.generateGhostCoParent(society, state, house, head, true, relativeAge)
+                    }
+                    if (fatherId && motherId) {
+                      state = daapi.getState()
+                      this.linkParentPair(state, fatherId, motherId)
                     }
                   }
                   let motherLook = motherId && state.characters[motherId] ? state.characters[motherId] : (headIsMale ? spouse : head)
@@ -709,6 +714,8 @@
                           characterId,
                           character: patch
                         })
+                        if (patch.fatherId) character.fatherId = patch.fatherId
+                        if (patch.motherId) character.motherId = patch.motherId
                       } catch (err) {
                         console.warn(err)
                       }
@@ -737,6 +744,12 @@
                     let hasFather = !!(character.fatherId && state.characters[character.fatherId])
                     let hasMother = !!(character.motherId && state.characters[character.motherId])
                     if (hasFather && hasMother) {
+                      // Both parents exist: ensure they are coupled so the vanilla family tree does
+                      // not split the family into two. Repairs existing saves; no-op for already
+                      // coupled pairs and never breaks a living real marriage.
+                      if (this.linkParentPair(state, character.fatherId, character.motherId)) {
+                        repaired += 1
+                      }
                       continue
                     }
                     let parents = this.ensureGeneratedParentPair(society, state, character)
@@ -1218,6 +1231,7 @@
                   let childBirthYear = parseInt(child.birthYear || state.year || 0, 10)
                   let birthYear = childBirthYear - this.randomInt(20, 34)
                   let deathYear = Math.max(childBirthYear, Math.min(state.year || childBirthYear, childBirthYear + this.randomInt(5, 28)))
+                  let deathCause = this.ghostDeathCause(birthYear, deathYear)
                   let parentId = daapi.generateCharacter({
                     characterFeatures: {
                       gender: isMale ? 'male' : 'female',
@@ -1228,7 +1242,7 @@
                       deathMonth: this.randomInt(0, 11),
                       deathYear,
                       isDead: true,
-                      deathCause: 'old age',
+                      deathCause,
                       look: this.inheritedVanillaLook(isMale, state.characters[grandMotherId] || child, state.characters[grandFatherId] || child, 'collateral-parent-' + child.id),
                       corSocietyGenerated: true,
                       corSocietyGhostParent: true,
@@ -1248,7 +1262,7 @@
                         dynastyId: child.dynastyId || this.gameDynastyIdForHouse(house),
                         corSocietyHouseId: child.corSocietyHouseId || (house && house.id),
                         isDead: true,
-                        deathCause: 'old age',
+                        deathCause,
                         corSocietyGenerated: true,
                         corSocietyGhostParent: true,
                         corSocietyCollateralAncestor: true,
@@ -1349,29 +1363,72 @@
                   } else if (!motherId) {
                     motherId = this.generateGhostParent(society, state, child, false, fatherId)
                     this.linkParentPair(state, fatherId, motherId)
+                  } else {
+                    // Both parents already exist: still make sure they are coupled to each other so
+                    // the vanilla family tree renders them as one couple instead of splitting the
+                    // family into two separate trees. linkParentPair will not break a real living
+                    // marriage (see canRelinkGeneratedSpouse).
+                    this.linkParentPair(state, fatherId, motherId)
                   }
                   return { fatherId, motherId }
+                },
+        canRelinkGeneratedSpouse(character, desiredSpouseId, state) {
+                  // Decide whether it is safe to point this character's spouseId at desiredSpouseId.
+                  // A character is "owned" (safe to set/replace) only if it is a dead ancestor or a
+                  // mod-generated ghost connector. LIVING characters (real OR generated) are never
+                  // touched, so we never fabricate or overwrite a living marriage.
+                  if (!character) {
+                    return true
+                  }
+                  if (character.spouseId && String(character.spouseId) === String(desiredSpouseId)) {
+                    return true
+                  }
+                  let owned = !!(character.isDead || character.corSocietyGhostParent || character.corSocietyGeneratedConnector)
+                  if (!character.spouseId) {
+                    // Empty link: only fill it for dead ancestors / ghost connectors. Never fabricate
+                    // a spouse for a living character (real or generated) who simply has none.
+                    return owned
+                  }
+                  // Stale link to a character that no longer exists: safe to repair.
+                  if (state && state.characters && !state.characters[character.spouseId]) {
+                    return true
+                  }
+                  // Different, existing spouse: only dead ancestors / ghost connectors may be recoupled.
+                  return owned
                 },
         linkParentPair(state, fatherId, motherId) {
                   if (!fatherId || !motherId || !state || !state.characters) {
                     return false
                   }
+                  if (String(fatherId) === String(motherId)) {
+                    return false
+                  }
                   let father = state.characters[fatherId]
                   let mother = state.characters[motherId]
+                  if (!father || !mother) {
+                    return false
+                  }
+                  // ATOMIC: only form the couple if BOTH sides can be safely linked. This prevents a
+                  // one-directional / fake marriage (e.g. a dead generated parent claiming a living
+                  // character as its spouse while that living character stays married to someone
+                  // else), which is what made the vanilla tree render the same person several times.
+                  if (!this.canRelinkGeneratedSpouse(father, motherId, state) || !this.canRelinkGeneratedSpouse(mother, fatherId, state)) {
+                    return false
+                  }
                   let changed = false
-                  if (!father || !father.spouseId) {
+                  if (String(father.spouseId || '') !== String(motherId)) {
                     try {
                       daapi.updateCharacter({ characterId: fatherId, character: { spouseId: motherId } })
-                      if (father) father.spouseId = motherId
+                      father.spouseId = motherId
                       changed = true
                     } catch (err) {
                       console.warn(err)
                     }
                   }
-                  if (!mother || !mother.spouseId) {
+                  if (String(mother.spouseId || '') !== String(fatherId)) {
                     try {
                       daapi.updateCharacter({ characterId: motherId, character: { spouseId: fatherId } })
-                      if (mother) mother.spouseId = fatherId
+                      mother.spouseId = fatherId
                       changed = true
                     } catch (err) {
                       console.warn(err)
@@ -1379,13 +1436,114 @@
                   }
                   return changed
                 },
-        generateGhostParent(society, state, child, isMale, spouseId) {
-                  let childBirthYear = parseInt(child.birthYear || state.year || 0, 10)
-                  let parentAgeAtBirth = this.randomInt(19, 34)
-                  let birthYear = childBirthYear - parentAgeAtBirth
-                  let minDeathYear = birthYear + this.randomInt(42, 68)
-                  let currentYear = state.year || minDeathYear
-                  let deathYear = Math.max(childBirthYear, Math.min(currentYear, Math.max(minDeathYear, childBirthYear + this.randomInt(8, 30))))
+        isSelfAncestor(state, id) {
+                  // Returns true if `id` appears among its own ancestors (a corrupt parent cycle).
+                  if (!state || !state.characters || !id || !state.characters[id]) {
+                    return false
+                  }
+                  let target = String(id)
+                  let seen = {}
+                  let start = state.characters[id]
+                  let queue = [start.fatherId, start.motherId].filter(Boolean).map(String)
+                  let guard = 0
+                  while (queue.length && guard < 400) {
+                    guard += 1
+                    let pid = String(queue.shift())
+                    if (!pid || seen[pid]) {
+                      continue
+                    }
+                    if (pid === target || this.sameCharacterId(pid, target)) {
+                      return true
+                    }
+                    seen[pid] = true
+                    let parent = state.characters[pid]
+                    if (parent) {
+                      if (parent.fatherId) queue.push(String(parent.fatherId))
+                      if (parent.motherId) queue.push(String(parent.motherId))
+                    }
+                  }
+                  return false
+                },
+        repairFamilyLinkIntegrity(society, state) {
+                  // Conservative invariant repair for mod-owned characters. Fixes the asymmetric /
+                  // self-referential links that the over-aggressive 1.1.316 coupling could create in
+                  // existing saves (the cause of a character appearing several times in the vanilla
+                  // tree). It only ever edits characters the mod generated; it never edits a living
+                  // real character and never touches the OTHER side of a link.
+                  if (!society || !state || !state.characters) {
+                    return 0
+                  }
+                  let ids = this.uniqueIds([].concat(society.generatedCharacterIds || [], society.playerTreeGeneratedLivingIds || []))
+                  let repaired = 0
+                  for (let i = 0; i < ids.length && repaired < 60; i++) {
+                    let id = ids[i]
+                    let character = state.characters[id]
+                    if (!character) {
+                      continue
+                    }
+                    character.id = character.id || id
+                    let patch = {}
+                    if (character.fatherId && this.sameCharacterId(character.fatherId, id)) {
+                      patch.fatherId = null
+                    }
+                    if (character.motherId && this.sameCharacterId(character.motherId, id)) {
+                      patch.motherId = null
+                    }
+                    if (character.spouseId && this.sameCharacterId(character.spouseId, id)) {
+                      patch.spouseId = null
+                    } else if (character.spouseId && !state.characters[character.spouseId]) {
+                      patch.spouseId = null
+                    } else if (character.spouseId) {
+                      let partner = state.characters[character.spouseId]
+                      // Non-mutual spouse link: the partner does not point back. Clear ONLY our side
+                      // (the fake claim 1.1.316 may have written). Never edit the partner.
+                      if (partner && String(partner.spouseId || '') !== String(id)) {
+                        patch.spouseId = null
+                      }
+                    }
+                    // Ancestor cycle: if this character is its own ancestor (corrupt data), detach its
+                    // parent links so the family graph is acyclic. A vanilla family tree has no cycle
+                    // guard, so such a cycle would make it render the same person repeatedly.
+                    if (this.isSelfAncestor && this.isSelfAncestor(state, id)) {
+                      patch.fatherId = null
+                      patch.motherId = null
+                    }
+                    if (Object.keys(patch).length) {
+                      try {
+                        daapi.updateCharacter({ characterId: id, character: patch })
+                        if (Object.prototype.hasOwnProperty.call(patch, 'fatherId')) character.fatherId = null
+                        if (Object.prototype.hasOwnProperty.call(patch, 'motherId')) character.motherId = null
+                        if (Object.prototype.hasOwnProperty.call(patch, 'spouseId')) character.spouseId = null
+                        repaired += 1
+                      } catch (err) {
+                        console.warn(err)
+                      }
+                    }
+                  }
+                  return repaired
+                },
+        ghostDeathCause(birthYear, deathYear) {
+                  let age = parseInt(deathYear || 0, 10) - parseInt(birthYear || 0, 10)
+                  if (age >= 62) return 'old age'
+                  if (age >= 40) return 'illness'
+                  return this.pick(['fever', 'accident', 'illness'])
+                },
+        generateGhostCoParent(society, state, house, partner, isMale, childAge) {
+                  if (!partner || !partner.id) {
+                    return ''
+                  }
+                  childAge = Math.max(0, Math.min(40, parseInt(childAge || 0, 10)))
+                  let childBirthYear = parseInt((state.year || 0) - childAge, 10)
+                  let partnerBirthYear = parseInt(partner.birthYear || childBirthYear - this.randomInt(20, 34), 10)
+                  let birthYear = childBirthYear - this.randomInt(18, 34)
+                  if (partnerBirthYear && Math.abs(birthYear - partnerBirthYear) > 14) {
+                    birthYear = partnerBirthYear + this.randomInt(-8, 8)
+                  }
+                  birthYear = Math.min(birthYear, childBirthYear - 16)
+                  let deathYear = Math.max(childBirthYear, Math.min(state.year || childBirthYear, childBirthYear + this.randomInt(1, 24)))
+                  let dynastyId = (house && this.gameDynastyIdForHouse(house)) || partner.dynastyId || ''
+                  let houseId = (house && house.id) || partner.corSocietyHouseId || ''
+                  let deathCause = this.ghostDeathCause(birthYear, deathYear)
                   let parentId = daapi.generateCharacter({
                     characterFeatures: {
                       gender: isMale ? 'male' : 'female',
@@ -1396,7 +1554,68 @@
                       deathMonth: this.randomInt(0, 11),
                       deathYear,
                       isDead: true,
-                      deathCause: 'old age',
+                      deathCause,
+                      look: this.generatedVanillaLook(isMale, 'ghost-coparent-' + partner.id + '-' + childBirthYear),
+                      corSocietyGenerated: true,
+                      corSocietyGhostParent: true,
+                      corSocietyGeneratedConnector: true,
+                      corSocietyGhostCoParent: true,
+                      corSocietyHouseId: houseId,
+                      flagDoNotCull: true,
+                      childrenIds: [],
+                      spouseId: partner.id
+                    },
+                    dynastyFeatures: house ? this.dynastyFeaturesForHouse(house, state) : this.dynastyFeaturesForCharacter(partner, state)
+                  })
+                  try {
+                    daapi.updateCharacter({
+                      characterId: parentId,
+                      character: {
+                        dynastyId,
+                        corSocietyHouseId: houseId,
+                        isDead: true,
+                        deathCause,
+                        corSocietyGenerated: true,
+                        corSocietyGhostParent: true,
+                        corSocietyGeneratedConnector: true,
+                        corSocietyGhostCoParent: true,
+                        childrenIds: [],
+                        spouseId: partner.id,
+                        flagDoNotCull: true
+                      }
+                    })
+                    if (!partner.spouseId) {
+                      daapi.updateCharacter({ characterId: partner.id, character: { spouseId: parentId } })
+                      partner.spouseId = parentId
+                    }
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                  society.generatedCharacterIds = society.generatedCharacterIds || []
+                  if (society.generatedCharacterIds.indexOf(parentId) < 0) {
+                    society.generatedCharacterIds.push(parentId)
+                  }
+                  return parentId
+                },
+        generateGhostParent(society, state, child, isMale, spouseId) {
+                  let childBirthYear = parseInt(child.birthYear || state.year || 0, 10)
+                  let parentAgeAtBirth = this.randomInt(19, 34)
+                  let birthYear = childBirthYear - parentAgeAtBirth
+                  let minDeathYear = birthYear + this.randomInt(42, 68)
+                  let currentYear = state.year || minDeathYear
+                  let deathYear = Math.max(childBirthYear, Math.min(currentYear, Math.max(minDeathYear, childBirthYear + this.randomInt(8, 30))))
+                  let deathCause = this.ghostDeathCause(birthYear, deathYear)
+                  let parentId = daapi.generateCharacter({
+                    characterFeatures: {
+                      gender: isMale ? 'male' : 'female',
+                      isMale,
+                      praenomen: isMale ? this.pick(this.maleNames) : this.pick(this.femaleNames),
+                      birthMonth: this.randomInt(0, 11),
+                      birthYear,
+                      deathMonth: this.randomInt(0, 11),
+                      deathYear,
+                      isDead: true,
+                      deathCause,
                       look: this.inheritedVanillaLook(isMale, child, child, 'ghost-parent-' + child.id + '-' + (isMale ? 'father' : 'mother')),
                       corSocietyGenerated: true,
                       corSocietyGhostParent: true,
@@ -1415,7 +1634,7 @@
                         dynastyId: child.dynastyId,
                         corSocietyHouseId: child.corSocietyHouseId || '',
                         isDead: true,
-                        deathCause: 'old age',
+                        deathCause,
                         corSocietyGenerated: true,
                         corSocietyGhostParent: true,
                         corSocietyGeneratedConnector: true,
@@ -1753,7 +1972,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.316'
     }
   }
 }

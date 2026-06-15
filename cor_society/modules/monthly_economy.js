@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -30,15 +30,22 @@
                   this.repairFalsePlayerSlaveFlags(society, state)
                   this.syncPlayerHouseRecord(society, state)
                   this.repairDynastyHouseSystem(society, state)
+                  this.maintainDynastyHouseSystem(society, state, { phase: 'monthly-start' })
                   this.syncExtendedKinVisibility(society, state, { force: true })
                   this.processBankYear(society, state)
                   this.simulatePrivateLoans(society, state)
                   this.processPlayerSlaves(society, state)
                   this.simulateHouseTurns(society, state)
                   this.repairIncompleteGeneratedParentPairs(society, state)
+                  if (this.repairFamilyLinkIntegrity) {
+                    this.repairFamilyLinkIntegrity(society, state)
+                    state = daapi.getState()
+                  }
                   if (this.preparePlayerDynastyTreeOnce && this.preparePlayerDynastyTreeOnce(society, state)) {
                     state = daapi.getState()
                   }
+                  this.sustainStrugglingHouses(society, state, { budget: 4 })
+                  state = daapi.getState()
                   this.retireDeadHouses(society, state, { notify: true })
                   state = daapi.getState()
                   this.ensureMinimumHouses(society, state)
@@ -54,6 +61,7 @@
                   this.driftRelations(society)
                   this.resolveTradeCompacts(society, state)
                   this.applyNetworkModifiers(society)
+                  this.maintainDynastyHouseSystem(society, daapi.getState(), { force: true, phase: 'monthly-final', repairCadetBranches: true })
                   let familyCareQueued = this.queueFamilyCareEvent(society, state)
                   if (society.settings.monthlyEvents && Math.random() < (familyCareQueued ? 0.32 : 0.64)) {
                     this.queueMonthlyEvent(society, state)
@@ -651,7 +659,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.316'
     }
   }
 }

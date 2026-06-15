@@ -1,107 +1,79 @@
 # Roman Society
 
-Roman Society adds a living social layer to Citizen of Rome.
+Roman Society is a Citizen of Rome mod that adds a persistent social layer around the vanilla character, dynasty, marriage, property, and pregnancy systems.
 
-## Design Rule
+Current development version: `1.1.307`.
 
-Roman Society prioritizes performance, stability, and visual quality over compatibility with older internal versions of the mod. When an older Society save format conflicts with Android stability or clean integration, the mod repairs or discards the old Society-only data instead of preserving risky behavior.
+## Design Goals
 
-## Performance
+- Keep houses, dynasties, marriages, slavery, banking, and family trees tied to real game characters whenever possible.
+- Preserve performance on Android by using bounded monthly batches, scoped tree rendering, and capped historical memory.
+- Prefer repair and migration of Society-only data over preserving old internal save shapes that cause bad trees or unstable UI.
+- Keep fabricated dead ancestors and connector relatives as an intentional genealogy feature, but make them coherent, bounded, and useful.
+- Keep the achievement compatibility hook intentional: the mod clears its own mod-used flag while vanilla easy/sandbox restrictions still apply.
 
-`1.1.307` is based on the stable `1.1.290` gameplay layer, keeps the bounded extended-kin visibility window, and keeps NPC house property play on vanilla Citizen of Rome property math. The engine is now split into module mixins for maintainability, while the public `window.corSociety` method surface and the working action/button dispatch flow are preserved.
+## Entry Points
 
-## Features
+Roman Society registers current-character actions instead of filling the global action bar:
 
-- Adds `Roman Society`, `House Shield`, `Family Wardrobe`, `Bank of Rome`, and `Household Slaves` as actions on the current player character instead of cluttering the global action bar.
-- Adds a `Close Society` button to Society modal pages so the menu can be closed directly without walking back through every screen.
-- Keeps tree opening non-destructive: menu navigation no longer fabricates missing dead parents, grandparents, or extra kin just to make a larger tree.
-- Repairs and maintains one canonical player house tied to the current vanilla dynasty, so Society Sheet, house crest, member groups, Coemptio, and family trees all resolve spouse, children, and close kin through the same household instead of stale cloned houses.
-- Groups houses into social orders using existing game data: dynasty prestige, heritage, jobs, inheritance, Senate links, and living members.
-- Separates dynasties from houses: every dynasty has at least one origin house, can gain secondary cadet houses, and tracks a current head house independently from the origin house name.
-- Lets strong cadet houses challenge and replace the current dynasty head house without renaming any house or breaking the wider dynasty tree.
-- Unifies graphical genealogy around strict tree scopes: `Dynasty tree` resolves only the selected dynasty and its houses, while `House tree` filters that same graph down to the selected connected house branch only.
-- Labels every tree portrait card with its Society house crest and origin/cadet house name, so dynasty trees show which branch each character belongs to.
-- Keeps external spouses, slaves, captured dependants, and unrelated houses out of dynasty and house-tree expansion, reducing duplicate roots and Android freezes when opening large Society trees.
-- Uses connected tree components, canonical couple roots, and shared render deduplication so the same character is not repeated through father, mother, grandfather, grandmother, or stale generated roots.
-- Treats `knownMemberIds` as historical memory, not authoritative house-tree membership, preventing old cached Society records from flooding active house trees.
-- House trees now keep the connected component around the selected house member or house root, suppressing same-house people who are not attached by any real parent, child, or spouse edge.
-- Tree opening no longer scans all generated Society characters for every house tree; it uses scoped house/dynasty lists and local relationship indexes to reduce Android stalls.
-- Dynasty trees no longer create dead collateral ancestors during rendering; disconnected legacy debris is filtered instead of being papered over with new ghost people.
-- Dynasty tree rendering avoids global character scans and shows one connected dynasty component at a time; if older save data still contains disconnected debris, it is hidden instead of drawn as a separate root.
-- Dynasty and house tree openings now share a per-month runtime cache, so opening the same dynasty tree again from another Society route does not repeat the heavy genealogy scan in the same turn.
-- House trees run selected-house membership repair before rendering and suppress disconnected root debris without inventing retroactive ancestry.
-- Adds a canonical house-resolution model used by Society menus, overlays, house lists, and tree renderers: valid explicit house first, then paternal/maternal inheritance, then the dynasty origin house.
-- Repairs old contaminated `corSocietyHouseId` data conservatively, filters stale `knownMemberIds`, and keeps slave/historical membership separate from free house-tree membership.
-- House Tree builds from `selectedHouseId`, then crops to the real connected branch around the focused/root member so unrelated same-house records do not appear as random branches.
-- Uncles, cousins, siblings, descendants, and collateral branches remain visible when they are actually connected to that branch.
-- External spouses may still appear as visual spouse cards, but they are not roots, seeds, or expandable members of the selected house.
-- Living top-level branches in House Tree are labeled `House branch` instead of `Root`, avoiding the misleading appearance of loose generated roots when a house has several internal branches.
-- Added targeted `repairHouseMembership()` before House Tree rendering to repair cadet branch membership, invalid house pointers, and stale known-member lists for the selected house without inventing living characters.
-- Adds `validateDynastyHouseSystem()` to the Society debug snapshot so dynasty/house origin, parent house, founder, member, and mismatch warnings can be inspected from `corSocietyDebug("full")`.
-- Cadet houses now carry `parentHouseId`, `founderId`, `branchRootId`, and `createdAtTurn`, and branch creation moves the founder's descendant branch instead of only immediate children.
-- Generated child relatives now receive both parents, using existing spouses or dead connector parents, preventing half-parent records from turning into loose roots later.
-- Creating a cadet house, whether by the player or NPC house simulation, refreshes dynasty and house membership without fabricating new historical ancestors.
-- Generates missing houses so every social level has families to interact with.
-- Seeds generated houses with real game characters at startup, preferring young adult founders so they have time to marry, have children, rise, or fall.
-- Generated houses try to keep at least one living man and one living woman available, so new houses do not begin as immediate dead-end lines.
-- Generated houses seed living members conservatively and rely on real parent, child, and spouse links rather than retroactive shared ancestor lines.
-- Generated children with one existing parent can be repaired with the missing spouse/parent; characters with no parents are no longer given a fabricated dead parent pair during tree rendering.
-- Uses vanilla Citizen of Rome portrait assets through a local `icons/characters/...` to `img/*.svg` resolver, and keeps vanilla look data as the base identity.
-- Uses stable vanilla-based looks for Society-generated characters, with age progression and inherited look colors.
-- Gives generated characters vanilla Citizen of Rome traits through `daapi.addTrait`.
-- Adds Society social traits as real game trait definitions with original Roman Society SVG icons, such as Adulterer, Faithful, Liar, Honorable, Manipulator, Charitable, Cruel, Gossip, Ambitious, Resentful, Mentor, and Student; these appear alongside game traits where Citizen of Rome shows character traits and affect relationships, courtship, trade, scandals, and family events.
-- Generates persistent Roman-style house shields for the player and every known NPC house.
-- Adds a separate current-character `House Shield` action for editing the player's shield without cluttering the Society menus.
-- Adds a current-character `Family Wardrobe` action with its own wardrobe icon for changing safe vanilla-SVG clothing tint, with outfit availability tied to the player's Society order.
-- Bundles compatible standalone actions inside Society so they do not need separate installation: Play As, Attempt Murder, animal stealing events, Disinherit, Restore Inheritance, Bank of Rome, Coemptio matchmaking, Household Slaves, and optional desktop DevTools access. Society can also surface the bundled character actions from its `Vanilla / other mods actions` menu even if the base game has not injected them into that character yet.
-- Adds contextual Society stealing against a selected character's household, with cooldowns, target-house context, success/failure outcomes, and caught consequences against both personal and house relations.
-- Replaces the old Society poor order presentation with a slave order: slave kin groups, market candidates, captured dependants, household slaves, and manumitted freedmen are all represented by real characters where possible.
-- Gives slaves cultural origins, owner links, Society status icons, household work roles, sale/manumission flow, and access from Society menus while keeping their vanilla portraits unobstructed.
-- Repairs false slave markers on legitimate player-family members, including spouses and children that were accidentally linked to slave-order houses in older saves, while keeping real slave-born bastards distinct.
-- Supports rare Roman slave origins from debt-bondage, condemnation, or renegade status. Those explanatory slavery notes are cleared when the character becomes free.
-- Gives owned slaves assignable household tasks with cooldowns and capped owner benefits: accounts can produce cash, educators can improve selected children under 13, doctors can treat household conditions, entertainers can add prestige, warriors can add influence/security, and laborers can provide small cash.
-- Expands the slave market with more purchasable profiles, including tutors, scribes, nurses, midwives, musicians, dancers, stewards, accountants, couriers, bodyguards, gladiators, hunters, cooks, artisans, and stable hands. These profiles map back to balanced household tasks and existing icon assets.
-- Gives owned slaves slow personal savings and an explicit freedom objective. When savings reach the freedom price, the player can accept self-purchase and manumit them into their own Freedmen house.
-- Allows marriages only between owned household slaves of different gender. Your family cannot arrange marriages with enslaved characters through Society or Coemptio.
-- Allows married owned slave couples to have children through the game's pregnancy API; children born to household slaves are recorded as real household slave characters.
-- Adds a private company action with prestige, relationship, and savings effects plus cooldown. It is adult-only. When executed with a female slave of childbearing age, it carries risk of illegitimate pregnancy; children born to household slaves through private company are recorded as real household slave bastards with hidden biological paternity. Eligible children can later be manumitted or legitimized into the free father's dynasty.
-- Manumitted slaves become freed citizens/liberti in their own new Freedmen house, rather than being absorbed into the player's household or a shared reception house.
-- Enslaved player characters reached through Play As get a current-character `Path to Freedom` action with extra work, patron-seeking, petitions, escape attempts, savings, and manumission into a free Freedmen house.
-- Lets manumitted freedmen houses occasionally try to buy and free enslaved close relatives when they can afford it.
-- Lets NPC houses use the integrated Bank of Rome, Coemptio, and Household Slaves systems as virtual players; they may borrow, buy slaves, pursue marriages, and suffer consequences from social or hostile actions.
-- Bank of Rome includes private loans: the player can lend personal cash to Society houses, request loans from wealthy houses through `Borrow`, and NPC houses can lend to each other when one has surplus and another needs liquidity.
-- Lets NPC houses use vanilla Citizen of Rome property economics: the same property keys, values, revenue, stewardship limits, economy-of-scale factor, sale rate, and senatorial commercial-property restriction used by the base game.
-- Injects a Bank of Rome loan option into negative-cash forced-sale/debt notices when possible, so debt can be covered by a balanced loan in the same flow instead of a separate follow-up prompt.
-- Tracks persistent relationships, favors, rivalries, patronage, trade ties, allies, rivals, and past affairs.
-- Houses with no living known members are removed from active Society orders and archived under Past Affairs as dead houses, with final notes and family trees where possible.
-- Shows visual relationship badges with score, color, and icon in Society character lists, and uses safe Citizen of Rome character status icons for meaningful family relations instead of fragile floating DOM overlays.
-- Splits allies/patrons and rivals into separate paged menus with matching overview counts and contextual Back navigation.
-- Shows past affairs as paged notification-style entries with their own event icons.
-- Uses copied vanilla interface icons for social orders and Society actions where the mod API allows local assets.
-- Lets the player inspect every known living dynasty member through Notables, Established members, and Common kin.
-- Lets the player interact with houses and characters, including Society actions plus vanilla / other mod character actions when the game exposes them.
-- Adds character family navigation through Society Sheet routes plus house and dynasty graphical trees with portrait cards, spouse links, children branches, house labels, zoom, centering, stable Back navigation, and dark/light theme detection.
-- Lets the player arrange marriages between unmarried adults from their household and NPC houses using the game's marriage API.
-- Includes the current player character as a marriage candidate when they are unmarried, so starts without a spouse and sudden succession cases can still use Society marriages.
-- Lets introduced characters become lovers through private courtship regardless of gender, with rapport, cooldowns, scandal risk, possible pregnancy when biologically possible, and divorce fallout when an exposed affair breaks a marriage.
-- Courtship now opens a five-choice interaction where the best approach depends on traits, personality, status, and scandal risk. Characters younger than 13 cannot become lovers.
-- Lover pregnancies track hidden biological paternity. If a scandal exposes the true father, Society corrects the family tree and transfers the child to the biological father's dynasty when the official father was wrong.
-- Changes a used `Request introduction` into `Invite home to talk`, so introductions are a one-time social step and later visits become cooldown-limited relationship events.
-- Shows short parenthesized reasons when marriage is unavailable, such as no adult, too high, too low, or required relation.
-- Adds native button tooltips to Society menus and event popups so long-pressing/holding an option shows the expected consequences before confirming it.
-- Restricts marriages by order: one order down, same order, one order up, or two orders up with very high relations.
-- Derives the player's Society order from the base game's property class, senatorial flag, and vanilla heritage, then updates the visible main-screen citizen title without overwriting vanilla `heritage`.
-- Applies real game effects through cash, prestige, influence, revenue modifiers, and monthly events.
-- Adds family-care events for stressed, severely stressed, depressed, sick, ill, or wounded household members, with treatment, rest, or neglect options.
-- Adds lightweight trade compact reviews, patronage account audits, and child tutorship offers so active social ties keep producing choices without heavy monthly processing.
-- Trade compacts no longer stack infinitely: each house can maintain one active trade bonus, and the compact breaks automatically if relations collapse or rivalry starts.
-- Lets houses play their own monthly social game through wealth, power, stability, agendas, family events, inter-house marriages, pregnancies, inter-house relationships, and rank movement.
-- Gives each house a separate virtual-player state: AI cash, AI influence, AI prestige, property, focus, and controller marker.
-- Lets large vanilla changes to the player's cash, influence, or prestige shift Society relations, so base-game events can affect the social map too.
-- Can surface family events to the player: office campaigns, marriage alliances, inheritance disputes, trade ventures, scandals, feuds, petitions, and slander.
-- Maintains a capped extended-kin window around the player's household through the game's own close-family retention path. This lets visible NPC relatives continue marriage and children across more Society generations, while the cap and monthly recalculation protect Android performance.
+- `Roman Society`
+- `House Shield`
+- `Family Wardrobe`
+- `Bank of Rome`
+- `Household Slaves`
+- `Path to Freedom`, when the current player character is enslaved
+
+The bundled modules also expose integrated versions of Play As, Attempt Murder, animal stealing, Disinherit, Restore Inheritance, Bank of Rome, Coemptio, and Household Slaves.
+
+## Dynasties And Houses
+
+Roman Society separates dynasties from houses.
+
+- A dynasty is the wider vanilla blood/name group.
+- A house is a Society branch inside a dynasty.
+- Each dynasty has an active origin or successor house, may create cadet houses, and tracks a current head house separately from the origin name.
+- Cadet houses keep `parentHouseId`, `founderId`, `branchRootId`, `createdAtTurn`, and branch metadata.
+- Strong cadet houses can become the head house without renaming the dynasty or erasing the origin branch.
+
+The model now uses two kinds of maintenance:
+
+- Versioned migration repairs old Society save layouts when the mod version changes.
+- Monthly/lightweight maintenance keeps active dynasty invariants valid: house lists, origin/head references, cadet parent houses, and branch membership.
+
+This split keeps the expensive repair behavior controlled while still preventing stale active data from accumulating after births, deaths, cadet creation, house retirement, or player succession.
+
+## Family Trees And Ancestors
+
+Fabricated ancestors are part of the design.
+
+Generated houses, player dynasty preparation, and dynasty tree repair may create dead parents, grandparents, collateral ancestors, and dead co-parents. These characters are real generated game characters marked with Society connector flags. They exist so trees have believable roots and branches instead of loose one-person islands.
+
+The current rules are:
+
+- Tree and dynasty repair may fabricate dead connectors when needed.
+- Living filler is bounded and only used by systems that intentionally seed or preserve a branch.
+- House trees filter to the selected house branch.
+- Dynasty trees stay inside the selected dynasty and its houses.
+- External spouses may appear as spouse cards, but they are not used as roots or expandable members of the selected house.
+- Slaves and slave-market characters stay outside free house and dynasty tree expansion unless a specific slave system is showing them.
+
+## Marriage And Family Simulation
+
+Society marriages use the game's `daapi.performMarriage` API. If the game rejects a marriage, Society does not fake the spouse link.
+
+Marriage compatibility now checks:
+
+- Both characters are alive, unmarried, adult, free, and allowed to marry.
+- They are different genders.
+- They are not from the same dynasty.
+- They are not close blood relatives through known parent or ancestor links.
+- Cadet-house marriages use the actual source house of each spouse, not only the dynasty id.
+
+Pregnancies use `daapi.impregnate`, leaving birth resolution to the base game. Society then refreshes house and dynasty membership from real character links.
 
 ## Social Orders
+
+Roman Society groups houses into social orders:
 
 - Senatorial houses
 - Equestrian houses
@@ -110,44 +82,91 @@ Roman Society prioritizes performance, stability, and visual quality over compat
 - Freedmen
 - Slaves
 
-## Notes
+The slave order still uses the internal `poor` key for save compatibility.
 
-The mod uses the game's existing characters and dynasties first. Generated houses are only added when a social order has too few living non-household characters.
+Order classification uses available game data: prestige, heritage, property status, jobs, Senate links, inheritance, living members, and simulated AI resources.
 
-Generated people are created with the game's own `daapi.generateCharacter` flow. Society gives them real character IDs, vanilla Roman looks, vanilla traits, `flagDoNotCull`, and family links such as `spouseId`, `fatherId`, `motherId`, and `childrenIds` where appropriate. Every Society-generated living person is marked internally and receives dead generated parents if the game did not already give them parents, so trees have a basic root without adding dead people to living member lists.
+## Slavery
 
-Generated characters are given a real game character ID and a vanilla Roman base `look`, so the game can recognize them as normal characters. Children inherit the base look type from parents with small variation, and portraits age by stage without losing that inherited visual base.
+Roman Society represents slaves as real characters where possible.
 
-Citizen of Rome portraits are complete bundled SVG illustrations selected from `character.look.group`, `character.look.type`, gender, and age stage. They are not assembled from separate clothing layers at runtime. The old Society-only portrait generator has been removed; Society characters, dynasties, trees, vanilla windows, and wardrobe previews now resolve from vanilla portrait assets. For Android stability, the wardrobe does not persist a custom DAAPI `look` on characters. It stores only a lightweight `corSocietyOutfit` choice and applies a post-load vanilla-SVG clothing recolor where possible. The recolor scans portrait geometry, classifies visible lower-body clothing paint regions, protects vanilla skin, face-detail, jewelry, gold, metal adornments, and upper portrait identity colors such as long hair that extends below the ears. Choosing `Automatic` clears that Society outfit choice. If an older Society build left a risky `cor_society` or `cor_society_wardrobe` look on a character, the current mod repairs it back to a vanilla Roman look during startup.
+Slave systems include:
 
-Generated traits use vanilla trait keys from the official example mod documentation, such as `senator`, `educated`, `literate`, `honorable`, `ambitious`, `gregarious`, `strong`, and `sly`.
+- Household slaves with assignable work.
+- Slave market offers.
+- Debt-bondage, condemnation, renegade, and foreign-origin slavery notes.
+- Private-company pregnancy risk and hidden paternity.
+- Manumission into a new Freedmen house.
+- Self-purchase savings for owned slaves.
+- Freedman rescue attempts for enslaved relatives.
 
-Arranged marriages and AI house marriages call `daapi.performMarriage`, so the resulting spouse relationship should appear in the vanilla family UI after the game refreshes. If the vanilla marriage API rejects a wedding, Society does not fake the spouse link by writing `spouseId` manually; it shows an error and applies no Society effects. Marrying upward improves prestige and influence but costs more; marrying downward can improve practical support and local ties while costing some elite standing.
+False slave flags on legitimate player family members are repaired conservatively. Slave-born bastards remain distinct unless a later system manumits or legitimizes them.
 
-AI house marriages have a higher monthly pregnancy chance than older Society builds, and pregnancies are attempted through `daapi.impregnate` so the base game can resolve the birth normally. Society also keeps more related NPC parents close enough to the player's household for the base game to preserve their children, bounded by `extendedKinDepth` and `extendedKinLimit` settings. Lover relationships are stored in Society state instead of vanilla `spouseId`; exposed affairs can damage relations, lower stability, cost player prestige/influence, and may clear vanilla spouse links as a divorce when the scandal is severe.
+## Economy And Politics
 
-The player's Society order is calculated from the same economic ladder used by the base game: Proletarii, Class V, Class IV, Class III, Class II, Class I, Equites, and Senatores. Novus Homo remains a vanilla heritage value, but Society treats it as a civic-status marker once the household has enough property class to support that rank. The main-screen citizen title is patched visually so it can evolve with Society status while leaving the vanilla data intact for elections and other base-game systems.
+NPC houses are simulated as virtual players with cash, influence, prestige, property, stability, agendas, allies, rivals, favors, patronage, trade ties, loans, and family events.
 
-AI houses can also attempt pregnancies through `daapi.impregnate`. The base game remains responsible for resolving the birth; Society records the pregnancy and later detects new child IDs when the dynasty updates.
+House property uses vanilla Citizen of Rome property keys, values, revenue, stewardship limits, economy-of-scale behavior, sale rates, and senatorial commercial restrictions.
 
-House shields are generated locally as SVG images and saved in the mod state. NPC house shields appear beside family portraits in Society lists. The player shield is configured from the current-character `House Shield` action and is shown as a small portrait badge when the mod can identify the current player portrait in the UI.
+Bank of Rome includes:
 
-Each month, houses pursue their own agenda. Some affairs only change the social map and appear in `Past Affairs`; others become decisions for the player and can affect influence, prestige, cash, relationships, favors, rivalries, or revenue. Trade ventures are now investments with a one or two month settlement notice instead of instant monthly income.
+- Player bank loans.
+- Player private lending to houses.
+- Player borrowing from wealthy houses.
+- NPC-to-NPC private loans.
+- Debt-bond consequences when loans default.
 
-Roman Society does not use `setCurrentCharacter` and does not take control away from the human player. Vanilla family screens are opened by setting the game's `selectedCharacterId`, which selects the tree being viewed without changing the current playable character. NPC houses are simulated by the mod as separate virtual players, marked internally as `cor_society_ai`; they can rise or fall between social orders as their simulated wealth, power, and stability change.
+## UI And Portraits
 
-The base game blocks external platform achievements when `current.flagUsedMods` is true. Society clears that mod-used flag during its own tick so achievements can remain available while using this mod, but vanilla easy mode and sandbox mode still block achievements.
+Roman Society uses vanilla Citizen of Rome portrait assets and stores lightweight Society outfit choices instead of unsafe custom persistent looks.
 
-The Society slave order uses the internal `poor` key for save compatibility, but the visible order is now `Slaves`. Members of slave houses are treated as enslaved dependants with origins such as Gallic, Egyptian, Numidian, Greek, Thracian, Syrian, Iberian, Illyrian, Judean, Punic, Dacian, Germanic, Anatolian, Roman debt-bond, Roman condemned, or Roman renegade. When they are bought by the player or an NPC house, they move as real characters into that household's slave list. When freed by the player, they leave slavery, clear slavery-specific origin notes, become `roman_freedman` Society characters, and enter a new Freedmen house of their own. Freed slaves may later spend house resources to rescue close relatives who are still enslaved.
+The graphical tree UI includes:
 
-Household slave tasks are intentionally modest for balance and have task-change cooldowns. They create useful owner benefits without infinite stacking: cash from accounts/labor, prestige from entertainment/private company, influence from guards, directed child skill improvement from educators, and possible treatment from doctors. Owned slaves also accumulate small savings toward self-purchase. Private company is adult-only; possible bastard children enter the household as slaves, can be manumitted, and can be legitimized into the free father's dynasty when the father belongs to the player's dynasty. Romance and extended bastard mechanics remain for free adult relationship systems and lovers.
+- Portrait cards.
+- Spouse links.
+- Children branches.
+- House crest labels.
+- Origin/cadet house labels.
+- Back navigation.
+- Dark/light theme detection.
+- Runtime tree context caching per month.
 
-The integrated legacy animal-stealing event keeps the original event idea, but Society loads its large icon assets lazily to reduce Android startup pressure.
+## Debugging
+
+Open the in-game DAAPI/developer command console and run:
+
+```js
+corSocietyDebug()
+```
+
+Useful variants:
+
+```js
+corSocietyDebug("log")
+corSocietyDebug("houses")
+corSocietyDebug("systems")
+corSocietyDebug("full")
+```
+
+If the platform command scope does not expose bare globals, use:
+
+```js
+daapi.corSocietyDebug()
+daapi.invokeMethod({ event: "/cor_society/engine", method: "openDebugConsole" })
+```
+
+The debug snapshot stores its last result in the `corSocietyLastDebugSnapshot` global flag. The dynasty/house validator reports invalid origins, missing head houses, cadet parent problems, member contamination, and close-kin marriages.
+
+## Changelog
+
+The old README had become a mixed feature list and changelog. Starting with `1.1.307`, version notes live in `logs/`.
+
+See [logs/1.1.307.md](logs/1.1.307.md) for the first structured changelog entry and the corrected historical notes recovered from the previous README.
 
 ## Bundled Mod Credits
 
-The bundled Play As, Murder, Stealing From, and Open DevTools snippets in `bundled/` are from `CitizenOfRomeDynastyAscendant` / the Citizen of Rome example mod ecosystem and are included here with route and asset paths adapted so Roman Society can ship as one installable package.
+The bundled Play As, Murder, Stealing From, and Open DevTools snippets come from `CitizenOfRomeDynastyAscendant` / the Citizen of Rome example mod ecosystem and are included with paths adapted for Roman Society.
 
-The Disinheritance and Restore Inheritance actions are bundled from the local `CORmods` versions and adapted to run from inside Roman Society.
+Disinheritance and Restore Inheritance are adapted from local `CORmods` versions.
 
-Bank of Rome, Coemptio, and Household Slaves are based on the older open `peritiSumus/CoR-Mods` mods, with their mechanics and assets updated for the current Citizen of Rome codebase and integrated into Society's house, character, slave, banking, and matchmaking simulation.
+Bank of Rome, Coemptio, and Household Slaves are based on older open `peritiSumus/CoR-Mods` mods, with mechanics and assets integrated into Roman Society's house, character, slave, banking, and matchmaking simulation.

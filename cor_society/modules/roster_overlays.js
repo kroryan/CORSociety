@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -18,7 +18,22 @@
                     common: [],
                     slaves: []
                   }
-                  let ids = this.visibleHousePeople(house, state)
+                  // Members must reflect the same people the house family tree shows (minus
+                  // external "guest" spouses, who belong to their own house). The tree resolves
+                  // membership more broadly than house.memberIds, so seed the candidate list from
+                  // the tree model and merge it with the cached visible members.
+                  let candidateIds = this.visibleHousePeople(house, state).slice()
+                  if (this.buildHouseTreeModel) {
+                    let society = this.load()
+                    let model = this.buildHouseTreeModel(society, state, house, '')
+                    ;(model.memberIds || []).forEach((characterId) => {
+                      let character = state.characters[characterId]
+                      if (character && !character.isDead && !this.isSlaveCharacter(character, house)) {
+                        candidateIds.push(characterId)
+                      }
+                    })
+                  }
+                  let ids = candidateIds
                     .filter((characterId, index, list) => list.indexOf(characterId) === index && state.characters[characterId])
                     .sort((a, b) => this.characterScore(state.characters[b], state) - this.characterScore(state.characters[a], state))
                   ids.forEach((characterId, index) => {
@@ -87,7 +102,25 @@
                   })
                   return Object.keys(actions).map((key) => {
                     return { key, action: actions[key] }
-                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions)
+                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions && !this.isHiddenVanillaFamilyTreeAction(item))
+                },
+        isHiddenVanillaFamilyTreeAction(item) {
+                  // The vanilla "Known Family Tree" screen does not render Society's generated kin
+                  // correctly, so we hide it from the Society "Vanilla / other mods actions" list.
+                  // The player uses the Society House / Dynasty trees instead. (Only the Known tree
+                  // is hidden; other vanilla family/tree actions are left untouched.)
+                  if (!item) {
+                    return false
+                  }
+                  let action = item.action || {}
+                  let haystacks = [
+                    item.key,
+                    action.title,
+                    action.tooltip,
+                    action.process && (action.process.path || action.process.route || action.process.hash || action.process.method),
+                    action.action && (action.action.path || action.action.route || action.action.hash || action.action.method)
+                  ].map((value) => String(value || '').toLowerCase())
+                  return haystacks.some((value) => value.indexOf('knownfamily') >= 0 || value.indexOf('known family') >= 0)
                 },
         bundledCharacterActions(character) {
                   let state = daapi.getState()
@@ -413,9 +446,6 @@
                   }
                   return relatives
                 },
-        sameCharacterId(first, second) {
-                  return first !== undefined && first !== null && second !== undefined && second !== null && String(first) === String(second)
-                },
         characterLink(characterId, state) {
                   if (!characterId || !state.characters[characterId]) {
                     return 'none'
@@ -423,34 +453,6 @@
                   let character = state.characters[characterId]
                   character.id = character.id || characterId
                   return '[c|' + character.id + '|' + this.characterName(character, state) + ']'
-                },
-        houseIdForCharacter(character, state, society) {
-                  if (!character) {
-                    return ''
-                  }
-                  society = society || this.load()
-                  state = state || daapi.getState()
-                  if (this.resolveCharacterHouseId) {
-                    let resolvedHouseId = this.resolveCharacterHouseId(character, state, society, { repair: true })
-                    if (resolvedHouseId) {
-                      return resolvedHouseId
-                    }
-                  }
-                  let dynastyId = character.dynastyId
-                  if (dynastyId) {
-                    let house = this.createHouseRecord(dynastyId)
-                    let dynasty = state.dynasties[dynastyId] || {}
-                    house.name = this.houseName(dynasty, dynastyId)
-                    house.stratum = this.classifyHouse(dynasty, [character], this.characterScore(character, state), this.isSenatorialCharacter(character, state))
-                    house.memberIds = [character.id]
-                    house.notableIds = [character.id]
-                    house.generated = false
-                    society.houses[dynastyId] = house
-                    this.refreshHouseMemberLists(society, state, house)
-                    this.save(society)
-                    return dynastyId
-                  }
-                  return ''
                 },
         familyRelativeOption(label, characterId, state, society, fallbackHouseId, returnTo, returnPage) {
                   let character = state.characters[characterId]
@@ -1060,7 +1062,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.316'
     }
   }
 }

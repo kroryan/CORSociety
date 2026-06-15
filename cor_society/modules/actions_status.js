@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -430,7 +430,7 @@
                       let candidate = state.characters && state.characters[characterId]
                       if (!candidate) return
                       candidate.id = candidate.id || characterId
-                      if (this.isSlaveCharacter(candidate, house) || !this.isMarriageEligible(candidate, state) || !this.isMarriageCompatible(character, candidate)) return
+                      if (this.isSlaveCharacter(candidate, house) || !this.isMarriageEligible(candidate, state) || !this.isMarriageCompatible(character, candidate, state)) return
                       candidates.push({ house, character: candidate })
                     })
                   })
@@ -540,11 +540,11 @@
                   character.id = character.id || characterId
                   spouse.id = spouse.id || spouseId
                   cost = Math.max(0, Math.round(parseFloat(cost || this.matchmakerCandidateCost(spouse, house, state))))
-                  if (house.stratum === 'poor' || this.isSlaveCharacter(spouse, house) || !this.isMarriageEligible(character, state) || !this.isMarriageEligible(spouse, state) || !this.isMarriageCompatible(character, spouse) || parseFloat(((state || {}).current || {}).cash || 0) < cost) {
+                  if (house.stratum === 'poor' || this.isSlaveCharacter(spouse, house) || !this.isMarriageEligible(character, state) || !this.isMarriageEligible(spouse, state) || !this.isMarriageCompatible(character, spouse, state) || parseFloat(((state || {}).current || {}).cash || 0) < cost) {
                     this.pushModal({
                       societyMenu: true,
                       title: 'Match no longer valid',
-                      message: 'The chosen candidate is no longer available or the fee cannot be paid.',
+                      message: 'The chosen candidate is no longer available, too closely related, or the fee cannot be paid.',
                       image: this.bundledIcon('coemptio', 'marriage'),
                       options: [{ text: 'Back', action: { event: this.event, method: 'openMatchmaker', context: { characterId } } }]
                     })
@@ -2039,7 +2039,7 @@
                     if (character.id === undefined || character.id === null) {
                       character.id = characterId
                     }
-                    if (matchCharacter && !this.isMarriageCompatible(matchCharacter, character)) {
+                    if (matchCharacter && !this.isMarriageCompatible(matchCharacter, character, state)) {
                       return
                     }
                     candidates.push(character)
@@ -2264,8 +2264,30 @@
                   }
                   return true
                 },
-        isMarriageCompatible(first, second) {
-                  if (!first || !second || first.id === second.id || first.dynastyId === second.dynastyId) {
+        areCloseBloodKin(first, second, state) {
+                  if (!first || !second || !state || !state.characters) {
+                    return false
+                  }
+                  let firstId = first.id || first.characterId
+                  let secondId = second.id || second.characterId
+                  if (!firstId || !secondId) {
+                    return false
+                  }
+                  if (this.sameCharacterId(first.fatherId, secondId) || this.sameCharacterId(first.motherId, secondId) || this.sameCharacterId(second.fatherId, firstId) || this.sameCharacterId(second.motherId, firstId)) {
+                    return true
+                  }
+                  let firstParents = [first.fatherId, first.motherId].filter(Boolean).map(String)
+                  let secondParents = [second.fatherId, second.motherId].filter(Boolean).map(String)
+                  if (firstParents.some((parentId) => secondParents.indexOf(parentId) >= 0)) {
+                    return true
+                  }
+                  return !!(this.sharesAncestorWithin && this.sharesAncestorWithin(state, firstId, secondId, 4))
+                },
+        isMarriageCompatible(first, second, state) {
+                  if (!first || !second || this.sameCharacterId(first.id, second.id) || (first.dynastyId && second.dynastyId && String(first.dynastyId) === String(second.dynastyId))) {
+                    return false
+                  }
+                  if (state && this.areCloseBloodKin(first, second, state)) {
                     return false
                   }
                   return this.characterIsMale(first) !== this.characterIsMale(second)
@@ -2286,7 +2308,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.316'
     }
   }
 }

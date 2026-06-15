@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.303') {
+      if (window.corSociety._mixinCorSocietyLogUtilsVersion === '1.1.316') {
         return
       }
       Object.assign(window.corSociety, {
@@ -211,6 +211,9 @@
                       }
                     })
                   }
+                  if (section === 'family' || section === 'full') {
+                    snapshot.family = this.familyDiagnostics ? this.familyDiagnostics(society, state) : null
+                  }
                   if (section === 'full') {
                     snapshot.rawSociety = society
                     snapshot.rawCurrent = state.current
@@ -218,11 +221,104 @@
                   }
                   return snapshot
                 },
+        familyDiagnostics(society, state) {
+                  state = state || daapi.getState()
+                  society = society || this.load()
+                  let characters = state.characters || {}
+                  let currentId = this.currentCharacterId(state)
+                  let seen = {}
+                  let order = []
+                  let addId = (id) => {
+                    if (id === undefined || id === null || id === '' || seen[String(id)] || !characters[id]) {
+                      return
+                    }
+                    seen[String(id)] = true
+                    order.push(String(id))
+                  }
+                  let player = characters[currentId] || {}
+                  addId(currentId)
+                  ;[player.fatherId, player.motherId, player.spouseId].forEach(addId)
+                  ;(player.childrenIds || []).forEach(addId)
+                  ;[player.fatherId, player.motherId].forEach((pid) => {
+                    let parent = characters[pid]
+                    if (parent) {
+                      ;[parent.fatherId, parent.motherId].forEach(addId)
+                      ;(parent.childrenIds || []).forEach(addId)
+                    }
+                  })
+                  let houseId = this.resolveCharacterHouseId ? this.resolveCharacterHouseId(player, state, society, { repair: false }) : ''
+                  let house = houseId && society.houses ? society.houses[houseId] : false
+                  if (house) {
+                    try { (this.buildHouseTreeModel(society, state, house, currentId).memberIds || []).forEach(addId) } catch (err) { console.warn(err) }
+                  }
+                  let dynastyId = this.gameDynastyIdForHouse(house || {}) || player.dynastyId || ''
+                  if (dynastyId) {
+                    try { Object.keys(this.dynastyTreeAllowedIdMap(society, state, dynastyId)).forEach(addId) } catch (err) { console.warn(err) }
+                  }
+                  let members = order.map((id) => {
+                    let character = characters[id] || {}
+                    let resolvedHouseId = this.resolveCharacterHouseId ? this.resolveCharacterHouseId(character, state, society, { repair: false }) : ''
+                    return {
+                      id,
+                      name: this.characterName({ ...character, id }, state),
+                      age: this.age(character, state),
+                      dead: !!character.isDead,
+                      generated: !!character.corSocietyGenerated,
+                      ghost: !!(character.corSocietyGhostParent || character.corSocietyGeneratedConnector),
+                      houseId: resolvedHouseId || '',
+                      dynastyId: character.dynastyId || '',
+                      fatherId: character.fatherId || '',
+                      motherId: character.motherId || '',
+                      spouseId: character.spouseId || '',
+                      childrenIds: (character.childrenIds || []).filter((kid) => characters[kid])
+                    }
+                  })
+                  let issues = []
+                  members.forEach((member) => {
+                    if (member.fatherId && this.sameCharacterId(member.fatherId, member.id)) issues.push('self-father: ' + member.id)
+                    if (member.motherId && this.sameCharacterId(member.motherId, member.id)) issues.push('self-mother: ' + member.id)
+                    if (member.spouseId && this.sameCharacterId(member.spouseId, member.id)) issues.push('self-spouse: ' + member.id)
+                    if (member.spouseId && characters[member.spouseId]) {
+                      let partner = characters[member.spouseId]
+                      if (String(partner.spouseId || '') !== String(member.id)) {
+                        issues.push('asymmetric-spouse: ' + member.id + ' -> ' + member.spouseId + ' (partner.spouse=' + (partner.spouseId || 'none') + ')')
+                      }
+                    }
+                  })
+                  let byKey = {}
+                  members.forEach((member) => {
+                    let character = characters[member.id] || {}
+                    let key = (member.name || '') + '|' + (character.birthYear || '')
+                    byKey[key] = byKey[key] || []
+                    byKey[key].push(member.id)
+                  })
+                  Object.keys(byKey).forEach((key) => {
+                    if (byKey[key].length > 1) {
+                      issues.push('possible-duplicate [' + key + ']: ' + byKey[key].join(', '))
+                    }
+                  })
+                  // Distinct characters that share the exact display name (the usual reason the same
+                  // name appears several times in a tree: Roman praenomina repeat within a dynasty).
+                  let byName = {}
+                  members.forEach((member) => {
+                    byName[member.name] = byName[member.name] || []
+                    byName[member.name].push(member.id)
+                  })
+                  let nameCollisions = {}
+                  Object.keys(byName).forEach((name) => {
+                    if (byName[name].length > 1) {
+                      nameCollisions[name] = byName[name]
+                      issues.push('same-name-different-ids [' + name + ']: ' + byName[name].join(', '))
+                    }
+                  })
+                  return { currentId: String(currentId || ''), houseId: houseId || '', dynastyId: dynastyId || '', count: members.length, issueCount: issues.length, issues, nameCollisions, members }
+                },
         debugSectionOptions(section) {
                   let sections = [
                     ['overview', 'Overview'],
                     ['log', 'Recent log'],
                     ['houses', 'Houses'],
+                    ['family', 'Player family'],
                     ['systems', 'Systems'],
                     ['full', 'Dump full']
                   ]
@@ -297,6 +393,30 @@
                       this.summaryOption('Paternity', snapshot.society.pendingPaternities, [this.affairIcon('birth')], 'Pending secret/illegitimate paternity records.'),
                       this.summaryOption('Last error', snapshot.errors.startup ? 'present' : 'none', [this.affairIcon('log')], snapshot.errors.startup || 'No startup error flag.')
                     ]
+                  } else if (section === 'family') {
+                    let family = snapshot.family || { count: 0, issueCount: 0, issues: [], members: [] }
+                    message = 'Player family diagnostics (full detail in the browser console). Members compared by ID. ' +
+                      family.count + ' related characters, ' + family.issueCount + ' data issue(s).'
+                    summary = [
+                      this.summaryOption('Related', family.count, [this.affairIcon('familyTree')], 'Characters related to the player by blood/house/dynasty.'),
+                      this.summaryOption('Issues', family.issueCount, [this.affairIcon(family.issueCount ? 'rivalry' : 'support')], family.issueCount ? family.issues.slice(0, 6).join('\n') : 'No self-link, asymmetric-spouse or duplicate issues detected.'),
+                      this.summaryOption('Current', family.currentId || '', [this.affairIcon('familyTree')], 'Player character id.')
+                    ]
+                    ;(family.issues || []).slice(0, 10).forEach((issue) => {
+                      options.push({ disabled: true, showDisabledWithTooltip: true, text: this.shortText(issue, 72), tooltip: issue, icons: [this.affairIcon('rivalry')] })
+                    })
+                    ;(family.members || []).slice(0, 14).forEach((member) => {
+                      options.push({
+                        disabled: true,
+                        showDisabledWithTooltip: true,
+                        text: this.shortText(member.name + ' #' + member.id + (member.dead ? ' (dead)' : ' (age ' + member.age + ')'), 72),
+                        tooltip: 'id: ' + member.id + '\nhouse: ' + member.houseId + '\ndynasty: ' + member.dynastyId +
+                          '\nfather: ' + member.fatherId + '\nmother: ' + member.motherId + '\nspouse: ' + member.spouseId +
+                          '\nchildren: ' + (member.childrenIds.join(', ') || 'none') +
+                          '\ngenerated: ' + member.generated + ' ghost: ' + member.ghost,
+                        icons: [this.affairIcon('familyTree')]
+                      })
+                    })
                   } else if (section === 'full') {
                     message = 'Full debug snapshot printed to the browser console. The in-game view stays compact to avoid freezing the UI.'
                     summary = [
@@ -407,7 +527,7 @@
                   return picked
                 }
       })
-      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.303'
+      window.corSociety._mixinCorSocietyLogUtilsVersion = '1.1.316'
     }
   }
 }
