@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.325') {
+      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.326') {
         return
       }
       let previousPoliticsAction = window.corSociety.politicsAction
@@ -451,7 +451,7 @@
             text: 'Build spy network',
             tooltip: 'Spend influence to improve detection against rivals and warn of conspiracies.',
             icons: [this.affairIcon('slander'), this.lawIcon('law')],
-            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openIntrigue' } }
+            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openIntrigue', from: 'openCrimes' } }
           })
           options.push({ text: 'Back', action: { event: this.event, method: 'openHub' } })
           this.pushModal({
@@ -1520,27 +1520,31 @@
           this.save(society)
           this.openReligion()
         },
-        openIntrigue() {
+        openIntrigue({ from } = {}) {
           let society = this.ensure()
           let state = daapi.getState()
           this.ensureAdvancedRomanState(society, state)
+          // Intrigue is reachable both from the crime menu ("Build spy network") and from
+          // Roman power systems. Remember where we came from so Back returns there.
+          let back = from === 'openCrimes' ? 'openCrimes' : 'openRomanPower'
           let options = this.politicsRivalHouses(society, state).slice(0, 8).map((house) => {
-            return this.politicsButton('buildSpyNetwork', 'Spy network in ' + house.name, 'slander', { houseId: house.id }, { tooltip: 'Improves detection of crimes and conspiracies in this house. Can create hooks.' })
+            return this.politicsButton('buildSpyNetwork', 'Spy network in ' + house.name, 'slander', { houseId: house.id, from: back }, { tooltip: 'Improves detection of crimes and conspiracies in this house. Can create hooks.' })
           })
-          options.push(this.politicsButton('startPoliticalConspiracy', 'Start Idus-style conspiracy', 'rivalry', {}, { tooltip: 'Political assassination plot. Creates conspiracy crime risk and may destabilize the state.' }))
+          options.push(this.politicsButton('startPoliticalConspiracy', 'Start Idus-style conspiracy', 'rivalry', { from: back }, { tooltip: 'Political assassination plot. Creates conspiracy crime risk and may destabilize the state.' }))
           let hookCount = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id]).length
-          options.push(this.politicsButton('useBlackmailHook', 'Use a blackmail hook (' + hookCount + ' available)', 'support', {}, hookCount ? { tooltip: 'Coerce a house out of a coalition or into your faction using secrets your spies uncovered.' } : { disabled: true, showDisabledWithTooltip: true, tooltip: 'You hold no blackmail material yet. Build spy networks to uncover secrets.' }))
-          options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRomanPower' } } })
+          options.push(this.politicsButton('useBlackmailHook', 'Use a blackmail hook (' + hookCount + ' available)', 'support', { from: back }, hookCount ? { tooltip: 'Coerce a house out of a coalition or into your faction using secrets your spies uncovered.' } : { disabled: true, showDisabledWithTooltip: true, tooltip: 'You hold no blackmail material yet. Build spy networks to uncover secrets.' }))
+          options.push({ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: back } } })
           this.pushModal({ societyMenu: true, title: 'Intrigue and spies', message: 'Spies feed the crime system, uncover plots, and create blackmail hooks.', image: this.affairIcon('slander'), options })
         },
-        useBlackmailHook() {
+        useBlackmailHook({ from } = {}) {
           let society = this.loadForAction()
           let state = daapi.getState()
           this.ensureAdvancedRomanState(society, state)
+          let backToIntrigue = { event: this.event, method: 'romanSystemsAction', context: { action: 'openIntrigue', from } }
           let hookCharacterIds = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id])
           if (!hookCharacterIds.length) {
             this.save(society)
-            this.pushModal({ societyMenu: true, title: 'No hooks', message: 'You hold no blackmail material. Build spy networks to uncover secrets first.', image: this.affairIcon('slander'), options: [{ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openIntrigue' } } }] })
+            this.pushModal({ societyMenu: true, title: 'No hooks', message: 'You hold no blackmail material. Build spy networks to uncover secrets first.', image: this.affairIcon('slander'), options: [{ text: 'Back', action: backToIntrigue }] })
             return
           }
           let characterId = hookCharacterIds[0]
@@ -1567,7 +1571,7 @@
           this.applyStats({ influence: 10 })
           this.log(society, 'Blackmail: ' + effect, 'slander', houseId)
           this.save(society)
-          this.pushModal({ societyMenu: true, title: 'Blackmail', message: effect, image: this.affairIcon('slander'), options: [{ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openIntrigue' } } }] })
+          this.pushModal({ societyMenu: true, title: 'Blackmail', message: effect, image: this.affairIcon('slander'), options: [{ text: 'Back', action: backToIntrigue }] })
         },
         seekImperialPardon({ characterId } = {}) {
           let society = this.loadForAction()
@@ -1600,7 +1604,7 @@
           this.save(society)
           this.pushModal({ societyMenu: true, title: 'Pardon granted', message: 'The prisoner is freed by your imperial clemency.', image: this.affairIcon('gift'), options: [{ text: 'Back', action: backTarget }] })
         },
-        buildSpyNetwork({ houseId } = {}) {
+        buildSpyNetwork({ houseId, from } = {}) {
           let society = this.loadForAction()
           let state = daapi.getState()
           let house = society.houses[houseId]
@@ -1622,9 +1626,9 @@
             this.log(society, 'Informers are planted around ' + house.name + '.', 'slander', house.id)
           }
           this.save(society)
-          this.openIntrigue()
+          this.openIntrigue({ from })
         },
-        startPoliticalConspiracy() {
+        startPoliticalConspiracy({ from } = {}) {
           let society = this.loadForAction()
           let state = daapi.getState()
           this.ensureAdvancedRomanState(society, state)
@@ -1639,7 +1643,7 @@
             this.log(society, 'A political conspiracy stalls; whispers of coniuratio remain dangerous.', 'crime')
           }
           this.save(society)
-          this.openIntrigue()
+          this.openIntrigue({ from })
         },
         openPropertyMarket() {
           let society = this.ensure()
@@ -1891,7 +1895,7 @@
           this.refreshPropertyMarket(society, state)
         }
       })
-      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.325'
+      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.326'
     }
   }
 }
