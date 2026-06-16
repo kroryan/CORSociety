@@ -2,11 +2,12 @@
 
 This folder is the installable Roman Society mod package.
 
-Current runtime version: `1.1.321`.
+Current runtime version: `1.1.322`.
 
 Use the root documentation as the source of truth:
 
 - [Roman Society README](../README.md)
+- [1.1.322 changelog](../logs/1.1.322.md)
 - [1.1.321 changelog](../logs/1.1.321.md)
 - [1.1.320 changelog](../logs/1.1.320.md)
 - [1.1.319 changelog](../logs/1.1.319.md)
@@ -42,12 +43,15 @@ you as having been Dictator (the first Emperor must pass through the dictatorshi
 ## Module Layout
 
 - `engine.js` boots the shared `window.corSociety` object and applies module mixins.
+- `modules/index.js` registers the module manifest and boot order for the 1.1.322 mixins.
 - `modules/config.js` stores constants, social orders, names, portrait assets, and crest palettes.
 - `modules/core_startup.js` loads, saves, compacts, and initializes Society state.
 - `modules/dynasty_model.js` owns dynasty, house, cadet branch, membership, and validation logic.
 - `modules/people_generation.js` generates houses, relatives, portraits, ancestors, and genealogy connectors.
 - `modules/monthly_economy.js` runs monthly house economy, property, loan, and simulation batches.
 - `modules/house_life_romance_slaves.js` runs marriage, pregnancy, romance, slavery, retirement, and household-life systems.
+- `modules/technical_safety.js` performs bounded migration, pruning, and integrity checks for advanced Society data.
+- `modules/roman_systems.js` owns crimes, courts, prisons, laws, cursus honorum, clientela, legions, coalitions, religion, intrigue, adoption, and property-crisis systems.
 - `modules/relations_events.js` manages social events and player choices.
 - `modules/menus.js` builds Society menus and graphical family trees.
 - `modules/actions_status.js` contains player status, marriage rules, Society traits, and action availability.

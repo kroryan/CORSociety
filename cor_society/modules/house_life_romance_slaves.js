@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1051,8 +1051,22 @@
         playerSlaveRecords(society, state) {
                   society.playerSlaves = society.playerSlaves || []
                   society.playerSlaves = society.playerSlaves.filter((slave) => {
-                    let character = slave && slave.characterId && state.characters && state.characters[slave.characterId]
-                    return !!(slave && slave.active !== false && character && !character.isDead)
+                    if (!slave || slave.active === false || !slave.characterId) return false
+                    let character = state && state.characters && state.characters[slave.characterId]
+                    if (!character && daapi.getCharacter) {
+                      try {
+                        character = daapi.getCharacter({ characterId: slave.characterId })
+                        if (character && state && state.characters) {
+                          state.characters[slave.characterId] = character
+                        }
+                      } catch (err) {
+                        character = false
+                      }
+                    }
+                    if (!character) {
+                      return true
+                    }
+                    return !character.isDead && character.corSocietySlaveActive !== false
                   })
                   return society.playerSlaves
                 },
@@ -3245,7 +3259,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.322'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyPeopleGenerationVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1466,7 +1466,7 @@
                 },
         repairFamilyLinkIntegrity(society, state) {
                   // Conservative invariant repair for mod-owned characters. Fixes the asymmetric /
-                  // self-referential links that the over-aggressive 1.1.321 coupling could create in
+                  // self-referential links that the over-aggressive 1.1.322 coupling could create in
                   // existing saves (the cause of a character appearing several times in the vanilla
                   // tree). It only ever edits characters the mod generated; it never edits a living
                   // real character and never touches the OTHER side of a link.
@@ -1496,7 +1496,7 @@
                     } else if (character.spouseId) {
                       let partner = state.characters[character.spouseId]
                       // Non-mutual spouse link: the partner does not point back. Clear ONLY our side
-                      // (the fake claim 1.1.321 may have written). Never edit the partner.
+                      // (the fake claim 1.1.322 may have written). Never edit the partner.
                       if (partner && String(partner.spouseId || '') !== String(id)) {
                         patch.spouseId = null
                       }
@@ -1686,6 +1686,14 @@
         restoreSocietyPortraitLooks(state) {
                   this.repairUnsafeWardrobeLooks(state)
                 },
+        cloneWardrobeLook(look) {
+                  look = look || {}
+                  try {
+                    return JSON.parse(JSON.stringify(look))
+                  } catch (err) {
+                    return { ...look }
+                  }
+                },
         repairUnsafeWardrobeLooks(state) {
                   if (!state || !state.characters) {
                     return
@@ -1715,7 +1723,7 @@
                     return {}
                   }
                   if (character.corSocietyOriginalLook && character.corSocietyOriginalLook.group && character.corSocietyOriginalLook.type) {
-                    return { ...character.corSocietyOriginalLook }
+                    return this.cloneWardrobeLook(character.corSocietyOriginalLook)
                   }
                   let look = character.look || {}
                   if (look.group === this.wardrobeLookGroup || look.group === 'cor_society') {
@@ -1724,7 +1732,7 @@
                       type: 'brown'
                     }
                   }
-                  return { ...look }
+                  return this.cloneWardrobeLook(look)
                 },
         applyWardrobeLookToCharacter(character, outfit, state, silent) {
                   if (!character || !character.id || !outfit || outfit === 'auto') {
@@ -1759,7 +1767,7 @@
                     isMale: gender === 'male',
                     corSocietyOutfit: '',
                     look: {
-                      ...(originalLook || {}),
+                      ...this.cloneWardrobeLook(originalLook || {}),
                       gender,
                       ageStage
                     }
@@ -1798,8 +1806,8 @@
                     }
                   }
                   if (hasUnsafeLook && originalLook && originalLook.group && originalLook.type) {
-                    character.look = originalLook
-                    update.look = originalLook
+                    character.look = this.cloneWardrobeLook(originalLook)
+                    update.look = this.cloneWardrobeLook(originalLook)
                   }
                   character.corSocietyOriginalLook = null
                   if (!keepOutfit) {
@@ -1972,7 +1980,7 @@
                   return counts
                 }
       })
-      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyPeopleGenerationVersion = '1.1.322'
     }
   }
 }

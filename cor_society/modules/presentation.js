@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -71,6 +71,9 @@
                   return this.assetIcon(icons[stratum] || 'familyTree')
                 },
         affairIcon(kind) {
+                  if ((kind === 'war' || kind === 'legion' || kind === 'military' || kind === 'militaryService') && this.vanillaMilitaryIcon) {
+                    return this.vanillaMilitaryIcon(kind)
+                  }
                   if (kind === 'coins' || kind === 'bank') {
                     return this.vanillaStatIcon('cash', 1)
                   }
@@ -81,6 +84,13 @@
                     return this.vanillaStatIcon('influence', 1)
                   }
                   let icons = {
+                    law: 'law',
+                    prison: 'prison',
+                    crime: 'prison',
+                    justice: 'prison',
+                    war: 'war',
+                    legion: 'war',
+                    dictator: 'dictator',
                     officeCampaign: 'senator',
                     tradeVenture: 'trade',
                     marriageAlliance: 'wedding',
@@ -397,12 +407,6 @@
                       orderText,
                       this.stratumOrder.map((stratum) => this.stratumIcon(stratum)),
                       'Counts by social order. Open an order to inspect its houses.'
-                    ),
-                    this.summaryOption(
-                      'Monthly life',
-                      'Houses pursue wealth, office, marriage, security, honor, or revenge. Effects can touch cash, prestige, influence, relations, favors, and revenue.',
-                      [this.affairIcon('trade'), this.affairIcon('prestige'), this.affairIcon('coins')],
-                      'These internal turns are simulated monthly and can create player-facing affairs.'
                     )
                   ]
                 },
@@ -495,16 +499,9 @@
                     this.summaryGrid([
                       this.summaryTile('Known houses', houseCount, this.affairIcon('familyTree'), 'calm', this.stratumOrder.length + ' social orders'),
                       this.summaryTile('Allies / patrons', allies, this.affairIcon('support'), allies ? 'good' : 'neutral', 'Support, favors, and patrons'),
-                      this.summaryTile('Open rivalries', rivals, this.affairIcon('rivalry'), rivals ? 'bad' : 'good', 'Hostile houses watching you'),
-                      this.summaryTile('House turns', 'Monthly', this.affairIcon('trade'), 'calm', 'Wealth, office, marriage, security, honor, revenge')
+                      this.summaryTile('Open rivalries', rivals, this.affairIcon('rivalry'), rivals ? 'bad' : 'good', 'Hostile houses watching you')
                     ]) +
                     this.summarySection('Social orders', this.affairIcon('familyTree'), '<div class="cor-society-summary-chip-row">' + orderChips + '</div>') +
-                    this.summarySection('Possible effects', this.affairIcon('prestige'), '<div class="cor-society-summary-chip-row">' +
-                      this.summaryChip('Gifts', 'relations', this.affairIcon('gift'), 'good') +
-                      this.summaryChip('Ventures', 'cash / revenue', this.affairIcon('trade'), 'calm') +
-                      this.summaryChip('Scandals', 'prestige / heat', this.affairIcon('prestige'), 'warn') +
-                      this.summaryChip('Petitions', 'influence', this.affairIcon('petition'), 'calm') +
-                      '</div>') +
                     '</div>'
                 },
         houseSummaryHtml(society, state, house, profile, tradeActive) {
@@ -893,7 +890,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.322'
     }
   }
 }

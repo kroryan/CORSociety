@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPortraitsWardrobeVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyPortraitsWardrobeVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -139,12 +139,12 @@
         nativeCharacterPortraitWithOutfit(character, state, house, outfit) {
                   state = state || daapi.getState()
                   character = character || {}
-                  let baseLook = character.corSocietyOriginalLook || character.look || {}
+                  let baseLook = this.cloneWardrobeLook ? this.cloneWardrobeLook(character.corSocietyOriginalLook || character.look || {}) : { ...(character.corSocietyOriginalLook || character.look || {}) }
                   if (baseLook.group === 'cor_society' || baseLook.group === this.wardrobeLookGroup) {
-                    baseLook = character.corSocietyOriginalLook || {}
+                    baseLook = this.cloneWardrobeLook ? this.cloneWardrobeLook(character.corSocietyOriginalLook || {}) : { ...(character.corSocietyOriginalLook || {}) }
                   }
                   if (!outfit || outfit === 'auto') {
-                    let baseCharacter = { ...character, corSocietyOutfit: '', look: baseLook }
+                    let baseCharacter = { ...character, corSocietyOutfit: '', look: this.cloneWardrobeLook ? this.cloneWardrobeLook(baseLook) : { ...baseLook } }
                     return this.vanillaCharacterPortrait(baseCharacter, state) || this.genericVanillaCharacterPortrait(baseCharacter, state)
                   }
                   let gender = (character.gender || baseLook.gender || (character.isMale ? 'male' : 'female')) === 'female' ? 'female' : 'male'
@@ -945,7 +945,7 @@
                   return list[Math.floor(random() * list.length) % list.length]
                 }
       })
-      window.corSociety._mixinCorSocietyPortraitsWardrobeVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyPortraitsWardrobeVersion = '1.1.322'
     }
   }
 }

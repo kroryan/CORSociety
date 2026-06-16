@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -192,6 +192,29 @@
                     nextCompanionMonth: record.nextCompanionMonth || character.corSocietySlaveNextCompanionMonth || ''
                   }
                 },
+        registerPlayerSlaveRecord(society, state, record, character) {
+                  society = society || this.loadForAction()
+                  state = state || daapi.getState()
+                  let slaveRecord = this.playerSlaveRecordFromCharacter(record || {}, character || {}, state)
+                  if (!slaveRecord || !slaveRecord.characterId) {
+                    return false
+                  }
+                  society.playerSlaves = (society.playerSlaves || []).filter((slave) => !this.sameCharacterId(slave && slave.characterId, slaveRecord.characterId))
+                  society.playerSlaves.push(slaveRecord)
+                  let playerHouseId = this.currentCharacterDynastyId(state)
+                  let playerHouse = playerHouseId && society.houses && society.houses[playerHouseId]
+                  if (playerHouse) {
+                    playerHouse.slaveIds = playerHouse.slaveIds || []
+                    playerHouse.knownMemberIds = playerHouse.knownMemberIds || []
+                    if (!playerHouse.slaveIds.some((id) => this.sameCharacterId(id, slaveRecord.characterId))) {
+                      playerHouse.slaveIds.push(slaveRecord.characterId)
+                    }
+                    if (!playerHouse.knownMemberIds.some((id) => this.sameCharacterId(id, slaveRecord.characterId))) {
+                      playerHouse.knownMemberIds.push(slaveRecord.characterId)
+                    }
+                  }
+                  return slaveRecord
+                },
         enslavedPurchaseInfo(society, state, house, character) {
                   if (!character) return { visible: false, available: false }
                   let month = this.monthKey(state || daapi.getState())
@@ -318,7 +341,7 @@
                   }
                   state = daapi.getState()
                   let updated = (state.characters && state.characters[characterId]) || character
-                  let record = this.playerSlaveRecordFromCharacter({
+                  let record = this.registerPlayerSlaveRecord(society, state, {
                     key: 'slave_' + this.safeId(characterId),
                     characterId,
                     type,
@@ -329,9 +352,7 @@
                     origin: character.corSocietySlaveOrigin || updated.corSocietySlaveOrigin || this.randomSlaveOrigin(),
                     task,
                     savings
-                  }, updated, state)
-                  society.playerSlaves = (society.playerSlaves || []).filter((slave) => !this.sameCharacterId(slave.characterId, characterId))
-                  society.playerSlaves.push(record)
+                  }, updated)
                   this.refreshHouseMemberLists(society, state, house)
                   if (society.houses[previousOwnerHouseId] && previousOwnerHouseId !== house.id) {
                     this.refreshHouseMemberLists(society, state, society.houses[previousOwnerHouseId])
@@ -398,7 +419,7 @@
                   }
                   state = daapi.getState()
                   let updated = (state.characters && state.characters[characterId]) || character
-                  let record = this.playerSlaveRecordFromCharacter({
+                  let record = this.registerPlayerSlaveRecord(society, state, {
                     key: 'slave_' + this.safeId(characterId),
                     characterId,
                     type,
@@ -409,9 +430,7 @@
                     origin: character.corSocietySlaveOrigin || updated.corSocietySlaveOrigin || this.randomSlaveOrigin(),
                     task,
                     savings
-                  }, updated, state)
-                  society.playerSlaves = (society.playerSlaves || []).filter((slave) => !this.sameCharacterId(slave.characterId, characterId))
-                  society.playerSlaves.push(record)
+                  }, updated)
                   this.refreshHouseMemberLists(society, state, house)
                   this.log(society, 'You capture ' + record.name + ' from ' + house.name + '; relations with that slave kin group worsen.', 'slaves', house.id)
                   this.save(society)
@@ -2310,7 +2329,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.322'
     }
   }
 }

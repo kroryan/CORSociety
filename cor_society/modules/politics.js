@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -277,6 +277,7 @@
                   } else if (isSenatorial) {
                     options.push(this.politicsButton('openLaws', 'Propose a law to the Senate (they vote)', 'senator'))
                   }
+                  options.push(this.politicsButton('openRomanPower', 'Roman power systems', 'law', {}, { tooltip: 'Cursus honorum, clientela, adoption, legions, coalitions, religion, intrigue, and property markets.' }))
                   options.push(this.politicsButton('openFactionRecruit', 'Build your faction', 'support'))
                   options.push(this.politicsButton('openRivalPolitics', 'Pressure rival houses (feuds, abduction)', 'rivalry'))
                   if ((society.captives || []).some((c) => c && c.captorIsPlayer)) {
@@ -1164,7 +1165,7 @@
                   if (this.canPassPowerLaws(society, state)) {
                     this.lawList().forEach((law) => {
                       let passed = (society.playerPolitics.laws || []).indexOf(law.id) >= 0 && law.id !== 'march'
-                      options.push(this.politicsButton('proposeLaw', (passed ? '✓ ' : '') + law.title + ' (' + this.costLabel(law.cost) + (law.civilWar >= 1 ? ', CIVIL WAR' : law.civilWar ? ', war risk' : '') + ')', law.civilWar ? 'rivalry' : 'senator', { lawId: law.id }, passed ? { disabled: true, showDisabledWithTooltip: true, tooltip: 'Already enacted.' } : {}))
+                      options.push(this.politicsButton('proposeLaw', (passed ? '✓ ' : '') + law.title + ' (' + this.costLabel(law.cost) + (law.civilWar >= 1 ? ', CIVIL WAR' : law.civilWar ? ', war risk' : '') + ')', law.civilWar ? 'rivalry' : 'senator', { lawId: law.id }, passed ? { disabled: true, showDisabledWithTooltip: true, tooltip: 'Already enacted.' } : { tooltip: this.lawTooltip ? this.lawTooltip(law) : (law.description || law.title) }))
                     })
                   } else if (isDictator) {
                     options.push({ text: 'Power laws need a legislative mandate (legibus scribundis)', disabled: true, showDisabledWithTooltip: true, tooltip: 'Only a Dictator named to remake the laws (the Sullan mandate) may legislate toward the purple.' })
@@ -1214,7 +1215,7 @@
                   let state = daapi.getState()
                   this.ensureRomeState(society)
                   let options = this.policyLawList().map((law) => {
-                    return this.politicsButton('enactPolicyLaw', law.title + ' (' + this.costLabel(law.cost) + ')', law.populist >= 5 ? 'support' : 'trade', { lawId: law.id })
+                    return this.politicsButton('enactPolicyLaw', law.title + ' (' + this.costLabel(law.cost) + ')', law.populist >= 5 ? 'support' : 'trade', { lawId: law.id }, { tooltip: this.lawTooltip ? this.lawTooltip(law) : (law.description || law.title) })
                   })
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openLaws' } } })
                   this.pushModal({
@@ -1689,7 +1690,7 @@
                   }
                 }
       })
-      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.322'
     }
   }
 }

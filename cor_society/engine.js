@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.321') {
+      if (window.corSociety && window.corSociety.version === '1.1.322') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
@@ -47,7 +47,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.321',
+        version: '1.1.322',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
@@ -65,7 +65,14 @@
       }
     },
     applyRefactorMixins() {
-      let mixins = [
+      try {
+        daapi.invokeMethod({ event: '/cor_society/modules/index', method: '_mixinCorSocietyModuleIndex' })
+      } catch (err) {
+        console.warn('Roman Society module index failed', err)
+      }
+      let mixins = window.corSociety && window.corSociety.moduleMixinManifest
+        ? window.corSociety.moduleMixinManifest()
+        : [
         { event: '/cor_society/modules/config', method: '_mixinCorSocietyConfig' },
         { event: '/cor_society/modules/core_startup', method: '_mixinCorSocietyCoreStartup' },
         { event: '/cor_society/modules/presentation', method: '_mixinCorSocietyPresentation' },
@@ -80,7 +87,9 @@
         { event: '/cor_society/modules/portraits_wardrobe', method: '_mixinCorSocietyPortraitsWardrobe' },
         { event: '/cor_society/modules/roster_overlays', method: '_mixinCorSocietyRosterOverlays' },
         { event: '/cor_society/modules/log_utils', method: '_mixinCorSocietyLogUtils' },
-        { event: '/cor_society/modules/politics', method: '_mixinCorSocietyPolitics' }
+        { event: '/cor_society/modules/politics', method: '_mixinCorSocietyPolitics' },
+        { event: '/cor_society/modules/technical_safety', method: '_mixinCorSocietyTechnicalSafety' },
+        { event: '/cor_society/modules/roman_systems', method: '_mixinCorSocietyRomanSystems' }
       ]
       mixins.forEach((mixin) => {
         try {
@@ -203,6 +212,12 @@
     },
     politicsAction(args) {
       window.corSociety.runAction('politicsAction', args || {})
+    },
+    romanSystemsAction(args) {
+      if (!window.corSociety) {
+        daapi.invokeMethod({ event: '/cor_society/engine', method: 'boot' })
+      }
+      window.corSociety.runAction('romanSystemsAction', args || {})
     },
     debugMakeDictator(args) {
       if (!window.corSociety) {

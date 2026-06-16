@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyCoreStartupVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -17,6 +17,9 @@
                     return this.createState()
                   }
                   let society = this.load()
+                  if (this.runSocietyMigrations) {
+                    this.runSocietyMigrations(society, state)
+                  }
                   options = options || {}
                   let wardrobeRepairSchemaVersion = 'native-portrait-wardrobe-v2'
                   if (society.wardrobeRepairSchemaVersion !== wardrobeRepairSchemaVersion) {
@@ -59,6 +62,12 @@
                         this.syncSocietyTraitsWithVanilla(society, state)
                         this.syncFamilyRelationStatuses(society, state)
                         this.syncSlaveStatuses(society, state)
+                        if (this.syncCrimeStatuses) {
+                          this.syncCrimeStatuses(society, state)
+                        }
+                        if (this.syncMilitaryStatuses) {
+                          this.syncMilitaryStatuses(society, state)
+                        }
                         society.lastProcessedStatusMonth = monthKey
                         this.save(society)
                       }
@@ -102,6 +111,12 @@
                   this.syncSocietyTraitsWithVanilla(society, state)
                   this.syncFamilyRelationStatuses(society, state)
                   this.syncSlaveStatuses(society, state)
+                  if (this.syncCrimeStatuses) {
+                    this.syncCrimeStatuses(society, state)
+                  }
+                  if (this.syncMilitaryStatuses) {
+                    this.syncMilitaryStatuses(society, state)
+                  }
                   this.maintainDynastyHouseSystem(society, daapi.getState(), { force: true, phase: 'ensure-final', repairCadetBranches: true })
                   society.lastProcessedStatusMonth = monthKey
                   this.restoreSocietyPortraitLooks(state)
@@ -646,6 +661,9 @@
                   society.playerSlaves = society.playerSlaves || []
                   society.slaveMarketOffers = society.slaveMarketOffers || []
                   society.log = society.log || []
+                  if (this.runSocietyMigrations) {
+                    this.runSocietyMigrations(society, daapi.getState())
+                  }
                   return society
                 },
         save(society) {
@@ -687,6 +705,9 @@
                   if (society.generatedCharacterIds && society.generatedCharacterIds.length > 420) {
                     society.generatedCharacterIds = society.generatedCharacterIds.slice(-420)
                   }
+                  if (this.compactAdvancedState) {
+                    this.compactAdvancedState(society)
+                  }
                   delete society._relationStatusHashCache
                   delete society._slaveStatusHashCache
                   Object.keys(society.houses || {}).forEach((houseId) => {
@@ -698,7 +719,7 @@
                   return society
                 }
       })
-      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyCoreStartupVersion = '1.1.322'
     }
   }
 }

@@ -2,7 +2,7 @@
 
 Roman Society is a Citizen of Rome mod that adds a persistent social layer around the vanilla character, dynasty, marriage, property, and pregnancy systems.
 
-Current development version: `1.1.307`.
+Current development version: `1.1.322`.
 
 ## Design Goals
 
@@ -20,10 +20,23 @@ Roman Society registers current-character actions instead of filling the global 
 - `House Shield`
 - `Family Wardrobe`
 - `Bank of Rome`
+- `Crimes, courts, and prison`, inside the Society hub below Bank of Rome
 - `Household Slaves`
 - `Path to Freedom`, when the current player character is enslaved
 
 The bundled modules also expose integrated versions of Play As, Attempt Murder, animal stealing, Disinherit, Restore Inheritance, Bank of Rome, Coemptio, and Household Slaves.
+
+## Roman Systems
+
+Version `1.1.322` integrates the full advanced Society plan as bounded Society systems instead of duplicate vanilla systems.
+
+- Crimes, courts, prison, tax fraud, accusations, pardons, escapes, and legionary sentence alternatives live in the Society hub. Legion sentences reuse vanilla-style military service flags and icons so the character appears as away at war/service instead of using a parallel status.
+- Roman power systems add cursus honorum, clientela, factions, coalitions, dictatorship pressure, imperial laws, spies, hooks, adoption, cognomina, property crises, and monthly technical safety passes.
+- Every Society law exposed by the Roman power systems has a description/tooltip explaining what it changes.
+- The Society hub no longer shows the old Monthly life summary box.
+- Slave purchases now register real household slave records and player-house membership links; enslaved characters use a slave-focused character menu instead of the normal free-citizen menu.
+- Wardrobe portrait changes are isolated per character so changing the player outfit does not overwrite the spouse portrait.
+- Private loan amount buttons use the game stat-change icon as the accepted amount display, with details kept in the tooltip.
 
 ## Dynasties And Houses
 
@@ -160,6 +173,8 @@ The debug snapshot stores its last result in the `corSocietyLastDebugSnapshot` g
 ## Changelog
 
 The old README had become a mixed feature list and changelog. Starting with `1.1.307`, version notes live in `logs/`.
+
+Latest structured changelog: [logs/1.1.322.md](logs/1.1.322.md).
 
 See [logs/1.1.307.md](logs/1.1.307.md) for the first structured changelog entry and the corrected historical notes recovered from the previous README.
 

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -49,6 +49,16 @@
                         action: {
                           event: this.event,
                           method: 'openBankOfRome'
+                        }
+                      },
+                      {
+                        variant: 'info',
+                        text: 'Crimes, courts, and prison',
+                        icons: [this.lawIcon ? this.lawIcon('prison') : this.affairIcon('scandal')],
+                        action: {
+                          event: this.event,
+                          method: 'romanSystemsAction',
+                          context: { action: 'openCrimes' }
                         }
                       },
                       {
@@ -727,6 +737,9 @@
                   }
                   try {
                     this.wardrobeOutfitCache = false
+                    if (daapi.forceUpdateCharacterDisplay) {
+                      daapi.forceUpdateCharacterDisplay({ characterId })
+                    }
                     this.applyPortraitOverlays()
                   } catch (err) {
                     console.warn(err)
@@ -781,11 +794,11 @@
                     let clone = {
                       ...character,
                       corSocietyOutfit: '',
-                      look: originalLook && originalLook.group ? originalLook : (character.look || {})
+                      look: originalLook && originalLook.group ? this.cloneWardrobeLook(originalLook) : this.cloneWardrobeLook(character.look || {})
                     }
                     return this.vanillaCharacterPortrait(clone, state) || this.genericVanillaCharacterPortrait(clone, state)
                   }
-                  let clone = { ...character, corSocietyOutfit: outfit }
+                  let clone = { ...character, look: this.cloneWardrobeLook(character.look || {}), corSocietyOutfit: outfit }
                   return this.nativeCharacterPortraitWithOutfit(clone, state, false, outfit)
                 },
         openHouse({ houseId, returnTo, returnPage } = {}) {
@@ -1369,6 +1382,10 @@
                     return
                   }
                   character.id = character.id || characterId
+                  if (this.isSlaveCharacter(character, house)) {
+                    this.openSlavePerson({ houseId, characterId, group, page, returnTo, returnPage })
+                    return
+                  }
                   let nav = this.navContext(returnTo, returnPage)
                   let vanillaActions = this.vanillaCharacterActions(character)
                   let relatives = this.familyTreeRelatives(character, state)
@@ -1447,6 +1464,92 @@
                         action: backAction
                       }
                     ].filter(Boolean)
+                  })
+                },
+        openSlavePerson({ houseId, characterId, group, page, returnTo, returnPage } = {}) {
+                  let society = this.ensure()
+                  let state = daapi.getState()
+                  let house = society.houses[houseId]
+                  let character = state.characters[characterId]
+                  if (!house || !character) {
+                    this.openHouse({ houseId, returnTo, returnPage })
+                    return
+                  }
+                  character.id = character.id || characterId
+                  let currentId = this.currentCharacterId(state)
+                  if (this.sameCharacterId(currentId, characterId) && this.currentPlayerSlaveRecord && this.currentPlayerSlaveRecord(society, state)) {
+                    this.openPlayerSlavePath()
+                    return
+                  }
+                  let nav = this.navContext(returnTo, returnPage)
+                  let backAction = group ? {
+                    event: this.event,
+                    method: 'openMemberGroup',
+                    context: { houseId, group, page: page || 0, ...nav }
+                  } : {
+                    event: this.event,
+                    method: 'openMemberGroups',
+                    context: { houseId, ...nav }
+                  }
+                  let record = (society.playerSlaves || []).find((slave) => slave && this.sameCharacterId(slave.characterId, characterId))
+                  let vanillaActions = this.vanillaCharacterActions(character)
+                  let ownerHouseId = character.corSocietySlaveOwnerHouseId || character.corSocietyHouseId || ''
+                  let originHouseId = character.corSocietyOriginHouseId || ''
+                  let ownerHouse = ownerHouseId && society.houses[ownerHouseId]
+                  let originHouse = originHouseId && society.houses[originHouseId]
+                  let info = this.enslavedPurchaseInfo ? this.enslavedPurchaseInfo(society, state, house, character) : false
+                  let options = []
+                  if (record) {
+                    options.push({
+                      variant: 'info',
+                      text: 'Manage household slave',
+                      tooltip: 'Open this owned slave record: task, pupil, marriage to another slave, sale, manumission, and origin links.',
+                      icons: [this.slaveTypeIcon(record.type || character.corSocietySlaveType || 'labor')],
+                      action: { event: this.event, method: 'openManageSlave', context: { slaveKey: record.key, characterId } }
+                    })
+                  }
+                  let purchase = this.buyEnslavedPersonOption ? this.buyEnslavedPersonOption(society, state, house, character, nav) : false
+                  if (purchase && !record) options.push(purchase)
+                  if (ownerHouse && ownerHouse.id !== house.id) {
+                    options.push({
+                      variant: 'info',
+                      text: 'Open owner house',
+                      tooltip: 'Open the Society house that currently controls this slave.',
+                      icons: [this.houseCrestIcon(society, ownerHouse)],
+                      action: { event: this.event, method: 'openHouse', context: { houseId: ownerHouse.id, ...nav } }
+                    })
+                  }
+                  if (originHouse) {
+                    options.push({
+                      variant: 'info',
+                      text: 'Open origin house',
+                      tooltip: 'Open the house this person came from before slavery.',
+                      icons: [this.houseCrestIcon(society, originHouse)],
+                      action: { event: this.event, method: 'openHouse', context: { houseId: originHouse.id, ...nav } }
+                    })
+                  }
+                  options.push({
+                    variant: 'info',
+                    text: 'Vanilla / other mods actions (' + vanillaActions.length + ')',
+                    disabled: !vanillaActions.length,
+                    showDisabledWithTooltip: true,
+                    tooltip: vanillaActions.length ? 'Open actions currently exposed by the base game or other mods for this character.' : 'No vanilla or other mod character action is currently exposed for this character.',
+                    icons: vanillaActions.length && vanillaActions[0].icon ? [vanillaActions[0].icon] : [this.affairIcon('support')],
+                    action: { event: this.event, method: 'openVanillaActions', context: { houseId, characterId, group, page: page || 0, ...nav } }
+                  })
+                  options.push({ text: 'Back', action: backAction })
+                  this.pushModal({
+                    societyMenu: true,
+                    title: this.slaveDisplayName ? this.slaveDisplayName(character, record, state) : this.characterName(character, state),
+                    message: 'Enslaved character record.',
+                    societySummaryOptions: [
+                      this.summaryOption('Status', 'Enslaved' + (ownerHouse ? '; owner ' + ownerHouse.name : ''), [this.slaveTypeIcon((record && record.type) || character.corSocietySlaveType || 'labor')], 'Slave characters use slave management, purchase, origin, and freedom systems instead of normal citizen social actions.'),
+                      this.summaryOption('Origin', this.slaveOriginDescription(character.corSocietySlaveOrigin || (record && record.origin) || 'unknown'), [this.affairIcon('log')], 'Origin notes are kept for navigation and cleared on manumission.'),
+                      this.summaryOption('Task', this.slaveTaskLabel ? this.slaveTaskLabel(record || character) : (character.corSocietySlaveTask || 'labor'), [this.slaveTypeIcon((record && record.type) || character.corSocietySlaveType || 'labor')], 'Owned slaves can be assigned household work from the slave management screen.'),
+                      this.summaryOption('Purchase', info && info.visible ? (info.available ? info.cost + ' cash' : info.reason) : 'not for sale', [this.affairIcon('coins')], info ? info.tooltip : 'This character is not currently available through the slave market.')
+                    ],
+                    image: this.characterPortrait(character, state, house),
+                    options
                   })
                 },
         openFamilyCharacterSheet(args = {}) {
@@ -4328,7 +4431,7 @@
                     let interest = Math.max(1, Math.ceil(amount * rate))
                     return {
                       variant: chance >= 0.5 ? 'info' : 'danger',
-                      text: 'Request ' + amount + ' (' + this.privateLoanAcceptanceText(chance) + ')',
+                      text: 'Request private loan (' + this.privateLoanAcceptanceText(chance) + ')',
                       tooltip: 'Private loan request to ' + house.name + '.\nAcceptance: ' + Math.round(chance * 100) + '% (' + this.privateLoanAcceptanceText(chance) + ').\nExpected repayment: ' + (amount + interest) + ' after interest.\nIf accepted now: +' + amount + ' cash. If refused: no cash changes.',
                       statChanges: { cash: amount },
                       disabled: activeDebt || parseFloat(((house.ai || {}).cash) || 0) < amount,
@@ -4430,7 +4533,7 @@
                     let interest = Math.max(1, Math.ceil(amount * rate))
                     return {
                       variant: chance >= 0.5 ? 'info' : 'danger',
-                      text: 'Offer ' + amount + ' (' + this.privateLoanAcceptanceText(chance) + ')',
+                      text: 'Offer private loan (' + this.privateLoanAcceptanceText(chance) + ')',
                       tooltip: 'Private loan offer to ' + house.name + '.\nAcceptance: ' + Math.round(chance * 100) + '% (' + this.privateLoanAcceptanceText(chance) + ').\nExpected repayment: ' + (amount + interest) + ' after interest.\nIf accepted now: -' + amount + ' cash. If refused: no cash is spent.',
                       statChanges: { cash: -amount },
                       disabled: cash < amount || this.privateLoanActiveForBorrower(society, houseId),
@@ -4803,9 +4906,13 @@
                   if (!playerRecord) {
                     playerRecord = this.playerSlaveRecordFromCharacter(record, character, state)
                   }
-                  society.playerSlaves = society.playerSlaves || []
-                  society.playerSlaves = society.playerSlaves.filter((slave) => !this.sameCharacterId(slave.characterId, playerRecord.characterId))
-                  society.playerSlaves.push(playerRecord)
+                  if (this.registerPlayerSlaveRecord) {
+                    playerRecord = this.registerPlayerSlaveRecord(society, state, playerRecord, character) || playerRecord
+                  } else {
+                    society.playerSlaves = society.playerSlaves || []
+                    society.playerSlaves = society.playerSlaves.filter((slave) => !this.sameCharacterId(slave.characterId, playerRecord.characterId))
+                    society.playerSlaves.push(playerRecord)
+                  }
                   if (offerId) {
                     society.slaveMarketOffers = (society.slaveMarketOffers || []).filter((item) => item && item.offerId !== offerId)
                   }
@@ -5408,7 +5515,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.322'
     }
   }
 }

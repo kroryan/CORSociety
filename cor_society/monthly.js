@@ -1,4 +1,5 @@
 [
+  '/cor_society/modules/index',
   '/cor_society/modules/config',
   '/cor_society/modules/core_startup',
   '/cor_society/modules/presentation',
@@ -14,6 +15,8 @@
   '/cor_society/modules/roster_overlays',
   '/cor_society/modules/log_utils',
   '/cor_society/modules/politics',
+  '/cor_society/modules/technical_safety',
+  '/cor_society/modules/roman_systems',
   '/cor_society/character_actions',
   '/cor_society/main',
   '/cor_society/bundled/play_as/main',

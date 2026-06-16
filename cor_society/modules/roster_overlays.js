@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.321') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.322') {
         return
       }
       Object.assign(window.corSociety, {
@@ -663,6 +663,8 @@
                   images.forEach((img) => {
                     if (!img || !img.getBoundingClientRect || img.getAttribute('data-cor-society-portrait-src')) return
                     if (img.closest && img.closest('#interactionModal, .interaction-modal, .modal, .cor-society-family-tree-overlay')) return
+                    let attributedId = this.characterIdFromElement(img)
+                    if (attributedId && !this.sameCharacterId(attributedId, character.id)) return
                     let rect = img.getBoundingClientRect()
                     if (rect.width < 42 || rect.height < 42 || rect.width > 240 || rect.height > 260) return
                     let node = img.parentElement
@@ -670,6 +672,14 @@
                     while (node && node !== document.body && depth < 5) {
                       let text = (node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
                       if (text && text.length < 260 && names.some((name) => name && text.indexOf(name) >= 0)) {
+                        if (!attributedId) {
+                          let portraitCount = Array.prototype.slice.call(node.querySelectorAll('img')).filter((candidate) => {
+                            if (!candidate.getBoundingClientRect) return false
+                            let candidateRect = candidate.getBoundingClientRect()
+                            return candidateRect.width >= 42 && candidateRect.height >= 42 && candidateRect.width <= 240 && candidateRect.height <= 260
+                          }).length
+                          if (portraitCount > 1) return
+                        }
                         matches.push(img)
                         return
                       }
@@ -1062,7 +1072,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.321'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.322'
     }
   }
 }
