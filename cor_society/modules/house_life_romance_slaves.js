@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.325') {
         return
       }
       Object.assign(window.corSociety, {
@@ -3267,7 +3267,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.325'
     }
   }
 }

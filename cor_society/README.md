@@ -2,11 +2,12 @@
 
 This folder is the installable Roman Society mod package.
 
-Current runtime version: `1.1.324`.
+Current runtime version: `1.1.325`.
 
 Use the root documentation as the source of truth:
 
 - [Roman Society README](../README.md)
+- [1.1.325 changelog](../logs/1.1.325.md)
 - [1.1.324 changelog](../logs/1.1.324.md)
 - [1.1.323 changelog](../logs/1.1.323.md)
 - [1.1.322 changelog](../logs/1.1.322.md)
@@ -45,7 +46,7 @@ you as having been Dictator (the first Emperor must pass through the dictatorshi
 ## Module Layout
 
 - `engine.js` boots the shared `window.corSociety` object and applies module mixins.
-- `modules/index.js` registers the module manifest and boot order for the 1.1.324 mixins.
+- `modules/index.js` registers the module manifest and boot order for the 1.1.325 mixins.
 - `modules/config.js` stores constants, social orders, names, portrait assets, and crest palettes.
 - `modules/core_startup.js` loads, saves, compacts, and initializes Society state.
 - `modules/dynasty_model.js` owns dynasty, house, cadet branch, membership, and validation logic.

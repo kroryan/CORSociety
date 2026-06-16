@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.325') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1060,6 +1060,9 @@
                   this.withHouse(houseId, (society, house) => {
                     let state = daapi.getState()
                     let character = state.characters[characterId]
+                    if (this.sameCharacterId(this.currentCharacterId(state), characterId)) {
+                      return
+                    }
                     house.relation = this.clamp((house.relation || 0) + 6, -100, 100)
                     this.changePersonalRelation(society, this.currentCharacterId(state), characterId, 8, 'admirer')
                     this.applyStats({ prestige: 3 })
@@ -1258,6 +1261,17 @@
                     }
                     player.id = player.id || currentId
                     character.id = character.id || characterId
+                    // Never court close family (children, parents, siblings, in-laws).
+                    // The spouse uses its own dedicated route (courtSpouse).
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: 'outsider' }
+                    if (kinship.kind === 'self' || kinship.kind === 'family') {
+                      result = {
+                        title: 'Courtship unavailable',
+                        message: 'You cannot court close family.',
+                        image: this.characterPortrait(character, state, house)
+                      }
+                      return
+                    }
                     if (this.age(player, state) < 13 || this.age(character, state) < 13) {
                       result = {
                         title: 'Courtship unavailable',
@@ -1479,6 +1493,17 @@
                     }
                     player.id = player.id || currentId
                     character.id = character.id || characterId
+                    // Never court close family (children, parents, siblings, in-laws).
+                    // The spouse uses its own dedicated route (courtSpouse).
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: 'outsider' }
+                    if (kinship.kind === 'self' || kinship.kind === 'family') {
+                      result = {
+                        title: 'Courtship unavailable',
+                        message: 'You cannot court close family.',
+                        image: this.characterPortrait(character, state, house)
+                      }
+                      return
+                    }
                     if (this.age(player, state) < 13 || this.age(character, state) < 13) {
                       result = {
                         title: 'Courtship unavailable',
@@ -1573,6 +1598,14 @@
         spreadRumor({ houseId, characterId }) {
                   this.withHouse(houseId, (society, house) => {
                     let state = daapi.getState()
+                    let character = state.characters && state.characters[characterId]
+                    if (this.sameCharacterId(this.currentCharacterId(state), characterId)) {
+                      return
+                    }
+                    let kinship = this.societyKinshipContext ? this.societyKinshipContext(society, state, house, character) : { kind: 'outsider' }
+                    if (kinship.kind === 'self' || kinship.kind === 'spouse' || kinship.kind === 'family') {
+                      return
+                    }
                     let success = Math.random() > 0.28
                     if (success) {
                       house.relation = this.clamp((house.relation || 0) - 22, -100, 100)
@@ -2412,7 +2445,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.325'
     }
   }
 }

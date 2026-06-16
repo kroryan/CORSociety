@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.325') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1214,6 +1214,10 @@
         socialVisitOption(society, state, house, character, nav) {
                   let characterId = character && character.id
                   let kinship = this.societyKinshipContext(society, state, house, character)
+                  // No self-directed social visit: you do not invite yourself over.
+                  if (kinship.kind === 'self') {
+                    return false
+                  }
                   let social = this.characterSocialRecord(society, characterId, false)
                   if (kinship.kind !== 'outsider') {
                     let cooldown = social.nextInviteMonth && !this.monthKeyReached(social.nextInviteMonth, state)
@@ -1296,9 +1300,20 @@
                   let currentId = this.currentCharacterId(state)
                   let player = state.characters[currentId] || state.current || {}
                   let characterId = character && character.id
+                  // You cannot court yourself, and you cannot court close family (children,
+                  // parents, siblings, grandparents/grandchildren, or in-laws). Only the spouse
+                  // route below is allowed within the family. Everyone else can be courted.
+                  let kinship = this.societyKinshipContext(society, state, house, character)
+                  if (!characterId || this.sameCharacterId(currentId, characterId) || kinship.kind === 'self') {
+                    return false
+                  }
+                  let isSpouse = !!(player && player.spouseId && this.sameCharacterId(player.spouseId, characterId)) || kinship.kind === 'spouse'
+                  if (kinship.kind === 'family' && !isSpouse) {
+                    return false
+                  }
                   // Spouses use a dedicated marital route (no introduction/courtship needed):
                   // near-certain success and a real chance to conceive via the pregnancy system.
-                  if (characterId && player && player.spouseId && this.sameCharacterId(player.spouseId, characterId)) {
+                  if (isSpouse) {
                     let playerAgeSpouse = this.age(player, state)
                     let targetAgeSpouse = this.age(character, state)
                     let blocked = playerAgeSpouse < 13 || targetAgeSpouse < 13
@@ -1413,6 +1428,7 @@
                   let social = this.characterSocialRecord(society, characterId, false)
                   let romance = this.getRomance(society, currentId, characterId)
                   let kinship = this.societyKinshipContext(society, state, house, character)
+                  let isSelf = !!(currentId && this.sameCharacterId(currentId, characterId))
                   let relationScore = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationScore(society, state, currentId, characterId) : 0
                   let relationRecord = currentId && !this.sameCharacterId(currentId, characterId) ? this.personalRelationRecord(society, currentId, characterId, false) : false
                   let backAction = group ? {
@@ -1446,7 +1462,7 @@
                           context: { houseId, characterId, group, page: page || 0, ...nav }
                         }
                       },
-                      {
+                      isSelf ? false : {
                         text: 'Praise in public',
                         icons: [this.affairIcon('prestige')],
                         action: {
@@ -1459,7 +1475,7 @@
                       this.socialVisitOption(society, state, house, character, nav),
                       this.romanceOption(society, state, house, character),
                       this.buyEnslavedPersonOption(society, state, house, character, nav),
-                      (kinship.kind === 'spouse' || kinship.kind === 'family') ? false : {
+                      (isSelf || kinship.kind === 'spouse' || kinship.kind === 'family') ? false : {
                         variant: 'danger',
                         text: 'Spread rumor',
                         icons: [this.affairIcon('rivalry')],
@@ -5555,7 +5571,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.325'
     }
   }
 }

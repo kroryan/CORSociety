@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.325') {
         return
       }
       let previousPoliticsAction = window.corSociety.politicsAction
@@ -1066,6 +1066,14 @@
           let state = daapi.getState()
           let rome = this.ensureAdvancedRomanState(society, state)
           let character = state.characters[characterId]
+          let currentId = this.currentCharacterId(state)
+          let player = state.characters[currentId] || state.current || {}
+          // You cannot adopt yourself or your own spouse as heir.
+          if (this.sameCharacterId(currentId, characterId) || (player.spouseId && this.sameCharacterId(player.spouseId, characterId))) {
+            this.save(society)
+            this.openSuccession()
+            return
+          }
           if (character) {
             rome.designatedHeirId = characterId
             rome.successionLaw = 'designation'
@@ -1883,7 +1891,7 @@
           this.refreshPropertyMarket(society, state)
         }
       })
-      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.325'
     }
   }
 }

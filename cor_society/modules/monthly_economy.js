@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyMonthlyEconomyVersion === '1.1.325') {
         return
       }
       Object.assign(window.corSociety, {
@@ -667,7 +667,7 @@
                   this.normalizeHousePropertyDetails(house)
                 }
       })
-      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyMonthlyEconomyVersion = '1.1.325'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.324') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.325') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1072,7 +1072,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.324'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.325'
     }
   }
 }

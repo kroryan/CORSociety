@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.324') {
+      if (window.corSociety && window.corSociety.version === '1.1.325') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
@@ -47,7 +47,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.324',
+        version: '1.1.325',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
