@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.328') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1675,7 +1675,9 @@
         privateLoanOfferAmounts(state, house, lenderCash) {
                   lenderCash = lenderCash === undefined ? parseFloat(((state || {}).current || {}).cash || 0) : parseFloat(lenderCash || 0)
                   let wealth = Math.max(80, parseFloat((house && house.wealth) || 100))
-                  let lenderCap = Math.max(0, Math.floor(lenderCash))
+                  // A prudent lender never ties up more than half of its liquid capital in a
+                  // single private loan, whether the lender is the player or an NPC house.
+                  let lenderCap = Math.max(0, Math.floor(lenderCash * 0.5))
                   let borrowerCash = parseFloat(((house || {}).ai || {}).cash || 0)
                   let wealthCap = Math.max(200, Math.round(wealth * 18))
                   let liquidityCap = borrowerCash < 50 ? 100000 : borrowerCash < 200 ? 70000 : borrowerCash < 600 ? 50000 : Math.max(3000, Math.round(wealth * 6))
@@ -1728,7 +1730,7 @@
         privateLoanRequestAmounts(state, lenderHouse) {
                   let lenderCash = Math.max(0, Math.floor(parseFloat(((lenderHouse || {}).ai || {}).cash || 0)))
                   let wealth = Math.max(80, parseFloat((lenderHouse && lenderHouse.wealth) || 100))
-                  let cap = Math.max(0, Math.min(100000, Math.floor(lenderCash * 0.55), Math.max(300, Math.round(wealth * 20))))
+                  let cap = Math.max(0, Math.min(100000, Math.floor(lenderCash * 0.5), Math.max(300, Math.round(wealth * 20))))
                   let ladder = [200, 1000, 2000, 3000, 5000, 10000, 20000, 50000, 70000, 100000]
                   let seen = {}
                   return ladder
@@ -2211,7 +2213,7 @@
                   if (!lender) {
                     return false
                   }
-                  let amounts = this.privateLoanOfferAmounts(state, borrower, Math.round(parseFloat(lender.ai.cash || 0) * 0.55))
+                  let amounts = this.privateLoanOfferAmounts(state, borrower, parseFloat(lender.ai.cash || 0))
                   let amount = this.pick(amounts.filter((candidate) => candidate <= Math.max(80, Math.round(parseFloat(lender.ai.cash || 0) * 0.18)))) || 0
                   if (amount <= 0) {
                     return false
@@ -3267,7 +3269,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.328'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.328') {
         return
       }
       Object.assign(window.corSociety, {
@@ -59,6 +59,16 @@
                           event: this.event,
                           method: 'romanSystemsAction',
                           context: { action: 'openCrimes' }
+                        }
+                      },
+                      {
+                        variant: 'info',
+                        text: 'Security & bodyguards (lvl ' + (this.playerBodyguardLevel ? this.playerBodyguardLevel(society) : 0) + ')',
+                        icons: [this.lawIcon ? this.lawIcon('legion') : this.affairIcon('support')],
+                        action: {
+                          event: this.event,
+                          method: 'romanSystemsAction',
+                          context: { action: 'openSecurity' }
                         }
                       },
                       {
@@ -1485,7 +1495,7 @@
                           context: { houseId, characterId }
                         }
                       },
-                      (this.playerIsEmperor && this.playerIsEmperor(society, state)) ? {
+                      (!isSelf && this.playerIsEmperor && this.playerIsEmperor(society, state)) ? {
                         variant: 'info',
                         text: 'Imperial justice (investigate, judge)',
                         icons: [this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator')],
@@ -4504,7 +4514,8 @@
                   let state = daapi.getState()
                   let house = society.houses && society.houses[houseId]
                   amount = Math.max(1, Math.round(parseFloat(amount || 0)))
-                  if (!house || this.privateLoanActiveForBorrower(society, 'player') || parseFloat(((house.ai || {}).cash) || 0) < amount) {
+                  let lenderCash = parseFloat(((house || {}).ai || {}).cash || 0)
+                  if (!house || this.privateLoanActiveForBorrower(society, 'player') || lenderCash < amount || amount > Math.floor(lenderCash * 0.5)) {
                     this.openPrivateLoanBorrowers({ page: page || 0 })
                     return
                   }
@@ -4614,7 +4625,7 @@
                   let house = society.houses && society.houses[houseId]
                   amount = Math.max(1, Math.round(parseFloat(amount || 0)))
                   let cash = parseFloat(((state || {}).current || {}).cash || 0)
-                  if (!house || cash < amount || this.privateLoanActiveForBorrower(society, houseId)) {
+                  if (!house || cash < amount || amount > Math.floor(cash * 0.5) || this.privateLoanActiveForBorrower(society, houseId)) {
                     this.openPrivateLoans({ page: page || 0 })
                     return
                   }
@@ -5571,7 +5582,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.328'
     }
   }
 }

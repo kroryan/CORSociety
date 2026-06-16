@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.328') {
         return
       }
       Object.assign(window.corSociety, {
@@ -229,7 +229,7 @@
                   let reason = ''
                   if (!visible) reason = 'not enslaved'
                   else if (character.isDead) reason = 'dead'
-                  else if (currentDynastyId && character.dynastyId === currentDynastyId) reason = 'already household'
+                  else if (currentDynastyId && String(character.dynastyId || '') === String(currentDynastyId)) reason = 'already household'
                   else if (this.age(character, state) < 5) reason = 'too young'
                   else if (cash < cost) reason = 'need ' + cost + ' cash'
                   let result = {
@@ -2445,7 +2445,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.328'
     }
   }
 }

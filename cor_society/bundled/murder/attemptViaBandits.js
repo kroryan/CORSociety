@@ -43,6 +43,16 @@
       const character = state.characters[characterId]
       const currentCharacter = state.characters[currentId]
       let rngesus = (currentCharacter.skills.combat / 40) + (currentCharacter.skills.intelligence / 60) +  ((Math.random() / 5) * (Math.random() > 0.45 ? 1 : -1))
+      // Tie the murder attempt to the Society crime system: important and well-guarded
+      // targets (bodyguards, powerful houses) are harder to reach and kill.
+      try {
+        if (window.corSociety && window.corSociety.targetSecurityLevel && window.corSociety.load) {
+          let soc = window.corSociety.load()
+          let security = window.corSociety.targetSecurityLevel(soc, state, characterId) || 0
+          let importance = window.corSociety.characterImportance ? (window.corSociety.characterImportance(soc, state, characterId) || 0) : 0
+          rngesus -= security * 0.06 + importance * 0.01
+        }
+      } catch (err) { console.warn(err) }
       let message = ''
       let text = ''
       let statChanges = {}
@@ -71,6 +81,13 @@
         daapi.setCharacterFlag({ characterId, flag: 'mod_murder_plotTarget', data: false })
         daapi.setCharacterFlag({ characterId: currentId, flag: 'mod_murder_startedPlotOnTarget', data: false })
         daapi.deleteCharacterAction({ characterId: currentId, key: 'mod_murder_cancelPlot' })
+      }
+      if (rngesus >= 0.15) {
+        try {
+          if (window.corSociety && window.corSociety.registerPlayerMurderAttempt) {
+            window.corSociety.registerPlayerMurderAttempt({ targetId: characterId, killed: rngesus >= 0.55 })
+          }
+        } catch (err) { console.warn(err) }
       }
       daapi.pushInteractionModalQueue({
         title: 'Bandit gambit',

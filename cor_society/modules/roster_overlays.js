@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyRosterOverlaysVersion === '1.1.328') {
         return
       }
       Object.assign(window.corSociety, {
@@ -102,8 +102,28 @@
                   })
                   return Object.keys(actions).map((key) => {
                     return { key, action: actions[key] }
-                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions && !this.isHiddenVanillaFamilyTreeAction(item))
+                  }).filter((item) => item.action && typeof item.action === 'object' && !item.action.hideInCharacterActions && !this.isHiddenVanillaFamilyTreeAction(item) && !this.isHiddenLegacyCharacterAction(item))
                 },
+        isHiddenLegacyCharacterAction(item) {
+          // Theft is now a house-targeted crime in "Crimes, courts, and prison", not a
+          // per-character action. Hide any legacy per-character "Steal from" action that
+          // may still be persisted on a character or cached from an older mod version, so
+          // the only bundled per-character actions remain Play As and Attempt Murder.
+          if (!item) {
+            return false
+          }
+          if (String(item.key || '') === 'cor_society_stealing_from') {
+            return true
+          }
+          let action = item.action || {}
+          let haystacks = [
+            item.key,
+            action.title,
+            action.process && (action.process.method || action.process.path),
+            action.action && (action.action.method || action.action.path)
+          ].map((value) => String(value || '').toLowerCase())
+          return haystacks.some((value) => value.indexOf('stealingfrom') >= 0 || value.indexOf('steal from') >= 0)
+        },
         isHiddenVanillaFamilyTreeAction(item) {
                   // The vanilla "Known Family Tree" screen does not render Society's generated kin
                   // correctly, so we hide it from the Society "Vanilla / other mods actions" list.
@@ -165,26 +185,8 @@
                       }
                     })
                   }
-                  if (!isCurrent && !character.isDead) {
-                    let society = this.load()
-                    this.normalizeDynastyHouseModel(society, state)
-                    let stealInfo = this.stealingFromInfo(society, state, character)
-                    items.push({
-                      key: 'cor_society_stealing_from',
-                      action: {
-                        title: 'Steal from household',
-                        tooltip: stealInfo.tooltip,
-                        icon: daapi.requireImage('/cor_society/bundled/stealingFrom/animalPen.svg'),
-                        isAvailable: stealInfo.available,
-                        hideWhenBusy: false,
-                        process: {
-                          event: this.event,
-                          method: 'startStealingFromCharacter',
-                          context: { characterId, houseId: stealInfo.houseId }
-                        }
-                      }
-                    })
-                  }
+                  // Theft is no longer a per-character action; it is now a house-targeted
+                  // crime handled from "Crimes, courts, and prison" (openStealTargets).
                   if (isCurrent && currentPlotTarget) {
                     items.push({
                       key: 'mod_murder_cancelPlot',
@@ -1072,7 +1074,7 @@
                   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 }
       })
-      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyRosterOverlaysVersion = '1.1.328'
     }
   }
 }

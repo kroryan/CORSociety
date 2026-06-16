@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.328') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1392,6 +1392,10 @@
                     this.openHub()
                     return
                   }
+                  if (this.sameCharacterId && this.sameCharacterId(characterId, this.currentCharacterId(state))) {
+                    this.openHub()
+                    return
+                  }
                   character.id = character.id || characterId
                   let inquiry = society.investigations[characterId]
                   let crime = inquiry && this.imperialCrimes().find((c) => c.id === inquiry.crimeId)
@@ -1691,7 +1695,7 @@
                   }
                 }
       })
-      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.328'
     }
   }
 }

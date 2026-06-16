@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyTechnicalSafetyVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyTechnicalSafetyVersion === '1.1.328') {
         return
       }
       let previousDebugSnapshot = window.corSociety.debugSnapshot
@@ -64,6 +64,9 @@
           society.crimeStatusCharacterIds = society.crimeStatusCharacterIds || []
           society.blackmailHooks = society.blackmailHooks || {}
           society.spyNetworks = society.spyNetworks || {}
+          society.crimeInformers = society.crimeInformers || {}
+          society.security = society.security || { bodyguards: 0, lastUpkeepMonth: '' }
+          society.assassinationLog = society.assassinationLog || []
           society.adoptions = society.adoptions || []
           society.marriageAlliances = society.marriageAlliances || []
           society.rome = society.rome || {}
@@ -131,6 +134,14 @@
               let entry = society.investigations[characterId]
               if (!characterExists(characterId) || (entry && entry.month && nowIndex && nowIndex - this.monthIndex(entry.month) > 72)) {
                 delete society.investigations[characterId]
+                changed = true
+              }
+            })
+          }
+          if (society.crimeInformers) {
+            Object.keys(society.crimeInformers).forEach((houseId) => {
+              if (!society.houses || !society.houses[houseId]) {
+                delete society.crimeInformers[houseId]
                 changed = true
               }
             })
@@ -295,7 +306,7 @@
           return options
         }
       })
-      window.corSociety._mixinCorSocietyTechnicalSafetyVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyTechnicalSafetyVersion = '1.1.328'
     }
   }
 }

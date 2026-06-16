@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.326') {
+      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.328') {
         return
       }
       let previousPoliticsAction = window.corSociety.politicsAction
@@ -111,6 +111,14 @@
             openCrimes: 'openCrimes',
             commitTaxFraud: 'commitTaxFraud',
             openCrimeTargets: 'openCrimeTargets',
+            openCrimeIntel: 'openCrimeIntel',
+            hireCrimeInformers: 'hireCrimeInformers',
+            openSecurity: 'openSecurity',
+            hireBodyguards: 'hireBodyguards',
+            disbandBodyguards: 'disbandBodyguards',
+            openStealTargets: 'openStealTargets',
+            openStealHouse: 'openStealHouse',
+            stealFromHouse: 'stealFromHouse',
             denounceCrime: 'denounceCrime',
             payFine: 'payFine',
             bribeJailer: 'bribeJailer',
@@ -222,7 +230,9 @@
             forgery: { label: 'forgery and private fraud', latin: 'falsum', baseRisk: 0.09, fine: 1.5, jail: 2, infamy: 7, description: 'Forge records or contracts for profit.' },
             smuggling: { label: 'smuggling', latin: 'contrabandum', baseRisk: 0.08, fine: 1.3, jail: 1, infamy: 5, tradePenalty: true, description: 'Evade harbour dues. Boat and trade houses are especially tempted.' },
             conspiracy: { label: 'conspiracy', latin: 'coniuratio', baseRisk: 0.18, fine: 1.0, jail: 6, infamy: 18, treason: true, description: 'Plot against magistrates or the ruler.' },
-            maiestas: { label: 'treason', latin: 'maiestas', baseRisk: 0.22, fine: 1.0, jail: 8, infamy: 25, treason: true, description: 'Attack the majesty of the Roman state. Execution is possible.' }
+            maiestas: { label: 'treason', latin: 'maiestas', baseRisk: 0.22, fine: 1.0, jail: 8, infamy: 25, treason: true, description: 'Attack the majesty of the Roman state. Execution is possible.' },
+            sicarii: { label: 'murder by hired killers', latin: 'sicarii', baseRisk: 0.16, fine: 2.0, jail: 8, infamy: 22, treason: false, description: 'Hire assassins to kill a rival. A Lex Cornelia de sicariis capital crime if the delatores trace it back to you.' },
+            furtum: { label: 'theft', latin: 'furtum', baseRisk: 0.10, fine: 1.2, jail: 1, infamy: 6, description: 'Burglary against another house. Caught thieves owe multiple damages and lose standing.' }
           }
         },
         crimeListForUi() {
@@ -257,8 +267,8 @@
           let traits = (character && character.traits) || []
           if (traits.indexOf('liar') >= 0 || traits.indexOf('manipulator') >= 0) chance -= 0.02
           if (traits.indexOf('gossip') >= 0) chance += 0.03
-          let spy = (society.spyNetworks || {})[characterId]
-          if (spy) chance += Math.min(0.18, (spy.level || 1) * 0.06)
+          let informer = houseId ? (society.crimeInformers || {})[houseId] : null
+          if (informer) chance += Math.min(0.20, (informer.level || 1) * 0.05)
           let rome = society.rome || {}
           if ((rome.policies || []).indexOf('lex_tabellaria') >= 0 && crime.type === 'ambitus') chance += 0.12
           if ((rome.policies || []).indexOf('lex_iulia_adulteriis') >= 0 && crime.type === 'adulterium') chance += 0.12
@@ -448,10 +458,16 @@
             action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimeTargets' } }
           })
           options.push({
-            text: 'Build spy network',
-            tooltip: 'Spend influence to improve detection against rivals and warn of conspiracies.',
-            icons: [this.affairIcon('slander'), this.lawIcon('law')],
-            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openIntrigue', from: 'openCrimes' } }
+            text: 'Hire delatores (criminal informers)',
+            tooltip: 'Pay informers to watch a rival house. They raise the chance its crimes are detected and make your audits and denunciations against it land. This is criminal intelligence, separate from political spies.',
+            icons: [this.affairIcon('coins'), this.lawIcon('law')],
+            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimeIntel' } }
+          })
+          options.push({
+            text: 'Theft and burglary',
+            tooltip: 'Rob another house. Theft (furtum) is checked by the crime system: success depends on your skill and the target house, and being caught means relation loss and a possible furtum charge.',
+            icons: [this.lawIcon('crime'), this.affairIcon('trade')],
+            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openStealTargets' } }
           })
           options.push({ text: 'Back', action: { event: this.event, method: 'openHub' } })
           this.pushModal({
@@ -515,6 +531,351 @@
           options.push({ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimes' } } })
           this.pushModal({ societyMenu: true, title: 'Audit or denounce', message: 'Delatores make crime political. Exposing real wrongdoing grants reward; a baseless denunciation hurts your reputation.', image: this.lawIcon('law'), options })
         },
+        openCrimeIntel() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let coverage = Object.keys(society.crimeInformers || {}).filter((id) => society.houses && society.houses[id]).length
+          let options = this.politicsRivalHouses(society, state).slice(0, 12).map((house) => {
+            let informer = (society.crimeInformers || {})[house.id]
+            let level = informer ? (informer.level || 1) : 0
+            let cost = 50 + level * 30
+            let label = (level ? 'Deepen informers in ' : 'Hire informers in ') + house.name + ' (lvl ' + level + ', ' + cost + ' cash)'
+            return {
+              text: label,
+              tooltip: 'Pay ' + cost + ' cash to plant or deepen delatores in ' + house.name + '. Higher levels raise the chance its crimes are detected and strengthen your audits and denunciations against it.',
+              icons: [this.houseCrestIcon(society, house), this.affairIcon('coins')],
+              disabled: level >= 5,
+              showDisabledWithTooltip: level >= 5,
+              action: { event: this.event, method: 'romanSystemsAction', context: { action: 'hireCrimeInformers', houseId: house.id } }
+            }
+          })
+          options.push({ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimes' } } })
+          this.pushModal({
+            societyMenu: true,
+            title: 'Delatores and informers',
+            message: 'Criminal informers are paid agents who watch rival houses for wrongdoing. They feed the courts, not your political schemes - this network is separate from the political spies of the Roman power systems.',
+            societySummaryOptions: [
+              this.summaryOption('Houses watched', coverage, [this.lawIcon('law')], 'Houses where you keep paid informers.')
+            ],
+            image: this.lawIcon('law'),
+            options
+          })
+        },
+        hireCrimeInformers({ houseId } = {}) {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let house = society.houses[houseId]
+          if (house) {
+            let informer = (society.crimeInformers || {})[house.id]
+            let level = informer ? (informer.level || 1) : 0
+            if (level < 5) {
+              let cost = 50 + level * 30
+              this.applyStats({ cash: -cost, influence: -4 })
+              society.crimeInformers[house.id] = { level: Math.min(5, level + 1), month: this.monthKey(state) }
+              house.heat = (house.heat || 0)
+              this.log(society, 'You pay delatores to watch ' + house.name + ' for crimes (informers level ' + society.crimeInformers[house.id].level + ').', 'law', house.id)
+            }
+          }
+          this.save(society)
+          this.openCrimeIntel()
+        },
+        playerSecurityState(society) {
+          society.security = society.security || { bodyguards: 0, lastUpkeepMonth: '' }
+          society.security.bodyguards = Math.max(0, Math.min(5, parseInt(society.security.bodyguards || 0, 10) || 0))
+          return society.security
+        },
+        playerBodyguardLevel(society) {
+          return this.playerSecurityState(society).bodyguards || 0
+        },
+        bodyguardUpkeepCost(society) {
+          return this.playerBodyguardLevel(society) * 12
+        },
+        chargeBodyguardUpkeep(society, state) {
+          let sec = this.playerSecurityState(society)
+          if (!sec.bodyguards) return false
+          let month = this.monthKey(state)
+          if (sec.lastUpkeepMonth === month) return false
+          sec.lastUpkeepMonth = month
+          let cost = this.bodyguardUpkeepCost(society)
+          if (cost > 0) {
+            try { daapi.addCash({ cash: -cost }) } catch (err) { console.warn(err) }
+          }
+          return true
+        },
+        characterImportance(society, state, characterId) {
+          let character = state.characters && state.characters[characterId]
+          if (!character) return 0
+          let houseId = this.houseIdForCharacter(character, state, society)
+          let house = houseId && society.houses ? society.houses[houseId] : null
+          let score = this.characterScore ? this.characterScore(character, state) / 14 : 4
+          let prestige = parseFloat(character.prestige || 0) / 220
+          let housePower = house ? Math.max(0, house.power || 0) / 26 : 0
+          let rome = society.rome || {}
+          let boost = 0
+          if (rome.designatedHeirId && this.sameCharacterId(characterId, rome.designatedHeirId)) boost += 4
+          if (this.sameCharacterId(characterId, this.currentCharacterId(state)) && this.playerIsEmperor && this.playerIsEmperor(society, state)) boost += 6
+          return this.clamp(Math.round(score + prestige + housePower + boost), 0, 20)
+        },
+        targetSecurityLevel(society, state, targetId) {
+          if (this.sameCharacterId(targetId, this.currentCharacterId(state))) {
+            return this.clamp(this.playerBodyguardLevel(society) + (this.playerIsEmperor && this.playerIsEmperor(society, state) ? 3 : 0), 0, 8)
+          }
+          let character = state.characters && state.characters[targetId]
+          if (!character) return 0
+          let houseId = this.houseIdForCharacter(character, state, society)
+          let house = houseId && society.houses ? society.houses[houseId] : null
+          let guards = house ? Math.round(Math.max(0, house.power || 0) / 40 + Math.max(0, house.wealth || 0) / 400) : 0
+          return this.clamp(guards + Math.round(this.characterImportance(society, state, targetId) / 6), 0, 8)
+        },
+        assassinationSuccessChance(society, state, plotterId, targetId, plotterHouse) {
+          let plotter = state.characters && state.characters[plotterId]
+          let skills = (plotter && plotter.skills) || {}
+          let skill = (parseFloat(skills.combat || 0) + parseFloat(skills.intelligence || 0)) / 80
+          let housePower = plotterHouse ? Math.max(0, plotterHouse.power || 0) / 200 : 0
+          let security = this.targetSecurityLevel(society, state, targetId)
+          let importance = this.characterImportance(society, state, targetId)
+          return this.clamp(0.5 + skill + housePower - security * 0.09 - importance * 0.012, 0.05, 0.9)
+        },
+        assassinationDetectionChance(society, state, plotterId, targetId) {
+          let plotter = state.characters && state.characters[plotterId]
+          let skills = (plotter && plotter.skills) || {}
+          let stealth = (parseFloat(skills.intelligence || 0) + parseFloat(skills.stewardship || 0)) / 160
+          let security = this.targetSecurityLevel(society, state, targetId)
+          let importance = this.characterImportance(society, state, targetId)
+          let target = state.characters && state.characters[targetId]
+          let targetHouseId = target ? this.houseIdForCharacter(target, state, society) : ''
+          let informer = targetHouseId ? (society.crimeInformers || {})[targetHouseId] : null
+          let informerBonus = informer ? Math.min(0.18, (informer.level || 1) * 0.05) : 0
+          return this.clamp(0.18 + security * 0.05 + importance * 0.02 + informerBonus - stealth, 0.04, 0.85)
+        },
+        registerPlayerMurderAttempt(args) {
+          args = args || {}
+          let targetId = args.targetId || args.characterId
+          if (!targetId) return false
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let currentId = this.currentCharacterId(state)
+          let crime = this.recordCrime(society, state, currentId, 'sicarii', 0, 'murder plot')
+          let detection = this.assassinationDetectionChance(society, state, currentId, targetId)
+          let target = state.characters && state.characters[targetId]
+          let targetHouseId = target ? this.houseIdForCharacter(target, state, society) : ''
+          let caught = Math.random() < detection
+          if (caught) {
+            this.exposeCrime(society, state, currentId, crime, 'delatores')
+            if (targetHouseId && society.houses[targetHouseId]) {
+              society.houses[targetHouseId].relation = this.clamp((society.houses[targetHouseId].relation || 0) - 30, -100, 100)
+              society.houses[targetHouseId].heat = (society.houses[targetHouseId].heat || 0) + 4
+            }
+            this.log(society, 'Delatores trace a murder plot back to you (sicarii); the courts and the victim\'s house now know.', 'crime', targetHouseId)
+          } else {
+            this.log(society, 'Your hand in a murder plot stays hidden, for now.', 'crime')
+          }
+          this.save(society)
+          return { caught }
+        },
+        openSecurity() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let level = this.playerBodyguardLevel(society)
+          let nextCost = 80 + level * 60
+          let recentThreats = (society.assassinationLog || []).slice(-5).reverse()
+          let options = []
+          options.push({
+            variant: 'info',
+            text: level >= 5 ? 'Bodyguards at maximum (lvl 5)' : 'Hire/strengthen bodyguards (lvl ' + level + ', ' + nextCost + ' cash)',
+            tooltip: 'Bodyguards (a private cohort) lower the chance an assassination against you succeeds and help catch the culprits. Upkeep is ' + ((level + (level < 5 ? 1 : 0)) * 12) + ' cash per month.',
+            disabled: level >= 5,
+            showDisabledWithTooltip: level >= 5,
+            icons: [this.affairIcon('support'), this.lawIcon('legion')],
+            action: { event: this.event, method: 'romanSystemsAction', context: { action: 'hireBodyguards' } }
+          })
+          if (level > 0) {
+            options.push({
+              text: 'Dismiss bodyguards (stop upkeep)',
+              tooltip: 'Disband your guards. Saves upkeep but leaves you exposed to assassins.',
+              icons: [this.affairIcon('rivalry')],
+              action: { event: this.event, method: 'romanSystemsAction', context: { action: 'disbandBodyguards' } }
+            })
+          }
+          options.push({ text: 'Back', action: { event: this.event, method: 'openHub' } })
+          this.pushModal({
+            societyMenu: true,
+            title: 'Security and bodyguards',
+            message: 'Your personal safety. Bodyguards reduce assassination success and improve the chance plots against you are uncovered as crimes.' + (recentThreats.length ? '\n\nRecent threats:\n' + recentThreats.map((t) => '- ' + t).join('\n') : ''),
+            societySummaryOptions: [
+              this.summaryOption('Bodyguards', 'level ' + level, [this.affairIcon('support')], 'Higher levels protect you better.'),
+              this.summaryOption('Monthly upkeep', this.bodyguardUpkeepCost(society) + ' cash', [this.affairIcon('coins')], 'Paid automatically each month.')
+            ],
+            image: this.lawIcon('legion'),
+            options
+          })
+        },
+        hireBodyguards() {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let sec = this.playerSecurityState(society)
+          if (sec.bodyguards < 5) {
+            let cost = 80 + sec.bodyguards * 60
+            this.applyStats({ cash: -cost })
+            sec.bodyguards = Math.min(5, sec.bodyguards + 1)
+            this.log(society, 'You retain a stronger bodyguard cohort (level ' + sec.bodyguards + ').', 'support')
+          }
+          this.save(society)
+          this.openSecurity()
+        },
+        disbandBodyguards() {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          let sec = this.playerSecurityState(society)
+          sec.bodyguards = 0
+          this.log(society, 'You dismiss your bodyguards.', 'rivalry')
+          this.save(society)
+          this.openSecurity()
+        },
+        recordAssassinationThreat(society, message) {
+          society.assassinationLog = society.assassinationLog || []
+          society.assassinationLog.push(message)
+          if (society.assassinationLog.length > 20) society.assassinationLog = society.assassinationLog.slice(-20)
+        },
+        simulateAssassinations(society, state) {
+          if (Math.random() > 0.12) return false
+          let rivals = this.politicsRivalHouses(society, state).filter((house) => house && this.houseLivingMemberIds(society, state, house).length)
+          if (!rivals.length) return false
+          let plotterHouse = this.pick(rivals)
+          if (!plotterHouse || (plotterHouse.heat || 0) < 1 && Math.random() < 0.5) return false
+          let plotterId = this.pick(this.houseLivingMemberIds(society, state, plotterHouse))
+          if (!plotterId) return false
+          // Target the player sometimes (if rival/hostile), otherwise a rival of the plotter house.
+          let currentId = this.currentCharacterId(state)
+          let targetPlayer = plotterHouse.rivalry && Math.random() < 0.4
+          let targetId = ''
+          let targetHouse = null
+          if (targetPlayer && currentId) {
+            targetId = currentId
+          } else {
+            let victimHouse = this.pick(rivals.filter((house) => house && house.id !== plotterHouse.id))
+            if (!victimHouse) return false
+            targetHouse = victimHouse
+            targetId = this.pick(this.houseLivingMemberIds(society, state, victimHouse))
+          }
+          if (!targetId || this.sameCharacterId(targetId, plotterId)) return false
+          let success = Math.random() < this.assassinationSuccessChance(society, state, plotterId, targetId, plotterHouse)
+          let detected = Math.random() < this.assassinationDetectionChance(society, state, plotterId, targetId)
+          let crime = this.recordCrime(society, state, plotterId, 'sicarii', 0, 'assassination plot')
+          if (detected) {
+            this.exposeCrime(society, state, plotterId, crime, 'delatores')
+            plotterHouse.heat = (plotterHouse.heat || 0) + 4
+            plotterHouse.relation = this.clamp((plotterHouse.relation || 0) - 8, -100, 100)
+          }
+          let targetName = (state.characters[targetId] && this.characterName({ ...state.characters[targetId], id: targetId }, state)) || 'a rival'
+          if (this.sameCharacterId(targetId, currentId)) {
+            // Player target: bodyguards already lowered success via targetSecurityLevel.
+            if (success) {
+              this.recordAssassinationThreat(society, plotterHouse.name + ' had you killed.')
+              this.log(society, plotterHouse.name + ' sends sicarii against you and the attempt succeeds.', 'crime', plotterHouse.id)
+              try { daapi.kill({ characterId: currentId, deathCause: ', struck down by hired assassins' }) } catch (err) { console.warn(err) }
+            } else {
+              this.recordAssassinationThreat(society, plotterHouse.name + ' tried to have you killed' + (detected ? ' (uncovered)' : '') + '.')
+              this.log(society, 'Your bodyguards foil an assassination sent by ' + plotterHouse.name + '.' + (detected ? ' The plot is traced to them.' : ''), 'crime', plotterHouse.id)
+            }
+          } else if (success) {
+            this.log(society, plotterHouse.name + ' has ' + targetName + ' assassinated.' + (detected ? ' Delatores expose the deed.' : ''), 'crime', (targetHouse && targetHouse.id) || plotterHouse.id)
+            try { daapi.kill({ characterId: targetId, deathCause: ', murdered by hired assassins' }) } catch (err) { console.warn(err) }
+            if (targetHouse) targetHouse.relation = this.clamp((targetHouse.relation || 0) - 6, -100, 100)
+          } else {
+            this.log(society, plotterHouse.name + ' fails to assassinate ' + targetName + '.' + (detected ? ' The plot is uncovered.' : ''), 'rivalry', plotterHouse.id)
+          }
+          this.save(society)
+          return true
+        },
+        openStealTargets() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let options = this.politicsRivalHouses(society, state).slice(0, 12).map((house) => {
+            return {
+              text: 'Rob ' + house.name,
+              tooltip: 'Plan a burglary against this house. Detection is checked as the crime of furtum; getting caught hurts relations, prestige, and can mean a fine or jail.',
+              icons: [this.houseCrestIcon(society, house), this.lawIcon('crime')],
+              action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openStealHouse', houseId: house.id } }
+            }
+          })
+          options.push({ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimes' } } })
+          this.pushModal({
+            societyMenu: true,
+            title: 'Theft and burglary',
+            message: 'Theft (furtum) is now part of the crime system: choose a house to rob. Bigger, more powerful houses are harder and riskier.',
+            image: this.lawIcon('crime'),
+            options
+          })
+        },
+        stealRepresentativeMember(society, state, house) {
+          let ids = this.houseLivingMemberIds(society, state, house).filter((id) => state.characters[id] && !state.characters[id].isDead)
+          return ids.length ? ids[0] : ''
+        },
+        openStealHouse({ houseId } = {}) {
+          let society = this.ensure()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let house = society.houses && society.houses[houseId]
+          if (!house) { this.openStealTargets(); return }
+          let memberId = this.stealRepresentativeMember(society, state, house)
+          let loot = this.stealingLootEstimate ? this.stealingLootEstimate(house, state.characters[memberId] || {}, state) : { label: 'valuables', value: 20 }
+          let bribeCost = this.stealingBribeCost ? this.stealingBribeCost(loot.value) : 5
+          let options = [
+            { variant: 'info', text: 'Sneak into stores', tooltip: 'Balanced risk. Better with stewardship.', icons: [this.affairIcon('trade')], action: { event: this.event, method: 'romanSystemsAction', context: { action: 'stealFromHouse', houseId, approach: 'stores' } } },
+            { variant: 'info', text: 'Take livestock', tooltip: 'Higher gain if the house has animals, but easier to notice.', icons: [this.lawIcon('crime')], action: { event: this.event, method: 'romanSystemsAction', context: { action: 'stealFromHouse', houseId, approach: 'livestock' } } },
+            { variant: 'info', text: 'Bribe a worker (' + bribeCost + ')', tooltip: 'Lower gain, lower risk, small cash cost.', icons: [this.affairIcon('coins')], action: { event: this.event, method: 'romanSystemsAction', context: { action: 'stealFromHouse', houseId, approach: 'bribe' } } },
+            { text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openStealTargets' } } }
+          ]
+          this.pushModal({
+            societyMenu: true,
+            title: 'Rob ' + house.name + '?',
+            message: 'Possible gain: ' + loot.label + ' worth about ' + loot.value + ' cash. If you are caught it is recorded as furtum.',
+            image: this.lawIcon('crime'),
+            options
+          })
+        },
+        stealFromHouse({ houseId, approach } = {}) {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let house = society.houses && society.houses[houseId]
+          if (!house) { this.openStealTargets(); return }
+          let currentId = this.currentCharacterId(state)
+          let current = state.characters && state.characters[currentId]
+          let memberId = this.stealRepresentativeMember(society, state, house)
+          let loot = this.stealingLootEstimate ? this.stealingLootEstimate(house, state.characters[memberId] || {}, state) : { label: 'valuables', value: 20 }
+          let skills = (current && current.skills) || {}
+          let stealth = parseFloat(skills.stewardship || 0) + parseFloat(skills.combat || 0) * 0.6 + parseFloat(skills.intelligence || 0) * 0.4
+          let difficulty = 28 + Math.max(0, house.power || 0) * 0.35 + Math.max(0, house.stability || 0) * 0.12
+          let value = loot.value
+          if (approach === 'livestock') { value = Math.round(value * 1.25); difficulty += 10 }
+          else if (approach === 'bribe') { value = Math.round(value * 0.70); difficulty -= 9; this.applyStats({ cash: -(this.stealingBribeCost ? this.stealingBribeCost(loot.value) : 5) }) }
+          let success = Math.random() < this.clamp(0.48 + (stealth - difficulty) / 120, 0.12, 0.82)
+          let caught = !success || Math.random() < (approach === 'livestock' ? 0.28 : approach === 'bribe' ? 0.12 : 0.20)
+          if (success && !caught) {
+            this.applyStats({ cash: value })
+            house.wealth = Math.max(0, (house.wealth || 0) - Math.round(value * 0.45))
+            this.log(society, 'You burgle ' + house.name + ' and escape clean with ' + loot.label + '.', 'rivalry', house.id)
+            this.save(society)
+            this.pushModal({ societyMenu: true, title: 'Theft succeeds', message: 'You get away with ' + loot.label + ' worth ' + value + ' cash.', image: this.lawIcon('crime'), options: [{ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openStealTargets' } } }] })
+            return
+          }
+          let crime = this.recordCrime(society, state, currentId, 'furtum', value, 'burglary')
+          house.relation = this.clamp((house.relation || 0) - this.randomInt(14, 30), -100, 100)
+          house.heat = (house.heat || 0) + 2
+          this.applyStats({ prestige: -6, influence: -6 })
+          let exposed = this.maybeExposeCrime(society, state, currentId, crime, 'caught in the act')
+          this.log(society, 'A burglary against ' + house.name + (exposed ? ' is pinned on you' : ' is noticed') + '.', 'crime', house.id)
+          this.save(society)
+          this.pushModal({ societyMenu: true, title: 'Caught stealing', message: 'The attempt against ' + house.name + ' goes wrong.' + (exposed ? ' You are charged with furtum.' : ' You are not formally charged this time.'), image: this.lawIcon('prison'), options: [{ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: 'openStealTargets' } } }] })
+        },
         houseCrimePressure(society, state, house) {
           let score = (house.heat || 0) * 8 + Math.max(0, 50 - (house.stability || 50)) / 2
           this.houseLivingMemberIds(society, state, house).slice(0, 8).forEach((characterId) => {
@@ -526,6 +887,8 @@
             if (traits.indexOf('adulterer') >= 0) score += 8
             score += (this.crimesForCharacter(society, characterId).filter((crime) => crime && !crime.exposed).length * 12)
           })
+          let informer = (society.crimeInformers || {})[house.id]
+          if (informer) score += Math.min(40, (informer.level || 1) * 10)
           return score
         },
         denounceCrime({ houseId } = {}) {
@@ -535,7 +898,12 @@
           let house = society.houses[houseId]
           let found = false
           if (house) {
-            this.houseLivingMemberIds(society, state, house).slice(0, 10).forEach((characterId) => {
+            // Criminal informers (delatores) deepen the audit: more members are combed
+            // through, and a baseless denunciation is less reputationally costly because
+            // the informers gave you a credible lead.
+            let informer = (society.crimeInformers || {})[house.id]
+            let reach = 10 + Math.min(8, (informer ? (informer.level || 1) : 0) * 2)
+            this.houseLivingMemberIds(society, state, house).slice(0, reach).forEach((characterId) => {
               if (found) return
               let hidden = this.crimesForCharacter(society, characterId).filter((crime) => crime && !crime.exposed)
               if (hidden.length) {
@@ -547,8 +915,9 @@
               house.relation = this.clamp((house.relation || 0) - 10, -100, 100)
               this.log(society, 'Your denunciation exposes real wrongdoing in ' + house.name + '; praemia are paid.', 'law', house.id)
             } else {
-              this.applyStats({ prestige: -6, influence: -8 })
-              house.relation = this.clamp((house.relation || 0) - 6, -100, 100)
+              let penalty = informer ? 0.5 : 1
+              this.applyStats({ prestige: -Math.round(6 * penalty), influence: -Math.round(8 * penalty) })
+              house.relation = this.clamp((house.relation || 0) - (informer ? 3 : 6), -100, 100)
               this.log(society, 'Your denunciation against ' + house.name + ' finds no proof and looks like calumnia.', 'rivalry', house.id)
             }
           }
@@ -769,7 +1138,7 @@
               ? this.politicsButton('openCoalitions', 'Coalitions against the Emperor' + (coalition ? ' (active)' : ''), 'rivalry', {}, { tooltip: 'Discontent houses can unite to force abdication, restore the Republic, or enthrone a candidate.' })
               : { text: 'Coalitions (only under Empire)', disabled: true, showDisabledWithTooltip: true, tooltip: 'Deposition coalitions against an Emperor only exist under imperial government.', icons: [this.affairIcon('rivalry')] },
             this.politicsButton('openReligion', 'Priesthoods and legitimacy', 'prestige', {}, { tooltip: 'Pontifex, augurs, auspices, imperial cult, deification, and damnatio memoriae.' }),
-            this.politicsButton('openIntrigue', 'Intrigue, spies, and hooks', 'slander', {}, { tooltip: 'Build spy networks, uncover crimes, create hooks, and start political conspiracies.' }),
+            this.politicsButton('openIntrigue', 'Political intrigue, agents, and hooks', 'slander', {}, { tooltip: 'Plant political agents, uncover secrets, create blackmail hooks, and start political conspiracies. Criminal informers (delatores) are hired separately from the crime menu.' }),
             this.politicsButton('openPropertyMarket', 'Property market and crises', 'trade', {}, { tooltip: 'Buy and sell property with houses; crises affect land, boats, livestock, and stability.' })
           ]
           options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openPolitics' } } })
@@ -1524,17 +1893,18 @@
           let society = this.ensure()
           let state = daapi.getState()
           this.ensureAdvancedRomanState(society, state)
-          // Intrigue is reachable both from the crime menu ("Build spy network") and from
-          // Roman power systems. Remember where we came from so Back returns there.
-          let back = from === 'openCrimes' ? 'openCrimes' : 'openRomanPower'
+          // Political intrigue lives under Roman power systems. These are political agents,
+          // distinct from the criminal delatores hired from the crime menu: they uncover
+          // secrets, create blackmail hooks, and run conspiracies rather than expose crimes.
+          let back = 'openRomanPower'
           let options = this.politicsRivalHouses(society, state).slice(0, 8).map((house) => {
-            return this.politicsButton('buildSpyNetwork', 'Spy network in ' + house.name, 'slander', { houseId: house.id, from: back }, { tooltip: 'Improves detection of crimes and conspiracies in this house. Can create hooks.' })
+            return this.politicsButton('buildSpyNetwork', 'Political agents in ' + house.name, 'slander', { houseId: house.id, from: back }, { tooltip: 'Plant political agents inside this house to uncover secrets and create blackmail hooks you can use against coalitions and factions.' })
           })
           options.push(this.politicsButton('startPoliticalConspiracy', 'Start Idus-style conspiracy', 'rivalry', { from: back }, { tooltip: 'Political assassination plot. Creates conspiracy crime risk and may destabilize the state.' }))
           let hookCount = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id]).length
-          options.push(this.politicsButton('useBlackmailHook', 'Use a blackmail hook (' + hookCount + ' available)', 'support', { from: back }, hookCount ? { tooltip: 'Coerce a house out of a coalition or into your faction using secrets your spies uncovered.' } : { disabled: true, showDisabledWithTooltip: true, tooltip: 'You hold no blackmail material yet. Build spy networks to uncover secrets.' }))
+          options.push(this.politicsButton('useBlackmailHook', 'Use a blackmail hook (' + hookCount + ' available)', 'support', { from: back }, hookCount ? { tooltip: 'Coerce a house out of a coalition or into your faction using secrets your agents uncovered.' } : { disabled: true, showDisabledWithTooltip: true, tooltip: 'You hold no blackmail material yet. Plant political agents to uncover secrets.' }))
           options.push({ text: 'Back', action: { event: this.event, method: 'romanSystemsAction', context: { action: back } } })
-          this.pushModal({ societyMenu: true, title: 'Intrigue and spies', message: 'Spies feed the crime system, uncover plots, and create blackmail hooks.', image: this.affairIcon('slander'), options })
+          this.pushModal({ societyMenu: true, title: 'Political intrigue and agents', message: 'Political agents uncover secrets, create blackmail hooks, and run conspiracies. For exposing rivals\' crimes, hire delatores from the crime menu instead.', image: this.affairIcon('slander'), options })
         },
         useBlackmailHook({ from } = {}) {
           let society = this.loadForAction()
@@ -1544,7 +1914,7 @@
           let hookCharacterIds = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id])
           if (!hookCharacterIds.length) {
             this.save(society)
-            this.pushModal({ societyMenu: true, title: 'No hooks', message: 'You hold no blackmail material. Build spy networks to uncover secrets first.', image: this.affairIcon('slander'), options: [{ text: 'Back', action: backToIntrigue }] })
+            this.pushModal({ societyMenu: true, title: 'No hooks', message: 'You hold no blackmail material. Plant political agents to uncover secrets first.', image: this.affairIcon('slander'), options: [{ text: 'Back', action: backToIntrigue }] })
             return
           }
           let characterId = hookCharacterIds[0]
@@ -1577,7 +1947,7 @@
           let society = this.loadForAction()
           let state = daapi.getState()
           this.ensureAdvancedRomanState(society, state)
-          let backTarget = { event: this.event, method: 'politicsAction', context: { action: 'openCrimes' } }
+          let backTarget = { event: this.event, method: 'romanSystemsAction', context: { action: 'openCrimes' } }
           if (!(this.playerIsEmperor && this.playerIsEmperor(society, state))) {
             this.save(society)
             this.pushModal({ societyMenu: true, title: 'Imperial pardon', message: 'Only the Emperor may free a prisoner by imperial decree.', image: this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator'), options: [{ text: 'Back', action: backTarget }] })
@@ -1623,7 +1993,7 @@
                 society.blackmailHooks[targetId].push({ type: 'secret', month: this.monthKey(state), source: 'spies' })
               }
             }
-            this.log(society, 'Informers are planted around ' + house.name + '.', 'slander', house.id)
+            this.log(society, 'Political agents are planted around ' + house.name + '.', 'slander', house.id)
           }
           this.save(society)
           this.openIntrigue({ from })
@@ -1775,7 +2145,9 @@
             this.ensureAdvancedRomanState(society, state)
             this.installTaxCrimeModalPatch()
             this.resolveCivilWarPending(society, state)
+            this.chargeBodyguardUpkeep(society, state)
             this.simulateNpcCrimes(society, state)
+            this.simulateAssassinations(society, state)
             this.auditHiddenCrimes(society, state)
             this.syncCrimeStatuses(society, state)
             this.syncMilitaryStatuses(society, state)
@@ -1895,7 +2267,7 @@
           this.refreshPropertyMarket(society, state)
         }
       })
-      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.326'
+      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.328'
     }
   }
 }
