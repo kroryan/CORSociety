@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyRomanSystemsVersion === '1.1.324') {
         return
       }
       let previousPoliticsAction = window.corSociety.politicsAction
@@ -118,6 +118,8 @@
             acceptLegionSentence: 'acceptLegionSentence',
             seekImperialPardon: 'seekImperialPardon',
             openRomanPower: 'openRomanPower',
+            openFactions: 'openFactions',
+            setPoliticalAlignment: 'setPoliticalAlignment',
             openCursus: 'openCursus',
             standForOffice: 'standForOffice',
             buyVotes: 'buyVotes',
@@ -160,6 +162,8 @@
           args = args || {}
           let romanActions = {
             openRomanPower: true,
+            openFactions: true,
+            setPoliticalAlignment: true,
             openCursus: true,
             standForOffice: true,
             buyVotes: true,
@@ -757,10 +761,13 @@
           let coalition = this.activeDepositionCoalition(society)
           let options = [
             this.politicsButton('openCursus', 'Cursus honorum', 'senator', {}, { tooltip: 'Run for quaestor, aedile, praetor, consul, or censor. Offices give auctoritas, money, and legal power.' }),
+            this.politicsButton('openFactions', 'Optimates and Populares (' + this.playerAlignmentLabel(society) + ')', 'senator', {}, { tooltip: 'Align with the senatorial Optimates or the popular Populares. Your bloc shifts how easily your laws pass and which houses back you.' }),
             this.politicsButton('openClientela', 'Clientela and public games', 'support', {}, { tooltip: 'Clients are a real political resource for elections, factions, legions, feuds, and coalitions.' }),
             this.politicsButton('openSuccession', 'Adoption, cognomina, and succession', 'familyTree', {}, { tooltip: 'Designate/adopt an heir, grant agnomina, and strengthen cadet lines.' }),
             this.politicsButton('openLegions', 'Legions, campaigns, and triumphs', 'rivalry', {}, { tooltip: 'Raise loyal legions, campaign abroad, hold triumphs, and seek military acclamation.' }),
-            this.politicsButton('openCoalitions', 'Coalitions against the Emperor' + (coalition ? ' (active)' : ''), 'rivalry', {}, { tooltip: 'Discontent houses can unite to force abdication, restore the Republic, or enthrone a candidate.' }),
+            (rome.government === 'empire')
+              ? this.politicsButton('openCoalitions', 'Coalitions against the Emperor' + (coalition ? ' (active)' : ''), 'rivalry', {}, { tooltip: 'Discontent houses can unite to force abdication, restore the Republic, or enthrone a candidate.' })
+              : { text: 'Coalitions (only under Empire)', disabled: true, showDisabledWithTooltip: true, tooltip: 'Deposition coalitions against an Emperor only exist under imperial government.', icons: [this.affairIcon('rivalry')] },
             this.politicsButton('openReligion', 'Priesthoods and legitimacy', 'prestige', {}, { tooltip: 'Pontifex, augurs, auspices, imperial cult, deification, and damnatio memoriae.' }),
             this.politicsButton('openIntrigue', 'Intrigue, spies, and hooks', 'slander', {}, { tooltip: 'Build spy networks, uncover crimes, create hooks, and start political conspiracies.' }),
             this.politicsButton('openPropertyMarket', 'Property market and crises', 'trade', {}, { tooltip: 'Buy and sell property with houses; crises affect land, boats, livestock, and stability.' })
@@ -779,6 +786,118 @@
             image: rome.government === 'empire' ? this.imperatorIcon() : this.lawIcon('law'),
             options
           })
+        },
+        houseFactionLean(house) {
+          // Classify a house into the senatorial Optimates or the popular Populares.
+          if (!house) return 'neutral'
+          let stratum = house.stratum || ''
+          let score = 0
+          if (stratum === 'patrician' || stratum === 'senatorial') score += 2
+          if (stratum === 'equestrian') score += 1
+          if (stratum === 'commoner' || stratum === 'plebeian') score -= 1
+          if (stratum === 'poor') score -= 2
+          if ((house.wealth || 0) >= 220) score += 1
+          if ((house.wealth || 0) <= 60) score -= 1
+          if (house.factionLean === 'optimates') score += 2
+          if (house.factionLean === 'populares') score -= 2
+          if (score > 0) return 'optimates'
+          if (score < 0) return 'populares'
+          return 'neutral'
+        },
+        factionCounts(society, state) {
+          let counts = { optimates: 0, populares: 0, neutral: 0 }
+          let optimates = []
+          let populares = []
+          Object.keys((society && society.houses) || {}).forEach((id) => {
+            let house = society.houses[id]
+            if (!house) return
+            let lean = this.houseFactionLean(house)
+            counts[lean] = (counts[lean] || 0) + 1
+            if (lean === 'optimates') optimates.push(id)
+            else if (lean === 'populares') populares.push(id)
+          })
+          let rome = this.ensureRomeState(society)
+          rome.factions = { optimates, populares }
+          return counts
+        },
+        playerAlignment(society) {
+          let pp = (society && society.playerPolitics) || {}
+          return pp.alignment === 'optimates' || pp.alignment === 'populares' ? pp.alignment : 'neutral'
+        },
+        playerAlignmentLabel(society) {
+          let a = this.playerAlignment(society)
+          return a === 'optimates' ? 'Optimates' : a === 'populares' ? 'Populares' : 'Unaligned'
+        },
+        lawFactionModifier(society, state) {
+          // The bundled power laws expand the leader's authority against the Senate,
+          // so they are inherently popularis-flavoured (the Optimates resist them).
+          let alignment = this.playerAlignment(society)
+          let counts = this.factionCounts(society, state)
+          let total = (counts.optimates || 0) + (counts.populares || 0) || 1
+          let popularShare = (counts.populares || 0) / total
+          let modifier = 0
+          if (alignment === 'populares') {
+            // The assemblies and tribunes back you; aligned houses add weight.
+            modifier += 0.12 + popularShare * 0.12
+          } else if (alignment === 'optimates') {
+            // Pushing power laws cuts against your own senatorial bloc.
+            modifier -= 0.10
+          }
+          return this.clamp(modifier, -0.2, 0.25)
+        },
+        openFactions() {
+          let society = this.ensure()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let counts = this.factionCounts(society, state)
+          let alignment = this.playerAlignment(society)
+          let options = [
+            this.politicsButton('setPoliticalAlignment', (alignment === 'optimates' ? '* ' : '') + 'Champion the Optimates', 'senator', { alignment: 'optimates' }, { tooltip: 'Stand with the senatorial elite. Optimate houses warm to you; popular power laws pass harder.' }),
+            this.politicsButton('setPoliticalAlignment', (alignment === 'populares' ? '* ' : '') + 'Champion the Populares', 'support', { alignment: 'populares' }, { tooltip: 'Stand with the assemblies and the urban plebs. Your power laws pass more easily; Optimate houses resent you.' }),
+            this.politicsButton('setPoliticalAlignment', (alignment === 'neutral' ? '* ' : '') + 'Stay unaligned', 'log', { alignment: 'neutral' }, { tooltip: 'Hold no factional banner. No bonus or penalty to legislation.' })
+          ]
+          options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRomanPower' } } })
+          this.pushModal({
+            societyMenu: true,
+            title: 'Optimates and Populares',
+            message: 'The late Republic is split between the Optimates (senatorial tradition) and the Populares (popular reform). Your alignment shifts how your power laws fare in the assemblies.',
+            societySummaryOptions: [
+              this.summaryOption('Your banner', this.playerAlignmentLabel(society), [this.affairIcon('senator')], 'Your current factional alignment.'),
+              this.summaryOption('Optimates', counts.optimates || 0, [this.affairIcon('senator')], 'Senatorial-leaning houses currently simulated.'),
+              this.summaryOption('Populares', counts.populares || 0, [this.affairIcon('support')], 'Popular-leaning houses currently simulated.')
+            ],
+            image: this.lawIcon('law'),
+            options
+          })
+        },
+        setPoliticalAlignment({ alignment } = {}) {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let pp = society.playerPolitics
+          let next = alignment === 'optimates' || alignment === 'populares' ? alignment : 'neutral'
+          let previous = this.playerAlignment(society)
+          pp.alignment = next
+          if (next !== 'neutral' && next !== previous) {
+            // Houses react to your new banner: aligned houses warm, opposed houses cool.
+            Object.keys(society.houses || {}).forEach((id) => {
+              let house = society.houses[id]
+              if (!house) return
+              let lean = this.houseFactionLean(house)
+              if (lean === 'neutral') return
+              if (lean === next) {
+                house.relation = this.clamp((house.relation || 0) + 6, -100, 100)
+              } else {
+                house.relation = this.clamp((house.relation || 0) - 5, -100, 100)
+                house.heat = (house.heat || 0) + 2
+              }
+            })
+            this.log(society, 'You declare yourself a champion of the ' + (next === 'optimates' ? 'Optimates' : 'Populares') + '.', 'senator')
+          } else if (next === 'neutral' && previous !== 'neutral') {
+            this.log(society, 'You set aside your factional banner and stand unaligned.', 'senator')
+          }
+          this.save(society)
+          this.openFactions()
         },
         cursusOfficeList() {
           return [
@@ -901,10 +1020,31 @@
           let rome = this.ensureAdvancedRomanState(society, state)
           let currentId = this.currentCharacterId(state)
           let playerHouse = this.playerPoliticsHouse ? this.playerPoliticsHouse(society, state) : false
-          let candidates = playerHouse ? this.houseLivingMemberIds(society, state, playerHouse).filter((id) => !this.sameCharacterId(id, currentId) && state.characters[id] && this.age(state.characters[id], state) >= 12).slice(0, 8) : []
+          let seenCandidate = {}
+          let validCandidate = (id) => {
+            if (!id || seenCandidate[String(id)] || this.sameCharacterId(id, currentId)) return false
+            let character = state.characters[id]
+            if (!character || character.isDead || this.age(character, state) < 12) return false
+            if (character.corSocietyDesignatedHeir) return false
+            seenCandidate[String(id)] = true
+            return true
+          }
+          let candidates = playerHouse ? this.houseLivingMemberIds(society, state, playerHouse).filter(validCandidate).slice(0, 8) : []
           let options = candidates.map((characterId) => {
             let character = state.characters[characterId]
             return this.politicsButton('adoptHeir', 'Adopt/designate ' + this.characterName({ ...character, id: characterId }, state), 'familyTree', { characterId }, { tooltip: 'Roman adoption as succession: sets this person as designated heir in Society and strengthens designation succession.' })
+          })
+          // Roman adoption could cross houses: allow adopting from allied (faction) houses too.
+          let alliedHouseIds = ((society.playerPolitics && society.playerPolitics.faction) || []).filter((houseId) => society.houses[houseId] && (!playerHouse || String(houseId) !== String(playerHouse.id)))
+          let alliedAdded = 0
+          alliedHouseIds.slice(0, 6).forEach((houseId) => {
+            let allyHouse = society.houses[houseId]
+            this.houseLivingMemberIds(society, state, allyHouse).filter(validCandidate).slice(0, 2).forEach((characterId) => {
+              if (alliedAdded >= 8) return
+              let character = state.characters[characterId]
+              alliedAdded += 1
+              options.push(this.politicsButton('adoptHeir', 'Adopt from ' + allyHouse.name + ': ' + this.characterName({ ...character, id: characterId }, state), 'familyTree', { characterId }, { tooltip: 'Adopt a member of an allied house as your heir (Roman adoption crossed houses, e.g. the Julio-Claudians).' }))
+            })
           })
           options.push(this.politicsButton('grantCognomen', 'Grant earned cognomen', 'prestige', {}, { tooltip: 'Award an agnomen such as Magnus, Africanus, Felix, Pius, or Victor after achievements. Raises house prestige and distinguishes names.' }))
           options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRomanPower' } } })
@@ -937,9 +1077,9 @@
           this.save(society)
           this.openSuccession()
         },
-        grantCognomen() {
-          let society = this.loadForAction()
-          let state = daapi.getState()
+        _awardCognomenSilent(society, state) {
+          // Awards a cognomen and registers it, WITHOUT any menu navigation, so callers
+          // (e.g. holdTriumph) can decide where to go next.
           this.ensureAdvancedRomanState(society, state)
           let pool = ['Magnus', 'Felix', 'Victor', 'Pius', 'Africanus', 'Germanicus', 'Aequus', 'Restitutor']
           let name = this.pick(pool.filter((item) => (society.playerPolitics.agnomina || []).indexOf(item) < 0)) || this.pick(pool)
@@ -950,19 +1090,35 @@
           if (house) house.prestige = Math.round((house.prestige || 0) + 400)
           this.applyStats({ prestige: 35 })
           this.log(society, 'The cognomen ' + name + ' is acclaimed for your house.', 'prestige')
+          return name
+        },
+        grantCognomen() {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this._awardCognomenSilent(society, state)
           this.save(society)
           this.openSuccession()
         },
         openLegions() {
           let society = this.ensure()
           let state = daapi.getState()
-          this.ensureAdvancedRomanState(society, state)
+          let rome = this.ensureAdvancedRomanState(society, state)
           let pp = society.playerPolitics
+          let pending = rome.civilWarPending
+          let acclamationButton
+          if (this.playerIsEmperor && this.playerIsEmperor(society, state)) {
+            acclamationButton = { text: 'You are already Emperor', disabled: true, showDisabledWithTooltip: true, tooltip: 'You already hold the purple; you cannot be acclaimed Emperor again.', icons: [this.imperatorIcon ? this.imperatorIcon() : this.lawIcon('dictator')] }
+          } else if (pending) {
+            let months = Math.max(0, this.monthIndex(pending.resolveMonth) - this.monthIndex(this.monthKey(state)))
+            acclamationButton = { text: 'Civil war pending - resolves in ' + months + ' month(s)', disabled: true, showDisabledWithTooltip: true, tooltip: 'Your legions have moved on Rome. The houses are taking sides; the outcome resolves automatically.', icons: [this.lawIcon('war')] }
+          } else {
+            acclamationButton = this.politicsButton('militaryAcclamation', 'Seek military acclamation as Imperator', 'dictator', {}, { tooltip: 'Alternative path to Empire. Requires at least 2 allied houses and 1 loyal legion; triggers a multi-month civil war.' })
+          }
           let options = [
             this.politicsButton('raiseLegion', 'Raise a loyal legion (220 cash, 20 clients)', 'rivalry', {}, { tooltip: 'Creates a personal legion with strength and loyalty. Upkeep is checked monthly.' }),
             this.politicsButton('campaignExterior', 'Campaign abroad', 'rivalry', {}, { tooltip: 'Uses loyal legions for booty, slaves, prestige, triumphs, and cognomina. Defeat hurts stability and can fuel coalitions.' }),
             this.politicsButton('holdTriumph', 'Hold triumph (requires victory)', 'prestige', {}, { tooltip: 'Spend victory claims for prestige, clients, and a cognomen.' }),
-            this.politicsButton('militaryAcclamation', 'Seek military acclamation as Imperator', 'dictator', {}, { tooltip: 'Alternative path to Empire. Requires loyal legions, clients, auctoritas, and risk of civil war.' })
+            acclamationButton
           ]
           options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRomanPower' } } })
           this.pushModal({
@@ -1031,27 +1187,62 @@
           pp.victories = Math.max(0, Math.round((pp.victories || 0) - 1))
           pp.clients = Math.round((pp.clients || 0) + 24)
           this.applyStats({ cash: -120, prestige: 80, influence: 35 })
-          this.grantCognomen()
+          this._awardCognomenSilent(society, state)
+          this.save(society)
+          this.openLegions()
         },
         militaryAcclamation() {
           let society = this.loadForAction()
           let state = daapi.getState()
           let rome = this.ensureAdvancedRomanState(society, state)
           let pp = society.playerPolitics
-          let strength = (pp.legions || []).reduce((sum, legion) => sum + (legion.strength || 0) * (legion.loyalty || 50) / 100, 0)
-          let chance = this.clamp(0.16 + strength / 260 + (pp.clients || 0) / 500 + this.playerAuctoritasScore(society, state) / 650, 0.05, 0.74)
-          if (Math.random() < chance) {
-            this.becomeEmperor(society, state)
-            this.log(society, 'Your legions acclaim you Imperator; military power carries you to the purple.', 'war')
-          } else {
-            let msg = this.triggerCivilWar(society, state, { title: 'military acclamation', civilWar: 1, oppose: 10 })
-            this.log(society, 'A failed military acclamation throws Rome toward civil war.', 'rivalry')
+          let backToLegions = (title, message, icon) => {
             this.save(society)
-            this.pushModal({ societyMenu: true, title: 'Military acclamation', message: msg, image: this.lawIcon('war'), options: [{ text: 'Continue', action: { event: this.event, method: 'politicsAction', context: { action: 'openPolitics' } } }] })
+            this.pushModal({ societyMenu: true, title, message, image: icon || this.lawIcon('war'), options: [{ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openLegions' } } }] })
+          }
+          if (this.playerIsEmperor && this.playerIsEmperor(society, state)) {
+            backToLegions('Already Emperor', 'You already hold the purple.', this.imperatorIcon ? this.imperatorIcon() : null)
             return
           }
+          if (rome.civilWarPending) {
+            backToLegions('Civil war under way', 'A civil war for the purple is already in progress; it will resolve on its own.')
+            return
+          }
+          if ((pp.faction || []).filter((id) => society.houses[id]).length < 2) {
+            backToLegions('Not enough allies', 'You need at least 2 allied houses in your faction to risk marching on Rome.', this.affairIcon('support'))
+            return
+          }
+          if ((pp.legions || []).length < 1) {
+            backToLegions('No loyal legion', 'You need at least one loyal legion to attempt a military acclamation.', this.lawIcon('war'))
+            return
+          }
+          // Multi-turn civil war: register a pending crisis that resolves in 3 months.
+          let house = this.playerPoliticsHouse(society, state)
+          let strength = (pp.legions || []).reduce((sum, legion) => sum + (legion.strength || 0) * (legion.loyalty || 50) / 100, 0) + (pp.clients || 0) / 4 + this.playerAuctoritasScore(society, state) / 3
+          rome.civilWarPending = { claimantHouseId: house ? house.id : '', strength: Math.round(strength), month: this.monthKey(state), resolveMonth: this.futureMonthKey(3) }
+          this.applyStats({ cash: -150, influence: -40 })
+          this.politicsRivalHouses(society, state).slice(0, 12).forEach((h) => { h.stability = this.clamp((h.stability || 50) - 5, 0, 100) })
+          this.log(society, 'Your legions march on Rome and acclaim you Imperator. The houses must now take sides; civil war looms.', 'war')
           this.save(society)
-          this.openPolitics()
+          this.pushModal({ societyMenu: true, title: 'The legions march', message: 'You have begun a bid for the purple by force. Over the next 3 months the great houses will take sides, and the civil war will resolve. Win, and you are Imperator; lose, and you may be executed.', image: this.lawIcon('war'), options: [{ text: 'Continue', action: { event: this.event, method: 'politicsAction', context: { action: 'openLegions' } } }] })
+        },
+        resolveCivilWarPending(society, state) {
+          let rome = society.rome || {}
+          let pending = rome.civilWarPending
+          if (!pending) return false
+          if (!this.monthKeyReached(pending.resolveMonth, state)) return false
+          rome.civilWarPending = false
+          let pp = society.playerPolitics || {}
+          let playerStrength = (pending.strength || 0) + (pp.legions || []).reduce((sum, legion) => sum + (legion.strength || 0) * (legion.loyalty || 50) / 100, 0)
+          let opposition = this.politicsRivalHouses(society, state).slice(0, 12).reduce((sum, house) => sum + (this.houseCoalitionStrength ? this.houseCoalitionStrength(society, house) / 2 : (house.power || 0)), 0)
+          if (playerStrength >= opposition * (0.85 + Math.random() * 0.3)) {
+            this.becomeEmperor(society, state)
+            this.log(society, 'The civil war ends: your legions prevail and you are acclaimed Imperator.', 'war')
+          } else {
+            try { this.triggerCivilWar(society, state, { title: 'failed acclamation', civilWar: 1, oppose: 10 }) } catch (err) { console.warn(err) }
+            this.log(society, 'The civil war ends in defeat; your bid for the purple is crushed.', 'rivalry')
+          }
+          return true
         },
         activeDepositionCoalition(society) {
           let coalitions = ((society.rome || {}).depositionCoalitions || []).filter((coalition) => coalition && coalition.status === 'active')
@@ -1088,9 +1279,12 @@
           let coalition = this.activeDepositionCoalition(society)
           let options = []
           if (coalition) {
-            if (!coalition.playerJoined) options.push(this.politicsButton('joinDepositionCoalition', 'Join coalition', 'rivalry', {}, { tooltip: 'Add your house strength to the coalition against the current emperor.' }))
-            options.push(this.politicsButton('leadDepositionCoalition', 'Attempt to lead deposition', 'dictator', {}, { tooltip: 'If your power is high enough, seize leadership and force an ultimatum or civil war.' }))
-            if (this.playerIsEmperor && this.playerIsEmperor(society, state)) {
+            let isEmperorNow = this.playerIsEmperor && this.playerIsEmperor(society, state)
+            if (!isEmperorNow) {
+              if (!coalition.playerJoined) options.push(this.politicsButton('joinDepositionCoalition', 'Join coalition', 'rivalry', {}, { tooltip: 'Add your house strength to the coalition against the current emperor.' }))
+              options.push(this.politicsButton('leadDepositionCoalition', 'Attempt to lead deposition', 'dictator', {}, { tooltip: 'If your power is high enough, seize leadership and force an ultimatum or civil war.' }))
+            }
+            if (isEmperorNow) {
               options.push(this.politicsButton('bribeCoalitionMember', 'Buy off conspirators (160 cash)', 'coins', {}, { tooltip: 'Reduce coalition strength by bribing or appointing a member.' }))
               options.push(this.politicsButton('purgeCoalitionLeader', 'Purge coalition leader', 'prison', {}, { tooltip: 'Imperial justice against the leader. High tyranny and assassination risk.' }))
               options.push(this.politicsButton('concedeCoalition', 'Concede a popular law', 'support', {}, { tooltip: 'Lower discontent by accepting a policy or succession concession.' }))
@@ -1326,8 +1520,77 @@
             return this.politicsButton('buildSpyNetwork', 'Spy network in ' + house.name, 'slander', { houseId: house.id }, { tooltip: 'Improves detection of crimes and conspiracies in this house. Can create hooks.' })
           })
           options.push(this.politicsButton('startPoliticalConspiracy', 'Start Idus-style conspiracy', 'rivalry', {}, { tooltip: 'Political assassination plot. Creates conspiracy crime risk and may destabilize the state.' }))
+          let hookCount = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id]).length
+          options.push(this.politicsButton('useBlackmailHook', 'Use a blackmail hook (' + hookCount + ' available)', 'support', {}, hookCount ? { tooltip: 'Coerce a house out of a coalition or into your faction using secrets your spies uncovered.' } : { disabled: true, showDisabledWithTooltip: true, tooltip: 'You hold no blackmail material yet. Build spy networks to uncover secrets.' }))
           options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRomanPower' } } })
           this.pushModal({ societyMenu: true, title: 'Intrigue and spies', message: 'Spies feed the crime system, uncover plots, and create blackmail hooks.', image: this.affairIcon('slander'), options })
+        },
+        useBlackmailHook() {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let hookCharacterIds = Object.keys(society.blackmailHooks || {}).filter((id) => (society.blackmailHooks[id] || []).length && state.characters[id])
+          if (!hookCharacterIds.length) {
+            this.save(society)
+            this.pushModal({ societyMenu: true, title: 'No hooks', message: 'You hold no blackmail material. Build spy networks to uncover secrets first.', image: this.affairIcon('slander'), options: [{ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openIntrigue' } } }] })
+            return
+          }
+          let characterId = hookCharacterIds[0]
+          let character = state.characters[characterId]
+          let houseId = this.houseIdForCharacter(character, state, society)
+          let house = houseId && society.houses[houseId]
+          society.blackmailHooks[characterId].pop()
+          if (!society.blackmailHooks[characterId].length) delete society.blackmailHooks[characterId]
+          let coalition = this.activeDepositionCoalition(society)
+          let effect
+          if (coalition && house && (coalition.members || []).map(String).indexOf(String(house.id)) >= 0) {
+            coalition.strength = Math.max(0, Math.round((coalition.strength || 0) - this.houseCoalitionStrength(society, house) * 0.5))
+            coalition.members = (coalition.members || []).filter((id) => String(id) !== String(house.id))
+            effect = 'You blackmail ' + house.name + ' out of the deposition coalition.'
+          } else if (house) {
+            let pp = society.playerPolitics
+            pp.faction = pp.faction || []
+            if (pp.faction.indexOf(house.id) < 0) pp.faction.push(house.id)
+            house.relation = this.clamp((house.relation || 0) - 4, -100, 100)
+            effect = 'You coerce ' + house.name + ' into backing your faction.'
+          } else {
+            effect = 'You use the secret, but it leads nowhere useful this time.'
+          }
+          this.applyStats({ influence: 10 })
+          this.log(society, 'Blackmail: ' + effect, 'slander', houseId)
+          this.save(society)
+          this.pushModal({ societyMenu: true, title: 'Blackmail', message: effect, image: this.affairIcon('slander'), options: [{ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openIntrigue' } } }] })
+        },
+        seekImperialPardon({ characterId } = {}) {
+          let society = this.loadForAction()
+          let state = daapi.getState()
+          this.ensureAdvancedRomanState(society, state)
+          let backTarget = { event: this.event, method: 'politicsAction', context: { action: 'openCrimes' } }
+          if (!(this.playerIsEmperor && this.playerIsEmperor(society, state))) {
+            this.save(society)
+            this.pushModal({ societyMenu: true, title: 'Imperial pardon', message: 'Only the Emperor may free a prisoner by imperial decree.', image: this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('senator'), options: [{ text: 'Back', action: backTarget }] })
+            return
+          }
+          if (!characterId) {
+            let prisoners = (society.imprisoned || []).filter((id) => state.characters[id])
+            let options = prisoners.slice(0, 12).map((id) => this.politicsButton('seekImperialPardon', 'Pardon ' + this.characterName({ ...state.characters[id], id }, state), 'gift', { characterId: id }))
+            if (!options.length) options.push({ text: 'No prisoners to pardon', disabled: true, showDisabledWithTooltip: true, tooltip: 'No one is currently imprisoned by Roman Society.', icons: [this.lawIcon('prison')] })
+            options.push({ text: 'Back', action: backTarget })
+            this.save(society)
+            this.pushModal({ societyMenu: true, title: 'Imperial clemency', message: 'As Emperor you may release prisoners. Pardons win loyalty from their houses.', image: this.imperatorIcon ? this.imperatorIcon() : this.affairIcon('gift'), options })
+            return
+          }
+          let character = state.characters[characterId]
+          if (character && (society.imprisoned || []).some((id) => this.sameCharacterId(id, characterId))) {
+            if (this.releasePrisoner) this.releasePrisoner(society, characterId)
+            let houseId = this.houseIdForCharacter(character, state, society)
+            let house = houseId && society.houses[houseId]
+            if (house) { house.relation = this.clamp((house.relation || 0) + 16, -100, 100); house.heat = Math.max(0, (house.heat || 0) - 2) }
+            this.applyStats({ prestige: 4 })
+            this.log(society, 'Imperial clemency frees ' + this.characterName({ ...character, id: characterId }, state) + '.', 'gift', houseId)
+          }
+          this.save(society)
+          this.pushModal({ societyMenu: true, title: 'Pardon granted', message: 'The prisoner is freed by your imperial clemency.', image: this.affairIcon('gift'), options: [{ text: 'Back', action: backTarget }] })
         },
         buildSpyNetwork({ houseId } = {}) {
           let society = this.loadForAction()
@@ -1499,6 +1762,7 @@
           try {
             this.ensureAdvancedRomanState(society, state)
             this.installTaxCrimeModalPatch()
+            this.resolveCivilWarPending(society, state)
             this.simulateNpcCrimes(society, state)
             this.auditHiddenCrimes(society, state)
             this.syncCrimeStatuses(society, state)
@@ -1619,7 +1883,7 @@
           this.refreshPropertyMarket(society, state)
         }
       })
-      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyRomanSystemsVersion = '1.1.324'
     }
   }
 }

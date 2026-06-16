@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyDynastyModelVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyDynastyModelVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -970,6 +970,10 @@
                   }
                   let freeIds = []
                   let slaveIds = []
+                  let ownedSlaveIds = {}
+                  ;(society.playerSlaves || []).forEach((record) => {
+                    if (record && record.characterId) ownedSlaveIds[String(record.characterId)] = true
+                  })
                   Object.keys(candidateMap).forEach((characterId) => {
                     let character = state.characters[characterId]
                     if (!character || character.isDead) {
@@ -986,7 +990,12 @@
                     }
                     let explicitSlave = this.isExplicitlyEnslavedCharacter && this.isExplicitlyEnslavedCharacter(character)
                     let slaveBastard = character.corSocietyOrigin === 'private_company_bastard' || character.corSocietyBastard === true
-                    if (explicitSlave && slaveBastard) {
+                    // Genuinely owned slaves (bought slaves tracked in playerSlaves, enslaved
+                    // dependants, or slave bastards) belong in slaveIds. Bought slaves are placed
+                    // in the player's dynasty on purpose, so without this they would be classed as
+                    // free members and have their enslaved-dependant origin stripped below.
+                    let ownedSlave = explicitSlave && (slaveBastard || !!ownedSlaveIds[String(characterId)] || character.corSocietyOrigin === 'enslaved_dependant')
+                    if (ownedSlave) {
                       slaveIds.push(characterId)
                       return
                     }
@@ -1164,7 +1173,7 @@
                   }
                 }
       })
-      window.corSociety._mixinCorSocietyDynastyModelVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyDynastyModelVersion = '1.1.324'
     }
   }
 }

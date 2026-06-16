@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -3116,7 +3116,15 @@
                     }
                     let ownerHouseId = character.corSocietySlaveOwnerHouseId || ''
                     let slaveBastard = character.corSocietyOrigin === 'private_company_bastard' || character.corSocietyBastard === true
-                    let realOwnedSlave = slaveBastard || (ownedSlaveIds[String(characterId)] && !protectedFamily) || (ownerHouseId && String(ownerHouseId) !== String(currentDynastyId) && !protectedFamily)
+                    // A deliberately owned slave is one we track in society.playerSlaves with the
+                    // enslaved markers, one owned by another house, or a slave bastard. Bought slaves
+                    // are intentionally placed in the player's own dynasty (so the owner relationship
+                    // works), so we must NOT treat "shares the player's dynasty" / "is in the family
+                    // map" as proof that the slave flag is false - otherwise every purchased slave is
+                    // wrongly un-enslaved and dropped from playerSlaves on the next ensure()/turn.
+                    let trackedOwnedSlave = !!ownedSlaveIds[String(characterId)] && (character.corSocietySlave === true || character.corSocietyOrigin === 'enslaved_dependant')
+                    let ownedByOtherHouse = !!ownerHouseId && String(ownerHouseId) !== String(currentDynastyId)
+                    let realOwnedSlave = slaveBastard || trackedOwnedSlave || ownedByOtherHouse
                     if (realOwnedSlave) {
                       return
                     }
@@ -3259,7 +3267,7 @@
                   return 0.08
                 }
       })
-      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyHouseLifeRomanceSlavesVersion = '1.1.324'
     }
   }
 }

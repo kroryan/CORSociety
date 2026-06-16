@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyMenusVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -1296,6 +1296,26 @@
                   let currentId = this.currentCharacterId(state)
                   let player = state.characters[currentId] || state.current || {}
                   let characterId = character && character.id
+                  // Spouses use a dedicated marital route (no introduction/courtship needed):
+                  // near-certain success and a real chance to conceive via the pregnancy system.
+                  if (characterId && player && player.spouseId && this.sameCharacterId(player.spouseId, characterId)) {
+                    let playerAgeSpouse = this.age(player, state)
+                    let targetAgeSpouse = this.age(character, state)
+                    let blocked = playerAgeSpouse < 13 || targetAgeSpouse < 13
+                    return {
+                      variant: 'info',
+                      text: 'Lie together',
+                      disabled: blocked,
+                      showDisabledWithTooltip: true,
+                      tooltip: blocked ? 'Both spouses must be at least 13.' : 'Spend an intimate night with your spouse. Strengthens your bond and may lead to a pregnancy when the couple can conceive.',
+                      icons: [this.affairIcon('romance')],
+                      action: {
+                        event: this.event,
+                        method: 'courtSpouse',
+                        context: { houseId: house.id, characterId }
+                      }
+                    }
+                  }
                   let social = this.characterSocialRecord(society, characterId, false)
                   let romance = this.getRomance(society, currentId, characterId)
                   let playerAge = this.age(player, state)
@@ -4890,27 +4910,47 @@
                     cost = offer.cost || cost
                   }
                   template = template || this.randomSlaveTemplate(false)
+                  // A purchased slave becomes an ACTIVE owned dependant, never a market listing.
+                  // Leaving market:true here would make generateSlaveCharacter set
+                  // corSocietySlaveActive:false, so the slave gets purged on the next monthly tick.
+                  template = { ...template, market: false }
                   cost = Math.max(1, Math.round(parseFloat(cost || this.slaveCost(template))))
                   if (parseFloat(((state || {}).current || {}).cash || 0) < cost) {
                     this.openSlaveMarket()
                     return
                   }
-                  this.applyStats({ cash: -cost })
                   let playerRecord = false
                   if (template.characterId && state.characters && state.characters[template.characterId]) {
                     playerRecord = this.transferMarketSlaveToPlayer(society, state, offer, template, cost)
                   }
-                  let record = playerRecord ? template : this.generateSlaveCharacter(society, state, false, template)
-                  state = daapi.getState()
-                  let character = state.characters && state.characters[record.characterId]
                   if (!playerRecord) {
-                    playerRecord = this.playerSlaveRecordFromCharacter(record, character, state)
+                    // No live market character to transfer: generate a fresh owned slave.
+                    // Drop any stale/missing characterId so generation always mints a valid one.
+                    let genTemplate = { ...template }
+                    delete genTemplate.characterId
+                    let record = this.generateSlaveCharacter(society, state, false, genTemplate)
+                    state = daapi.getState()
+                    let character = record && record.characterId && state.characters ? state.characters[record.characterId] : false
+                    if (record && record.characterId) {
+                      playerRecord = this.playerSlaveRecordFromCharacter(record, character, state)
+                    }
                   }
+                  // Abort and refund (never charged) if we could not secure a valid slave.
+                  if (!playerRecord || !playerRecord.characterId) {
+                    this.log(society, 'The slave purchase could not be completed; no money was spent.', 'slaves')
+                    this.save(society)
+                    this.openSlaveMarket()
+                    return
+                  }
+                  // Only now that a valid slave is secured do we charge the buyer.
+                  this.applyStats({ cash: -cost })
+                  state = daapi.getState()
+                  let boughtCharacter = state.characters && state.characters[playerRecord.characterId]
                   if (this.registerPlayerSlaveRecord) {
-                    playerRecord = this.registerPlayerSlaveRecord(society, state, playerRecord, character) || playerRecord
+                    playerRecord = this.registerPlayerSlaveRecord(society, state, playerRecord, boughtCharacter) || playerRecord
                   } else {
                     society.playerSlaves = society.playerSlaves || []
-                    society.playerSlaves = society.playerSlaves.filter((slave) => !this.sameCharacterId(slave.characterId, playerRecord.characterId))
+                    society.playerSlaves = society.playerSlaves.filter((slave) => slave && slave.characterId && !this.sameCharacterId(slave.characterId, playerRecord.characterId))
                     society.playerSlaves.push(playerRecord)
                   }
                   if (offerId) {
@@ -5515,7 +5555,7 @@
                   this.openHouseholdSlaves()
                 }
       })
-      window.corSociety._mixinCorSocietyMenusVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyMenusVersion = '1.1.324'
     }
   }
 }

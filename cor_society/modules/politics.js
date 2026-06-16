@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyPoliticsVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -262,7 +262,7 @@
                   let rulerHouse = rome.rulerHouseId && society.houses[rome.rulerHouseId]
                   let summary = [
                     this.summaryOption('Government', this.governmentLabel(rome), [this.affairIcon('senator')], 'The current form of Roman government.'),
-                    this.summaryOption('Ruler', isEmperor ? 'You — Imperator' : isDictator ? 'You — Dictator' : (rulerHouse ? rulerHouse.name : (rome.government === 'republic' ? 'the Senate' : 'none')), [isEmperor ? this.imperatorIcon() : this.affairIcon('prestige')], 'Who currently holds supreme power.'),
+                    this.summaryOption('Ruler', isEmperor ? 'You Ã¢â‚¬â€ Imperator' : isDictator ? 'You Ã¢â‚¬â€ Dictator' : (rulerHouse ? rulerHouse.name : (rome.government === 'republic' ? 'the Senate' : 'none')), [isEmperor ? this.imperatorIcon() : this.affairIcon('prestige')], 'Who currently holds supreme power.'),
                     this.summaryOption('Succession', rome.government === 'empire' ? (rome.successionLaw === 'wealth' ? 'By wealth' : rome.successionLaw === 'power' ? 'By power' : 'By designation/adoption') : 'n/a', [this.affairIcon('familyTree')], 'How imperial succession is decided. Rivals may push to change it.'),
                     this.summaryOption('Auctoritas', auctoritas, [this.affairIcon('influence')], 'Your political weight: prestige, influence, faction, offices, property.'),
                     this.summaryOption('Faction', factionSize + ' houses', [this.affairIcon('support')], 'Houses backing your ambitions.'),
@@ -303,7 +303,7 @@
                     societyMenu: true,
                     title: 'Senate & Politics',
                     message: rome.government === 'republic'
-                      ? 'The Republic stands. Climb the cursus honorum, build a faction, and — in a crisis — you may be named Dictator. Few dictators ever become Emperor.'
+                      ? 'The Republic stands. Climb the cursus honorum, build a faction, and Ã¢â‚¬â€ in a crisis Ã¢â‚¬â€ you may be named Dictator. Few dictators ever become Emperor.'
                       : rome.government === 'dictatorship'
                         ? 'You wield extraordinary powers for a limited term. Lay them down with honour, or risk everything to seize the purple.'
                         : 'The Empire endures. Defend your succession and project power across the provinces.',
@@ -333,7 +333,7 @@
                   let options = houses.map((house) => {
                     let inFaction = (pp.faction || []).indexOf(house.id) >= 0
                     let cost = Math.max(20, Math.round((this.actionCost(house, 'dinner') || 40) * 1.4))
-                    return this.politicsButton('recruitFactionHouse', (inFaction ? '✓ ' : '') + house.name + ' (relation ' + this.signed(house.relation || 0) + ', cost ' + cost + ')', 'support', { houseId: house.id }, inFaction || cash < cost ? { disabled: true, showDisabledWithTooltip: true, tooltip: inFaction ? 'Already in your faction.' : 'Not enough cash (' + cost + ').' } : {})
+                    return this.politicsButton('recruitFactionHouse', (inFaction ? 'Ã¢Å“â€œ ' : '') + house.name + ' (relation ' + this.signed(house.relation || 0) + ', cost ' + cost + ')', 'support', { houseId: house.id }, inFaction || cash < cost ? { disabled: true, showDisabledWithTooltip: true, tooltip: inFaction ? 'Already in your faction.' : 'Not enough cash (' + cost + ').' } : {})
                   })
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openPolitics' } } })
                   this.pushModal({
@@ -409,9 +409,9 @@
                   let raidCost = Math.max(15, Math.round((house.power || 40) * 0.4))
                   let abductCost = this.abductionCost(house)
                   let props = this.housePropertyOptions(house)
-                  let propSummary = props.length ? props.slice(0, 5).map((p) => p.count + '× ' + p.title).join(', ') : 'no recorded estates'
+                  let propSummary = props.length ? props.slice(0, 5).map((p) => p.count + 'Ãƒâ€” ' + p.title).join(', ') : 'no recorded estates'
                   let options = []
-                  options.push(this.politicsButton('pressLandClaim', 'Press a land claim — seize a property (' + this.costLabel(claimCost) + ')', 'coins', { houseId }))
+                  options.push(this.politicsButton('pressLandClaim', 'Press a land claim Ã¢â‚¬â€ seize a property (' + this.costLabel(claimCost) + ')', 'coins', { houseId }))
                   options.push(this.politicsButton('raidProperty', 'Raid / blockade their estates (' + raidCost + ' cash)', 'trade', { houseId }))
                   options.push(this.politicsButton('openAbductTargets', 'Abduct a family member for ransom (' + this.costLabel(abductCost) + ')', 'scandal', { houseId }))
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openRivalPolitics' } } })
@@ -473,7 +473,7 @@
                   }
                   let props = this.housePropertyOptions(house)
                   let options = props.map((p) => {
-                    return this.politicsButton('seizeProperty', 'Seize ' + p.title + ' (×' + p.count + ', worth ' + p.value + ' each)', p.group === 'animal' ? 'familyTree' : 'coins', { houseId, key: p.key })
+                    return this.politicsButton('seizeProperty', 'Seize ' + p.title + ' (Ãƒâ€”' + p.count + ', worth ' + p.value + ' each)', p.group === 'animal' ? 'familyTree' : 'coins', { houseId, key: p.key })
                   })
                   if (!options.length) {
                     options.push(this.politicsButton('seizeProperty', 'Extort coin instead', 'coins', { houseId, key: '__cash' }))
@@ -482,7 +482,7 @@
                   this.pushModal({
                     societyMenu: true,
                     title: 'You win the seizure',
-                    message: 'Your claim succeeds. Choose what to take from ' + house.name + ' — a real property passes into your house. (Animals can be rustled too.)',
+                    message: 'Your claim succeeds. Choose what to take from ' + house.name + ' Ã¢â‚¬â€ a real property passes into your house. (Animals can be rustled too.)',
                     image: this.affairIcon('coins'),
                     options
                   })
@@ -525,7 +525,7 @@
                     return
                   }
                   // Real members of the SELECTED house's tree (the same membership the house tree uses),
-                  // never random — pick exactly who to abduct.
+                  // never random Ã¢â‚¬â€ pick exactly who to abduct.
                   let memberIds = []
                   if (this.resolvedHouseMemberIds) {
                     memberIds = this.resolvedHouseMemberIds(society, state, house, { includeKnown: true, includeDead: false, repair: false })
@@ -718,7 +718,7 @@
                   }
                   let props = this.housePropertyOptions(house)
                   let options = props.map((p) => {
-                    return this.politicsButton('demandProperty', 'Demand ' + p.title + ' (×' + p.count + ', worth ' + p.value + ')', p.group === 'animal' ? 'familyTree' : 'coins', { captiveId, key: p.key })
+                    return this.politicsButton('demandProperty', 'Demand ' + p.title + ' (Ãƒâ€”' + p.count + ', worth ' + p.value + ')', p.group === 'animal' ? 'familyTree' : 'coins', { captiveId, key: p.key })
                   })
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openCaptives' } } })
                   this.pushModal({
@@ -786,13 +786,13 @@
                   let house = this.playerPoliticsHouse(society, state)
                   let propertyValue = house && this.housePropertyValue ? this.housePropertyValue(house) : 0
                   if (faction < 3) {
-                    return { ready: false, reason: 'Win more houses to your faction — at least 3 must stand behind you (have ' + faction + ').' }
+                    return { ready: false, reason: 'Win more houses to your faction Ã¢â‚¬â€ at least 3 must stand behind you (have ' + faction + ').' }
                   }
                   if (auctoritas < 70) {
                     return { ready: false, reason: 'Your auctoritas is still too light for men to call you to the dictatorship (have ' + auctoritas + ', need ~70).' }
                   }
                   if (cash < 250 && propertyValue < 3000 && influence < 1500) {
-                    return { ready: false, reason: 'A dictator must have means — greater wealth (250+ cash or 3000+ in estates) or far more influence — before the Senate would trust you with imperium.' }
+                    return { ready: false, reason: 'A dictator must have means Ã¢â‚¬â€ greater wealth (250+ cash or 3000+ in estates) or far more influence Ã¢â‚¬â€ before the Senate would trust you with imperium.' }
                   }
                   return { ready: true, reason: '' }
                 },
@@ -801,10 +801,10 @@
                   // for a limited term, each with a different character. Only the Sullan legislative
                   // mandate opens the real road to one-man rule.
                   return [
-                    { id: 'rei_gerundae', title: 'Rei gerundae causa — to wage a war', term: 6, progress: 0, note: 'War powers in a military crisis. Honourable, but a dead end for ambition.' },
-                    { id: 'seditionis', title: 'Seditionis sedandae causa — to crush sedition', term: 6, progress: 2, note: 'Emergency powers against unrest at home.' },
-                    { id: 'comitiorum', title: 'Comitiorum habendorum causa — to hold the elections', term: 2, progress: -4, note: 'A short, narrow mandate; little room to build power.' },
-                    { id: 'legibus', title: 'Legibus scribundis et rei publicae constituendae — to remake the Republic (Sulla)', term: 11, progress: 14, note: 'A long legislative mandate. Lets you LEGISLATE — the true road toward the purple.', powerLaws: true }
+                    { id: 'rei_gerundae', title: 'Rei gerundae causa Ã¢â‚¬â€ to wage a war', term: 6, progress: 0, note: 'War powers in a military crisis. Honourable, but a dead end for ambition.' },
+                    { id: 'seditionis', title: 'Seditionis sedandae causa Ã¢â‚¬â€ to crush sedition', term: 6, progress: 2, note: 'Emergency powers against unrest at home.' },
+                    { id: 'comitiorum', title: 'Comitiorum habendorum causa Ã¢â‚¬â€ to hold the elections', term: 2, progress: -4, note: 'A short, narrow mandate; little room to build power.' },
+                    { id: 'legibus', title: 'Legibus scribundis et rei publicae constituendae Ã¢â‚¬â€ to remake the Republic (Sulla)', term: 11, progress: 14, note: 'A long legislative mandate. Lets you LEGISLATE Ã¢â‚¬â€ the true road toward the purple.', powerLaws: true }
                   ]
                 },
         openDictatorMandates() {
@@ -822,7 +822,7 @@
                   this.pushModal({
                     societyMenu: true,
                     title: 'For what cause? (Dictator mandate)',
-                    message: 'The Senate names a Dictator only for a stated purpose and a fixed term. Choose your causa — only a Sullan legislative mandate truly opens the road to the purple.',
+                    message: 'The Senate names a Dictator only for a stated purpose and a fixed term. Choose your causa Ã¢â‚¬â€ only a Sullan legislative mandate truly opens the road to the purple.',
                     image: this.affairIcon('senator'),
                     options
                   })
@@ -860,7 +860,7 @@
                         h.relation = this.clamp((h.relation || 0) - 6, -100, 100)
                       }
                     })
-                    message = 'A consul, on the Senate\'s authority, names you DICTATOR ' + chosen.title.split(' — ')[0] + ' for a ' + chosen.term + '-month term, with a master of horse (magister equitum) at your side.' + (chosen.powerLaws ? ' Your legislative mandate lets you remake the laws — the road to the purple is open.' : ' This is a limited mandate; lay it down with honour when the task is done.')
+                    message = 'A consul, on the Senate\'s authority, names you DICTATOR ' + chosen.title.split(' Ã¢â‚¬â€ ')[0] + ' for a ' + chosen.term + '-month term, with a master of horse (magister equitum) at your side.' + (chosen.powerLaws ? ' Your legislative mandate lets you remake the laws Ã¢â‚¬â€ the road to the purple is open.' : ' This is a limited mandate; lay it down with honour when the task is done.')
                     this.log(society, 'You are named Dictator of Rome (' + chosen.id + ').', 'prestige')
                   } else {
                     this.applyStats({ prestige: -20 })
@@ -935,9 +935,9 @@
                   let message = ''
                   if (!failedStage) {
                     this.becomeEmperor(society, state)
-                    message = 'After Dictatorship comes the purple. The Senate, army, and people acclaim you IMPERATOR — and the eagle of Rome (SPQR) is raised in your name. Rome becomes an Empire. War-time edicts and your imperial powers now ripple across every house, and the imperial fisc pays you each month.'
+                    message = 'After Dictatorship comes the purple. The Senate, army, and people acclaim you IMPERATOR Ã¢â‚¬â€ and the eagle of Rome (SPQR) is raised in your name. Rome becomes an Empire. War-time edicts and your imperial powers now ripple across every house, and the imperial fisc pays you each month.'
                   } else {
-                    // Failure branches — costly, sometimes catastrophic.
+                    // Failure branches Ã¢â‚¬â€ costly, sometimes catastrophic.
                     let roll = Math.random()
                     if (roll < 0.45) {
                       rome.government = 'republic'
@@ -952,7 +952,7 @@
                       rome.dictatorTermEnd = ''
                       this.applyStats({ prestige: -50, cash: -Math.round(parseFloat((state.current || {}).cash || 0) * 0.4), influence: -60 })
                       if (house) house.heat = (house.heat || 0) + 6
-                      message = 'You fail at: ' + failedStage + '. You are proscribed — your property plundered and your name dragged through the courts.'
+                      message = 'You fail at: ' + failedStage + '. You are proscribed Ã¢â‚¬â€ your property plundered and your name dragged through the courts.'
                       this.log(society, 'Proscription! Your bid for the purple ends in ruin.', 'scandal')
                     } else {
                       rome.government = 'republic'
@@ -989,8 +989,8 @@
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openPolitics' } } })
                   this.pushModal({
                     societyMenu: true,
-                    title: 'Imperator — Imperial powers',
-                    message: 'As Imperator, under the eagle of Rome (SPQR), you command appointments, war, and the loyalty of Rome, and the imperial fisc fills your treasury each month. Rivals will push to change the succession to favour the wealthiest or strongest house — hold them off.',
+                    title: 'Imperator Ã¢â‚¬â€ Imperial powers',
+                    message: 'As Imperator, under the eagle of Rome (SPQR), you command appointments, war, and the loyalty of Rome, and the imperial fisc fills your treasury each month. Rivals will push to change the succession to favour the wealthiest or strongest house Ã¢â‚¬â€ hold them off.',
                     image: this.imperatorIcon(),
                     options
                   })
@@ -1006,7 +1006,7 @@
                     return this.politicsButton('appointGovernor', 'Make ' + house.name + ' governor of ' + region, 'senator', { houseId: house.id, region })
                   })
                   options.push({ text: 'Back', action: { event: this.event, method: 'politicsAction', context: { action: 'openEmperorActions' } } })
-                  this.pushModal({ societyMenu: true, title: 'Appoint a governor', message: 'Reward a house with a province. It strengthens their loyalty and revenue — and your patronage network.', image: this.affairIcon('senator'), options })
+                  this.pushModal({ societyMenu: true, title: 'Appoint a governor', message: 'Reward a house with a province. It strengthens their loyalty and revenue Ã¢â‚¬â€ and your patronage network.', image: this.affairIcon('senator'), options })
                 },
         appointGovernor({ houseId, region } = {}) {
                   this.withHouse(houseId, (society, house) => {
@@ -1091,7 +1091,7 @@
         pathToPowerHint(society, state) {
                   let rome = this.ensureRomeState(society)
                   if (this.playerIsEmperor(society, state)) {
-                    return 'You rule as Imperator. Defend the succession and project power — rivals will push to change the law.'
+                    return 'You rule as Imperator. Defend the succession and project power Ã¢â‚¬â€ rivals will push to change the law.'
                   }
                   if (this.playerIsDictator(society, state)) {
                     let egate = this.empireGate(society, state)
@@ -1099,14 +1099,14 @@
                     if (egate.ready) {
                       return 'Hint: you are ready to bid for the purple, but it is risky. Pass LAWS to raise your odds (legislative progress ' + prog + '%), or force it with Dictator perpetuo / marching on Rome.'
                     }
-                    return 'Hint: to reach the purple — ' + egate.reason + ' As Dictator, propose LAWS to build legislative progress (' + prog + '%) toward the throne.'
+                    return 'Hint: to reach the purple Ã¢â‚¬â€ ' + egate.reason + ' As Dictator, propose LAWS to build legislative progress (' + prog + '%) toward the throne.'
                   }
                   if (rome.government === 'republic') {
                     let dgate = this.dictatorshipGate(society, state)
                     if (dgate.ready) {
-                      return 'Hint: you can seek the Dictatorship now — the required first step toward becoming Emperor.'
+                      return 'Hint: you can seek the Dictatorship now Ã¢â‚¬â€ the required first step toward becoming Emperor.'
                     }
-                    return 'Hint: climb toward the Dictatorship first — ' + dgate.reason
+                    return 'Hint: climb toward the Dictatorship first Ã¢â‚¬â€ ' + dgate.reason
                   }
                   return ''
                 },
@@ -1128,15 +1128,15 @@
                     h.relation = this.clamp((h.relation || 0) + (friendly ? 10 : -8), -100, 100)
                     if (!friendly) h.heat = (h.heat || 0) + 2
                   })
-                  this.log(society, 'You become Imperator — Emperor of Rome.', 'prestige')
+                  this.log(society, 'You become Imperator Ã¢â‚¬â€ Emperor of Rome.', 'prestige')
                 },
         lawList() {
                   return [
-                    { id: 'lex_de_imperio', title: 'Lex de Imperio — grant yourself greater imperium', cost: { influence: 40 }, progress: 12, auctoritas: 10, oppose: 3, civilWar: 0 },
+                    { id: 'lex_de_imperio', title: 'Lex de Imperio Ã¢â‚¬â€ grant yourself greater imperium', cost: { influence: 40 }, progress: 12, auctoritas: 10, oppose: 3, civilWar: 0 },
                     { id: 'pack_senate', title: 'Pack the Senate with your clients', cost: { cash: 120 }, progress: 14, auctoritas: 12, oppose: 4, civilWar: 0 },
-                    { id: 'extend_term', title: 'Dictator legibus scribundis — extend your term', cost: { influence: 60 }, progress: 18, auctoritas: 16, oppose: 6, civilWar: 0.08, extendTerm: 8 },
-                    { id: 'perpetual', title: 'Dictator perpetuo — dictator for life (Caesar)', cost: { influence: 100, cash: 150 }, progress: 30, auctoritas: 24, oppose: 10, civilWar: 0.45 },
-                    { id: 'march', title: 'March your clients on Rome — force the issue (civil war)', cost: { cash: 200 }, progress: 0, auctoritas: 0, oppose: 12, civilWar: 1 }
+                    { id: 'extend_term', title: 'Dictator legibus scribundis Ã¢â‚¬â€ extend your term', cost: { influence: 60 }, progress: 18, auctoritas: 16, oppose: 6, civilWar: 0.08, extendTerm: 8 },
+                    { id: 'perpetual', title: 'Dictator perpetuo Ã¢â‚¬â€ dictator for life (Caesar)', cost: { influence: 100, cash: 150 }, progress: 30, auctoritas: 24, oppose: 10, civilWar: 0.45 },
+                    { id: 'march', title: 'March your clients on Rome Ã¢â‚¬â€ force the issue (civil war)', cost: { cash: 200 }, progress: 0, auctoritas: 0, oppose: 12, civilWar: 1 }
                   ]
                 },
         canPassPowerLaws(society, state) {
@@ -1165,7 +1165,7 @@
                   if (this.canPassPowerLaws(society, state)) {
                     this.lawList().forEach((law) => {
                       let passed = (society.playerPolitics.laws || []).indexOf(law.id) >= 0 && law.id !== 'march'
-                      options.push(this.politicsButton('proposeLaw', (passed ? '✓ ' : '') + law.title + ' (' + this.costLabel(law.cost) + (law.civilWar >= 1 ? ', CIVIL WAR' : law.civilWar ? ', war risk' : '') + ')', law.civilWar ? 'rivalry' : 'senator', { lawId: law.id }, passed ? { disabled: true, showDisabledWithTooltip: true, tooltip: 'Already enacted.' } : { tooltip: this.lawTooltip ? this.lawTooltip(law) : (law.description || law.title) }))
+                      options.push(this.politicsButton('proposeLaw', (passed ? 'Ã¢Å“â€œ ' : '') + law.title + ' (' + this.costLabel(law.cost) + (law.civilWar >= 1 ? ', CIVIL WAR' : law.civilWar ? ', war risk' : '') + ')', law.civilWar ? 'rivalry' : 'senator', { lawId: law.id }, passed ? { disabled: true, showDisabledWithTooltip: true, tooltip: 'Already enacted.' } : { tooltip: this.lawTooltip ? this.lawTooltip(law) : (law.description || law.title) }))
                     })
                   } else if (isDictator) {
                     options.push({ text: 'Power laws need a legislative mandate (legibus scribundis)', disabled: true, showDisabledWithTooltip: true, tooltip: 'Only a Dictator named to remake the laws (the Sullan mandate) may legislate toward the purple.' })
@@ -1175,7 +1175,7 @@
                   this.pushModal({
                     societyMenu: true,
                     title: isDictator ? 'Laws (Dictator)' : isEmperor ? 'Imperial edicts' : 'Propose laws',
-                    message: (this.canPassPowerLaws(society, state) ? 'Legislate your way toward the throne (progress ' + Math.round(rome.empireProgress || 0) + '%). Bold laws can ignite CIVIL WAR — win it and the purple is yours. ' : isSenatorial && !isDictator && !isEmperor ? 'As a senator you may PROPOSE laws; the Senate then votes. ' : '') + 'Economic and social policy rewards some houses and punishes others.',
+                    message: (this.canPassPowerLaws(society, state) ? 'Legislate your way toward the throne (progress ' + Math.round(rome.empireProgress || 0) + '%). Bold laws can ignite CIVIL WAR Ã¢â‚¬â€ win it and the purple is yours. ' : isSenatorial && !isDictator && !isEmperor ? 'As a senator you may PROPOSE laws; the Senate then votes. ' : '') + 'Economic and social policy rewards some houses and punishes others.',
                     image: this.affairIcon('senator'),
                     options
                   })
@@ -1183,11 +1183,11 @@
         policyLawList() {
                   return [
                     { id: 'olive_vs_herds', title: 'Tax the oil latifundia, subsidise the herders', cost: { influence: 30 }, populist: 2, hurt: { keys: ['latifundiumOil', 'orchard', 'primeOrchard'], who: 'oil & orchard estates' }, help: { groups: ['animal'], who: 'herders' } },
-                    { id: 'lex_agraria', title: 'Lex Agraria — redistribute the great estates', cost: { influence: 55 }, populist: 6, hurt: { groups: ['land', 'estate'], who: 'the great landowners' }, help: { groups: ['animal'], who: 'smallholders & plebs' } },
-                    { id: 'lex_claudia', title: 'Lex Claudia — bar senators from sea trade', cost: { influence: 40 }, populist: 1, hurt: { groups: ['boat'], who: 'the shipping houses' }, help: { groups: ['land'], who: 'the landed houses' } },
-                    { id: 'lex_frumentaria', title: 'Lex Frumentaria — grain dole for the people', cost: { cash: 160 }, populist: 8, allRelation: 4, hurt: false, help: false },
-                    { id: 'novae_tabulae', title: 'Novae Tabulae — cancel debts', cost: { influence: 50 }, populist: 5, hurt: { wealthAbove: 600, who: 'the great creditors' }, help: { wealthBelow: 220, who: 'indebted houses' } },
-                    { id: 'vectigal_portus', title: 'Harbour dues — tax the trading fleets', cost: { influence: 25 }, populist: 0, hurt: { groups: ['boat'], who: 'trading fleets' }, help: { groups: ['land', 'animal'], who: 'farmers & herders' } }
+                    { id: 'lex_agraria', title: 'Lex Agraria Ã¢â‚¬â€ redistribute the great estates', cost: { influence: 55 }, populist: 6, hurt: { groups: ['land', 'estate'], who: 'the great landowners' }, help: { groups: ['animal'], who: 'smallholders & plebs' } },
+                    { id: 'lex_claudia', title: 'Lex Claudia Ã¢â‚¬â€ bar senators from sea trade', cost: { influence: 40 }, populist: 1, hurt: { groups: ['boat'], who: 'the shipping houses' }, help: { groups: ['land'], who: 'the landed houses' } },
+                    { id: 'lex_frumentaria', title: 'Lex Frumentaria Ã¢â‚¬â€ grain dole for the people', cost: { cash: 160 }, populist: 8, allRelation: 4, hurt: false, help: false },
+                    { id: 'novae_tabulae', title: 'Novae Tabulae Ã¢â‚¬â€ cancel debts', cost: { influence: 50 }, populist: 5, hurt: { wealthAbove: 600, who: 'the great creditors' }, help: { wealthBelow: 220, who: 'indebted houses' } },
+                    { id: 'vectigal_portus', title: 'Harbour dues Ã¢â‚¬â€ tax the trading fleets', cost: { influence: 25 }, populist: 0, hurt: { groups: ['boat'], who: 'trading fleets' }, help: { groups: ['land', 'animal'], who: 'farmers & herders' } }
                   ]
                 },
         houseMatchesPolicy(house, match) {
@@ -1300,7 +1300,8 @@
                     return
                   }
                   let auctoritas = this.playerAuctoritasScore(society, state)
-                  let voteChance = this.clamp(0.35 + auctoritas / 300 + (rome.empireProgress || 0) / 300, 0.15, 0.9)
+                  let factionMod = this.lawFactionModifier ? this.lawFactionModifier(society, state) : 0
+                  let voteChance = this.clamp(0.35 + auctoritas / 300 + (rome.empireProgress || 0) / 300 + factionMod, 0.15, 0.92)
                   if (Math.random() < voteChance) {
                     society.playerPolitics.laws = society.playerPolitics.laws || []
                     if (society.playerPolitics.laws.indexOf(law.id) < 0) society.playerPolitics.laws.push(law.id)
@@ -1341,7 +1342,7 @@
                   })
                   if (Math.random() < winChance) {
                     this.becomeEmperor(society, state)
-                    return 'CIVIL WAR! Your legions and clients prevail. On the ashes of the Republic you are acclaimed IMPERATOR — Rome is now an Empire.'
+                    return 'CIVIL WAR! Your legions and clients prevail. On the ashes of the Republic you are acclaimed IMPERATOR Ã¢â‚¬â€ Rome is now an Empire.'
                   }
                   rome.government = 'republic'
                   rome.dictatorHouseId = ''
@@ -1352,7 +1353,7 @@
                     h.rivalry = true
                   })
                   // A loser of a civil war was often executed. There is a real chance the player
-                  // character dies here — the base game then continues the player with their heir.
+                  // character dies here Ã¢â‚¬â€ the base game then continues the player with their heir.
                   let executed = Math.random() < 0.55
                   if (executed) {
                     this.log(society, 'Civil war! Your bid is crushed and you are executed. Your house fights on under your heir.', 'rivalry')
@@ -1362,11 +1363,11 @@
                     } catch (err) {
                       console.warn(err)
                     }
-                    return 'CIVIL WAR! Your legions are crushed and YOU are executed as a traitor. Your house fights on — you continue as your heir.'
+                    return 'CIVIL WAR! Your legions are crushed and YOU are executed as a traitor. Your house fights on Ã¢â‚¬â€ you continue as your heir.'
                   }
                   this.applyStats({ prestige: -60, influence: -100, cash: -Math.round(parseFloat((state.current || {}).cash || 0) * 0.5) })
                   this.log(society, 'Civil war! Your bid is crushed and you are driven from power.', 'rivalry')
-                  return 'CIVIL WAR! Your forces are crushed. You are driven from power, proscribed, and the Republic — battered — endures.'
+                  return 'CIVIL WAR! Your forces are crushed. You are driven from power, proscribed, and the Republic Ã¢â‚¬â€ battered Ã¢â‚¬â€ endures.'
                 },
         imperialCrimes() {
                   return [
@@ -1408,8 +1409,8 @@
                   options.push({ text: 'Back', action: { event: this.event, method: 'openPerson', context: { houseId, characterId } } })
                   this.pushModal({
                     societyMenu: true,
-                    title: 'Imperial justice — ' + this.characterName(character, state),
-                    message: inquiry ? 'The inquiry found: ' + (crime ? crime.label.toUpperCase() : 'nothing — they appear loyal') + '.' : 'As Imperator you hold cognitio over every Roman. Order an inquiry first, then judge.',
+                    title: 'Imperial justice Ã¢â‚¬â€ ' + this.characterName(character, state),
+                    message: inquiry ? 'The inquiry found: ' + (crime ? crime.label.toUpperCase() : 'nothing Ã¢â‚¬â€ they appear loyal') + '.' : 'As Imperator you hold cognitio over every Roman. Order an inquiry first, then judge.',
                     image: this.imperatorIcon(),
                     options
                   })
@@ -1690,7 +1691,7 @@
                   }
                 }
       })
-      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyPoliticsVersion = '1.1.324'
     }
   }
 }

@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyPresentationVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -389,10 +389,22 @@
                   let orderText = this.stratumOrder
                     .map((stratum) => this.strata[stratum].title + ' ' + (counts[stratum] || 0))
                     .join(' | ')
+                  // Prefer the player's political rank (Dictator / Imperator Augustus)
+                  // over the property-derived stratum title when one applies.
+                  let standingTitle = playerStatus.title
+                  try {
+                    if (this.playerPoliticalRank) {
+                      let rank = this.playerPoliticalRank(society, state)
+                      if (rank === 'emperor') standingTitle = 'Imperator Augustus'
+                      else if (rank === 'dictator') standingTitle = 'Dictator'
+                    }
+                  } catch (err) {
+                    console.warn(err)
+                  }
                   return [
                     this.summaryOption(
                       'Date and standing',
-                      'Year ' + state.year + ', month ' + ((state.month || 0) + 1) + ' - ' + playerStatus.title + (playerStatus.className ? ' (' + playerStatus.className + ')' : ''),
+                      'Year ' + state.year + ', month ' + ((state.month || 0) + 1) + ' - ' + standingTitle + (playerStatus.className ? ' (' + playerStatus.className + ')' : ''),
                       [this.affairIcon('log'), this.stratumIcon(playerStatus.stratum)],
                       'Your current Society order is derived from the same property ladder the base game uses.'
                     ),
@@ -890,7 +902,7 @@
                   return 'Consequences: ' + (parts || []).filter(Boolean).join(', ') + '.'
                 }
       })
-      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyPresentationVersion = '1.1.324'
     }
   }
 }

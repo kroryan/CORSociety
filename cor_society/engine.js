@@ -33,7 +33,7 @@
   },
   methods: {
     boot() {
-      if (window.corSociety && window.corSociety.version === '1.1.322') {
+      if (window.corSociety && window.corSociety.version === '1.1.324') {
         daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
@@ -47,7 +47,7 @@
       }
 
       window.corSociety = {
-        version: '1.1.322',
+        version: '1.1.324',
         event: '/cor_society/engine',
         flag: 'corSocietyState',
         noticeFlag: 'corSocietyInstallNoticeSeen'
@@ -485,6 +485,9 @@
     },
     courtCharacter(args) {
       window.corSociety.runAction('courtCharacter', args || {})
+    },
+    courtSpouse(args) {
+      window.corSociety.runAction('courtSpouse', args || {})
     },
     resolveCourtship(args) {
       window.corSociety.runAction('resolveCourtship', args || {})

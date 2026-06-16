@@ -7,7 +7,7 @@
       if (!window.corSociety) {
         return
       }
-      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.322') {
+      if (window.corSociety._mixinCorSocietyActionsStatusVersion === '1.1.324') {
         return
       }
       Object.assign(window.corSociety, {
@@ -329,6 +329,7 @@
                         corSocietySlaveOrigin: character.corSocietySlaveOrigin || this.randomSlaveOrigin(),
                         corSocietySlaveTask: task,
                         corSocietySlaveSavings: savings,
+                        corSocietyOrigin: 'enslaved_dependant',
                         corSocietyOriginHouseId: character.corSocietyOriginHouseId || house.id,
                         corSocietyPreviousOwnerHouseId: previousOwnerHouseId,
                         flagCannotMarry: true,
@@ -1335,6 +1336,88 @@
                     this.openPerson({ houseId, characterId })
                   }
                 },
+        courtSpouse({ houseId, characterId } = {}) {
+                  let result = false
+                  this.withHouse(houseId, (society, house) => {
+                    let state = daapi.getState()
+                    let currentId = this.currentCharacterId(state)
+                    let player = state.characters[currentId] || state.current
+                    let spouse = state.characters[characterId]
+                    if (!player || !spouse || this.sameCharacterId(currentId, characterId)) {
+                      return
+                    }
+                    player.id = player.id || currentId
+                    spouse.id = spouse.id || characterId
+                    if (!this.sameCharacterId(player.spouseId, characterId)) {
+                      // Not actually married: fall back to the normal courtship flow.
+                      result = { redirectCourt: true }
+                      return
+                    }
+                    if (this.age(player, state) < 13 || this.age(spouse, state) < 13) {
+                      result = {
+                        title: 'Too young',
+                        message: 'Both spouses must be at least 13.',
+                        image: this.characterPortrait(spouse, state, house)
+                      }
+                      return
+                    }
+                    // Marital intimacy near-always strengthens the bond.
+                    this.changePersonalRelation(society, currentId, characterId, 6, 'lover')
+                    let social = this.characterSocialRecord(society, characterId, true)
+                    social.bond = this.clamp((social.bond || 0) + 8, 0, 100)
+                    this.applyStats({ prestige: 1 })
+                    let lines = ['You spend an intimate night with ' + this.characterName(spouse, state) + '. Your bond grows warmer.']
+                    // Attempt conception through the shared pregnancy system.
+                    let mother = this.characterIsMale(player) ? spouse : player
+                    let father = this.characterIsMale(player) ? player : spouse
+                    let conceived = false
+                    if (mother && father && !mother.startedPregnancyTime && !father.startedPregnancyTime) {
+                      let motherAge = this.age(mother, state)
+                      let fertile = motherAge >= 16 && motherAge <= 42 && !mother.flagCannotGetPregnant && !father.flagCannotImpregnate
+                      if (fertile) {
+                        let children = this.childrenCountForCouple(state, mother.id, father.id)
+                        let chance = this.clamp(0.9 - children * 0.12, 0.2, 0.92)
+                        if (Math.random() < chance) {
+                          try {
+                            daapi.impregnate({ characterId: mother.id, fatherId: father.id })
+                            daapi.forceUpdateCharacterDisplay({ characterId: mother.id })
+                            conceived = true
+                          } catch (err) {
+                            console.warn(err)
+                          }
+                        }
+                      }
+                    }
+                    if (conceived) {
+                      lines.push(this.characterName(mother, state) + ' is now expecting a child.')
+                      house.lastFamilyEvent = this.characterName(mother, state) + ' is expecting a child.'
+                      this.log(society, this.characterName(mother, state) + ' is expecting a child with ' + this.characterName(father, state) + '.', 'birth', house.id)
+                    }
+                    this.save(society)
+                    result = {
+                      title: 'A night with your spouse',
+                      message: lines.join('\n'),
+                      image: this.characterPortrait(spouse, state, house)
+                    }
+                  })
+                  if (result && result.redirectCourt) {
+                    this.courtCharacter({ houseId, characterId })
+                    return
+                  }
+                  if (result) {
+                    this.pushModal({
+                      title: result.title,
+                      message: result.message,
+                      image: result.image,
+                      options: [{
+                        text: 'Back',
+                        action: { event: this.event, method: 'openPerson', context: { houseId, characterId } }
+                      }]
+                    })
+                  } else {
+                    this.openPerson({ houseId, characterId })
+                  }
+                },
         courtshipApproaches(society, state, house, player, character, social, romance) {
                   return [
                     {
@@ -2329,7 +2412,7 @@
                   return !!character.isMale
                 }
       })
-      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.322'
+      window.corSociety._mixinCorSocietyActionsStatusVersion = '1.1.324'
     }
   }
 }
