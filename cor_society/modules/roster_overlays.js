@@ -526,6 +526,8 @@
                   if (typeof document === 'undefined' || document.hidden) {
                     return
                   }
+                  let clock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now())
+                  let started = clock()
                   let state = daapi.getState()
                   this.applyPlayerStatusOverlay(state)
                   this.applyPortraitOverlays(state)
@@ -540,6 +542,12 @@
                   }
                   if (this.installPoliticsGuards) {
                     this.installPoliticsGuards()
+                  }
+                  if (this.installRefreshCoalescer) {
+                    this.installRefreshCoalescer()
+                  }
+                  if (this.perfTime) {
+                    this.perfTime('overlayTick', clock() - started)
                   }
                 },
         applyPlayerStatusOverlay(state) {

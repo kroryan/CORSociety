@@ -25,8 +25,22 @@
                 },
         installDebugConsoleCommand() {
                   let self = this
+                  let perf = function() {
+                    // The profiler's one-line report (see diagnostics.perfReport), then a fresh start.
+                    let society = (typeof window !== 'undefined' && window.corSociety) || self
+                    let report = society.perfReport ? society.perfReport() : ''
+                    if (society.perfReset) {
+                      society.perfReset()
+                    }
+                    return report
+                  }
                   let command = function(section) {
                     section = section || 'overview'
+                    if (section === 'perf') {
+                      // No debug window and no saved snapshot: profiling must not grow the save.
+                      let society = (typeof window !== 'undefined' && window.corSociety) || self
+                      return society.perfReport ? society.perfReport() : ''
+                    }
                     let snapshot = false
                     try {
                       let society = false
@@ -67,7 +81,9 @@
                         'corSocietyDebug("log")',
                         'corSocietyDebug("houses")',
                         'corSocietyDebug("systems")',
-                        'corSocietyDebug("full")'
+                        'corSocietyDebug("full")',
+                        'corSocietyDebug("perf")',
+                        'corSocietyPerf()'
                       ],
                       note: 'The command opens the in-game debug window and stores the last snapshot in corSocietyLastDebugSnapshot.'
                     }
@@ -87,6 +103,7 @@
                       root.corSocietyDebug = command
                       root.CORSocietyDebug = command
                       root.corSocietyDebugHelp = help
+                      root.corSocietyPerf = perf
                     } catch (err) {
                       console.warn(err)
                     }
@@ -95,6 +112,7 @@
                     daapi.corSocietyDebug = command
                     daapi.CORSocietyDebug = command
                     daapi.corSocietyDebugHelp = help
+                    daapi.corSocietyPerf = perf
                   } catch (err) {
                     console.warn(err)
                   }
@@ -108,6 +126,7 @@
                         '  if (typeof daapi !== "undefined") return daapi.invokeMethod({event:"/cor_society/engine",method:"openDebugConsole",context:{section:section||"overview"}});',
                         '}',
                         'function CORSocietyDebug(section){ return corSocietyDebug(section); }',
+                        'function corSocietyPerf(){ return (typeof daapi !== "undefined" && daapi.corSocietyPerf) ? daapi.corSocietyPerf() : ""; }',
                         'function corSocietyDebugHelp(){ return (typeof daapi !== "undefined" && daapi.corSocietyDebugHelp) ? daapi.corSocietyDebugHelp() : "Use daapi.invokeMethod({ event: \\"/cor_society/engine\\", method: \\"openDebugConsole\\" })"; }'
                       ].join('\n')
                       document.documentElement.appendChild(script)
@@ -212,9 +231,13 @@
                     snapshot.family = this.familyDiagnostics ? this.familyDiagnostics(society, state) : null
                   }
                   if (section === 'full') {
+                    // The snapshot is saved in a global flag: plain copies only (getState() hands out live
+                    // views), and without modFlags, which hold the Society and earlier snapshots.
+                    let current = Object.assign({}, state.current || {})
+                    delete current.modFlags
                     snapshot.rawSociety = society
-                    snapshot.rawCurrent = state.current
-                    snapshot.rawSettings = state.settings
+                    snapshot.rawCurrent = this.plainCopy(current)
+                    snapshot.rawSettings = this.plainCopy(state.settings)
                   }
                   return snapshot
                 },
@@ -518,20 +541,32 @@
         safeId(value) {
                   return String(value || '').replace(/[^a-zA-Z0-9_]/g, '_')
                 },
-        installStateSnapshotCache() {
+        installStateSnapshotCache(options) {
                   // daapi.getState() deep-copies the whole game state on every call (game 1.6.37:
-                  // JSON.parse(stringify(state))), and the mod calls it from ~390 places, so most of a
-                  // month's work was copying. Hand out one copy per synchronous task instead. Any other
-                  // daapi call may change the game, so it drops the copy; code that edits a getState()
-                  // result in place must call invalidateStateSnapshot() so nobody else sees the edit.
+                  // JSON.parse(stringifySafe(state))), and the mod calls it from ~400 places, so most of a
+                  // month's work was copying. Hand out a copy-on-write view of the live state instead
+                  // (stateView): reads see the game as it is, writes stay in the view. One view per
+                  // synchronous task; any other daapi call may change the game, so it drops the view, and
+                  // code that edits a getState() result in place must call invalidateStateSnapshot() so
+                  // nobody else in the task sees the edit. window.corSocietyDisableLiveState = true brings
+                  // back one copy per task.
+                  if (options && typeof options.liveState === 'function') {
+                    this._liveStateSource = options.liveState
+                  }
                   if (typeof daapi === 'undefined' || !daapi || typeof daapi.getState !== 'function') {
                     return false
                   }
                   if (daapi.getState.__corSocietySnapshot) {
+                    // already wrapped (a new boot in the same session): share the task cache it uses
+                    this._stateSnapshotHolder = daapi.getState.__corSocietyHolder || this._stateSnapshotHolder
                     return true
                   }
                   let holder = { value: null }
                   this._stateSnapshotHolder = holder
+                  // The wrappers outlive this object if window.corSociety is ever replaced (a new boot in
+                  // the same session): they work through whichever object is current when they run.
+                  let installer = this
+                  let current = () => (typeof window !== 'undefined' && window.corSociety) || installer
                   let original = daapi.getState
                   let reads = { getState: true, getCharacter: true, getDynasty: true, getGlobalFlag: true, getCharacterFlag: true, requireImage: true, getCharacterIcon: true, getPetIcon: true, getJobsForCharacter: true }
                   // Modal / UI-only calls change nothing the mod reads back, and the bundled translator
@@ -542,11 +577,33 @@
                     if (typeof fn !== 'function' || reads[key] || untouched[key] || /^calculate/.test(key) || /^corSociety|^CORSociety/.test(key)) {
                       return
                     }
+                    // Only plain data reaches the game: a state view passed in an argument (a look, a
+                    // features object, a debug snapshot) is replaced by a plain copy. The Society flag
+                    // is the exception, too big to walk on every save; nothing may store a view there.
                     let wrapped = function() {
+                      let self = current()
+                      let society = key === 'setGlobalFlag' && arguments[0] && arguments[0].flag === self.flag
+                      let args = !society && self.detachStateViews ? Array.prototype.map.call(arguments, (arg) => self.detachStateViews(arg)) : arguments
+                      // A write that would change nothing never reaches the game (see isNoOpDaapiWrite).
+                      if (!(typeof window !== 'undefined' && window.corSocietyDisableNoopFilter) && self.isNoOpDaapiWrite) {
+                        let live = self.liveGameState()
+                        if (live && self.isNoOpDaapiWrite(key, args[0], live)) {
+                          if (self.perfCount) {
+                            self.perfCount('daapiWriteSkipped')
+                          }
+                          return key === 'updateCharacter' ? self.plainCopy(live.characters[args[0].characterId]) : undefined
+                        }
+                      }
+                      if (self.perfCount) {
+                        self.perfCount('daapiWrite')
+                      }
                       holder.value = null
+                      // the game's character rebuild this write triggers is coalesced (installRefreshCoalescer)
+                      self._daapiWriteDepth = (self._daapiWriteDepth || 0) + 1
                       try {
-                        return fn.apply(this, arguments)
+                        return fn.apply(this, args)
                       } finally {
+                        self._daapiWriteDepth -= 1
                         holder.value = null
                       }
                     }
@@ -556,21 +613,54 @@
                     })
                     daapi[key] = wrapped
                   })
+                  // A redraw request changes nothing the mod reads, but the game answers it with the same
+                  // whole-`characters` rebuild as a write: count it as a daapi call so it is coalesced too.
+                  if (typeof daapi.forceUpdateCharacterDisplay === 'function') {
+                    let redraw = daapi.forceUpdateCharacterDisplay
+                    let wrappedRedraw = function() {
+                      let self = current()
+                      self._daapiWriteDepth = (self._daapiWriteDepth || 0) + 1
+                      try {
+                        return redraw.apply(this, arguments)
+                      } finally {
+                        self._daapiWriteDepth -= 1
+                      }
+                    }
+                    Object.keys(redraw).forEach((prop) => {
+                      wrappedRedraw[prop] = redraw[prop]
+                    })
+                    daapi.forceUpdateCharacterDisplay = wrappedRedraw
+                  }
+                  let clock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now())
+                  let take = (target, args) => {
+                    let self = current()
+                    let live = !(typeof window !== 'undefined' && window.corSocietyDisableLiveState) && self.liveGameState()
+                    if (live) {
+                      return self.stateView(live)
+                    }
+                    let started = clock()
+                    let value = original.apply(target, args)
+                    if (self.perfTime) {
+                      self.perfTime('fullCopy', clock() - started)
+                    }
+                    return value
+                  }
                   let snapshot = function() {
                     if (typeof window !== 'undefined' && window.corSocietyDisableSnapshotCache) {
                       holder.value = null
-                      return original.apply(this, arguments)
+                      return take(this, arguments)
                     }
                     if (holder.value) {
                       return holder.value
                     }
-                    holder.value = original.apply(this, arguments)
+                    holder.value = take(this, arguments)
                     Promise.resolve().then(() => {
                       holder.value = null
                     })
                     return holder.value
                   }
                   snapshot.__corSocietySnapshot = true
+                  snapshot.__corSocietyHolder = holder
                   daapi.getState = snapshot
                   return true
                 },
@@ -578,6 +668,352 @@
                   if (this._stateSnapshotHolder) {
                     this._stateSnapshotHolder.value = null
                   }
+                },
+        installRefreshCoalescer(store) {
+                  // Every character write through daapi makes the game dispatch forceUpdateCharacter, which
+                  // rebuilds the whole `characters` object (a copy of every key, made reactive again) and
+                  // re-renders whatever shows characters: dozens to hundreds of times in one month. While a
+                  // daapi call runs, that dispatch only records the character; the task's end (a microtask)
+                  // runs the game's rebuild once for all of them. The game's own dispatches stay immediate.
+                  // window.corSocietyDisableRefreshCoalescing = true turns it off.
+                  if (!store) {
+                    let root = this.findGameVueRoot ? this.findGameVueRoot() : null
+                    store = root && root.$store
+                  }
+                  let entry = store && store._actions && store._actions.forceUpdateCharacter
+                  if (!entry || typeof entry[0] !== 'function') {
+                    return false
+                  }
+                  if (entry[0].__corSocietyCoalescer) {
+                    return true
+                  }
+                  // The wrappers outlive this object if window.corSociety is ever replaced (a new boot in
+                  // the same session): they work through whichever object is current when they run.
+                  let installer = this
+                  let current = () => (typeof window !== 'undefined' && window.corSociety) || installer
+                  let original = entry[0]
+                  let coalesced = function(characterId) {
+                    let self = current()
+                    if (!(self._daapiWriteDepth > 0) || (typeof window !== 'undefined' && window.corSocietyDisableRefreshCoalescing)) {
+                      return original.apply(this, arguments)
+                    }
+                    let pending = self._pendingRebuild
+                    if (!pending || pending.store !== store || pending.state !== store.state) {
+                      pending = { store, state: store.state, original, ids: new Set() }
+                      self._pendingRebuild = pending
+                    }
+                    pending.ids.add(String(characterId))
+                    if (self.perfCount) {
+                      self.perfCount('rebuildRequested')
+                    }
+                    if (!self._holdRebuilds && !self._rebuildFlushScheduled) {
+                      self._rebuildFlushScheduled = true
+                      Promise.resolve().then(() => {
+                        self._rebuildFlushScheduled = false
+                        self.flushCoalescedRefreshes()
+                      })
+                    }
+                    return Promise.resolve()
+                  }
+                  coalesced.__corSocietyCoalescer = true
+                  entry[0] = coalesced
+                  return true
+                },
+        flushCoalescedRefreshes() {
+                  // Runs the game's character rebuild once for every character recorded since the last flush.
+                  // Records belong to the game state they were made in: after a save load they are dropped.
+                  let killed = typeof window !== 'undefined' && window.corSocietyDisableRefreshCoalescing
+                  let pending = this._pendingRebuild
+                  if (!pending || (this._holdRebuilds && !killed)) {
+                    return 0
+                  }
+                  this._pendingRebuild = null
+                  if (pending.store.state !== pending.state) {
+                    return 0
+                  }
+                  let characters = (pending.state && pending.state.characters) || {}
+                  let ids = Array.from(pending.ids).filter((id) => characters[id])
+                  if (!ids.length) {
+                    return 0
+                  }
+                  try {
+                    // the game marks each changed character (charHash) and rebuilds once, for the last one
+                    ids.slice(0, -1).forEach((id) => {
+                      characters[id].charHash = Math.random()
+                    })
+                    pending.original.call(pending.store, ids[ids.length - 1])
+                    if (this.perfCount) {
+                      this.perfCount('rebuildRun')
+                    }
+                  } catch (err) {
+                    console.warn(err)
+                  }
+                  return ids.length
+                },
+        holdCoalescedRefreshes(on) {
+                  // While held (a month being processed), rebuilds wait; releasing runs them once.
+                  this._holdRebuilds = !!on
+                  if (!on) {
+                    return this.flushCoalescedRefreshes()
+                  }
+                  return 0
+                },
+        STATE_VIEW: typeof Symbol === 'function' ? Symbol('corSocietyStateView') : '__corSocietyStateView',
+        liveGameState() {
+                  // The game's live Vuex state, the object daapi.getState() serializes; null when the game
+                  // is not reachable (loading, or outside the game).
+                  try {
+                    if (this._liveStateSource) {
+                      return this._liveStateSource() || null
+                    }
+                    let root = this.findGameVueRoot ? this.findGameVueRoot() : null
+                    let state = root && root.$store && root.$store.state
+                    return state && typeof state === 'object' && state.current && state.characters ? state : null
+                  } catch (err) {
+                    return null
+                  }
+                },
+        stateView(target) {
+                  // A read-through, copy-on-write view of a live game object. Reads see the live value
+                  // (objects come back as views too); writes and deletes stay in this view and never reach
+                  // the game. Arrays answer with the plain Array methods, not Vue's patched ones, so a push on
+                  // a view neither changes nor notifies the live array. A prototype change also stays in the
+                  // view; freezing or sealing one is refused, since a proxy can only report it by freezing
+                  // the live object.
+                  let marker = this.STATE_VIEW
+                  let overlays = new WeakMap()
+                  let views = new WeakMap()
+                  let prototypes = new WeakMap()
+                  let removed = {}
+                  let overlay = (object) => {
+                    let entries = overlays.get(object)
+                    if (!entries) {
+                      entries = new Map()
+                      overlays.set(object, entries)
+                    }
+                    return entries
+                  }
+                  let viewOf
+                  let handler = {
+                    get(object, key) {
+                      if (key === marker) {
+                        return true
+                      }
+                      let entries = overlays.get(object)
+                      if (entries && entries.has(key)) {
+                        let value = entries.get(key)
+                        return value === removed ? undefined : value
+                      }
+                      if (prototypes.has(object) && !Object.prototype.hasOwnProperty.call(object, key)) {
+                        let proto = prototypes.get(object)
+                        return proto ? Reflect.get(proto, key) : undefined
+                      }
+                      if (Array.isArray(object) && typeof Array.prototype[key] === 'function' && !Object.prototype.hasOwnProperty.call(object, key)) {
+                        return Array.prototype[key]
+                      }
+                      let value = Reflect.get(object, key)
+                      if (!value || typeof value !== 'object') {
+                        return value
+                      }
+                      if (!Object.isExtensible(object)) {
+                        // a frozen property must report its own object
+                        let own = Reflect.getOwnPropertyDescriptor(object, key)
+                        if (own && !own.configurable && !own.writable) {
+                          return value
+                        }
+                      }
+                      return viewOf(value)
+                    },
+                    set(object, key, value) {
+                      let entries = overlay(object)
+                      if (Array.isArray(object) && typeof key === 'string') {
+                        // keep array length rules: shortening drops the entries past the new end, writing
+                        // past the end grows the array
+                        let length = handler.get(object, 'length')
+                        if (key === 'length') {
+                          for (let i = Number(value); i < length; i += 1) {
+                            entries.set(String(i), removed)
+                          }
+                        } else if (/^(0|[1-9]\d*)$/.test(key) && Number(key) >= length) {
+                          entries.set('length', Number(key) + 1)
+                        }
+                      }
+                      entries.set(key, value)
+                      return true
+                    },
+                    deleteProperty(object, key) {
+                      overlay(object).set(key, removed)
+                      return true
+                    },
+                    defineProperty(object, key, descriptor) {
+                      overlay(object).set(key, descriptor && 'value' in descriptor ? descriptor.value : undefined)
+                      return true
+                    },
+                    has(object, key) {
+                      if (key === marker) {
+                        return true
+                      }
+                      let entries = overlays.get(object)
+                      if (entries && entries.has(key)) {
+                        return entries.get(key) !== removed
+                      }
+                      if (prototypes.has(object) && !Object.prototype.hasOwnProperty.call(object, key)) {
+                        let proto = prototypes.get(object)
+                        return !!proto && key in proto
+                      }
+                      return key in object
+                    },
+                    getPrototypeOf(object) {
+                      return prototypes.has(object) ? prototypes.get(object) : Reflect.getPrototypeOf(object)
+                    },
+                    setPrototypeOf(object, proto) {
+                      prototypes.set(object, proto)
+                      return true
+                    },
+                    preventExtensions() {
+                      return false
+                    },
+                    ownKeys(object) {
+                      let keys = Reflect.ownKeys(object)
+                      let entries = overlays.get(object)
+                      if (!entries) {
+                        return keys
+                      }
+                      let out = keys.filter((key) => entries.get(key) !== removed)
+                      entries.forEach((value, key) => {
+                        if (value !== removed && out.indexOf(key) < 0) {
+                          out.push(key)
+                        }
+                      })
+                      return out
+                    },
+                    getOwnPropertyDescriptor(object, key) {
+                      let own = Reflect.getOwnPropertyDescriptor(object, key)
+                      let entries = overlays.get(object)
+                      if (entries && entries.has(key)) {
+                        let value = entries.get(key)
+                        if (value === removed) {
+                          return undefined
+                        }
+                        return { value, writable: true, enumerable: own ? own.enumerable : true, configurable: !own || own.configurable }
+                      }
+                      if (!own || !own.configurable) {
+                        return own
+                      }
+                      // Answered lazily: listing keys (Object.keys, for...in, JSON) only needs enumerability,
+                      // so no view is built for a value until it is read.
+                      return {
+                        get: () => handler.get(object, key),
+                        set: (value) => {
+                          handler.set(object, key, value)
+                        },
+                        enumerable: own.enumerable,
+                        configurable: true
+                      }
+                    }
+                  }
+                  viewOf = (object) => {
+                    let view = views.get(object)
+                    if (!view) {
+                      view = new Proxy(object, handler)
+                      views.set(object, view)
+                    }
+                    return view
+                  }
+                  return viewOf(target)
+                },
+        isNoOpDaapiWrite(name, args, live) {
+                  // True when a daapi write would leave the live game state as it is. The game rebuilds its
+                  // whole `characters` object and re-renders for every character write (forceUpdateCharacter),
+                  // so a write that changes nothing is pure cost. Only writes whose effect is fully known are
+                  // judged, and only for a character that exists; anything else is left to the game. Traits are
+                  // left alone: adding a trait the character has adds a stack, and neither call rebuilds when
+                  // it changes nothing.
+                  let character = args && live && live.characters && live.characters[args.characterId]
+                  if (!character || typeof character !== 'object') {
+                    return false
+                  }
+                  let isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+                  // deep equality, where a key holding undefined is the same as a missing key
+                  let same = (a, b) => {
+                    if (a === b) {
+                      return true
+                    }
+                    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) {
+                      return false
+                    }
+                    if (Array.isArray(a)) {
+                      return a.length === b.length && a.every((value, i) => same(value, b[i]))
+                    }
+                    let keys = Object.keys(a).filter((key) => a[key] !== undefined)
+                    let other = Object.keys(b).filter((key) => b[key] !== undefined)
+                    return keys.length === other.length && keys.every((key) => same(a[key], b[key]))
+                  }
+                  // the game's merge (updateCharacter): a nested object merges into a live object, anything
+                  // else replaces the live value
+                  let merged = (base, patch) => Object.keys(patch).every((key) => {
+                    if (isObject(patch[key]) && isObject(base[key])) {
+                      return merged(base[key], patch[key])
+                    }
+                    return patch[key] === undefined ? base[key] === undefined : same(base[key], patch[key])
+                  })
+                  let withoutFlag = (value) => {
+                    let copy = Object.assign({}, value)
+                    delete copy.isDAAPI
+                    return copy
+                  }
+                  let actions = character.actions || {}
+                  let statuses = character.statuses || {}
+                  if (name === 'updateCharacter') {
+                    return isObject(args.character) && merged(character, args.character)
+                  }
+                  if (name === 'addCharacterAction') {
+                    return !!actions[args.key] && isObject(args.action) && same(withoutFlag(actions[args.key]), withoutFlag(args.action))
+                  }
+                  if (name === 'deleteCharacterAction') {
+                    return !(args.key in actions)
+                  }
+                  if (name === 'addCharacterStatus') {
+                    return !!statuses[args.key] && isObject(args.status) && same(withoutFlag(statuses[args.key]), withoutFlag(args.status))
+                  }
+                  if (name === 'setCharacterStatusActive') {
+                    return !!statuses[args.key] && statuses[args.key].isActive === args.isActive
+                  }
+                  if (name === 'deleteCharacterStatus') {
+                    return !(args.key in statuses)
+                  }
+                  return false
+                },
+        isStateView(value) {
+                  return !!(value && typeof value === 'object' && this.STATE_VIEW && value[this.STATE_VIEW] === true)
+                },
+        plainCopy(value) {
+                  // A plain deep copy (plain JSON, not the game's slower serializer) of a value that may be
+                  // or contain a state view.
+                  return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
+                },
+        detachStateViews(value, depth) {
+                  // The same value with every state view inside replaced by a plain copy. Containers are
+                  // copied only along the path to a view; anything else, undefined values included, passes
+                  // through untouched.
+                  depth = depth || 0
+                  if (!value || typeof value !== 'object' || depth > 12) {
+                    return value
+                  }
+                  if (this.isStateView(value)) {
+                    return this.plainCopy(value)
+                  }
+                  let out = value
+                  Object.keys(value).forEach((key) => {
+                    let next = this.detachStateViews(value[key], depth + 1)
+                    if (next !== value[key]) {
+                      if (out === value) {
+                        out = Array.isArray(value) ? value.slice() : Object.assign({}, value)
+                      }
+                      out[key] = next
+                    }
+                  })
+                  return out
                 },
         daapiReady() {
                   // The game deletes and rebuilds window.daapi (setupDAAPI) when a save loads, and only

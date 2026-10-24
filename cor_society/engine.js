@@ -38,6 +38,9 @@
         if (window.corSociety.installStateSnapshotCache) {
           window.corSociety.installStateSnapshotCache()
         }
+        if (window.corSociety.installRefreshCoalescer) {
+          window.corSociety.installRefreshCoalescer()
+        }
         if (window.corSociety.installGameErrorLogGuard) {
           window.corSociety.installGameErrorLogGuard()
         }
@@ -72,6 +75,9 @@
       daapi.invokeMethod({ event: '/cor_society/engine', method: 'applyRefactorMixins' })
       if (window.corSociety.installStateSnapshotCache) {
         window.corSociety.installStateSnapshotCache()
+      }
+      if (window.corSociety.installRefreshCoalescer) {
+        window.corSociety.installRefreshCoalescer()
       }
       if (window.corSociety.installGameErrorLogGuard) {
         window.corSociety.installGameErrorLogGuard()
@@ -307,14 +313,16 @@
     performSocietyMarriage(args) {
       window.corSociety.runAction('performSocietyMarriage', args || {})
     },
+    // The bundled sub-mods call these from the game's monthly list, right after main.js starts the
+    // month: they only register buttons, so they skip runAction, which would finish the month at once.
     registerBundledBankActions(args) {
-      window.corSociety.runAction('registerBundledBankActions', args || {})
+      window.corSociety.registerBundledBankActions(args || {})
     },
     registerBundledSlaveActions(args) {
-      window.corSociety.runAction('registerBundledSlaveActions', args || {})
+      window.corSociety.registerBundledSlaveActions(args || {})
     },
     registerBundledMatchmakerAction(args) {
-      window.corSociety.runAction('registerBundledMatchmakerAction', args || {})
+      window.corSociety.registerBundledMatchmakerAction(args || {})
     },
     openBankOfRome() {
       if (!window.corSociety) {
