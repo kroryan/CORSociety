@@ -54,6 +54,9 @@
           window.corSociety.installPoliticsGuards()
           window.corSociety.syncPoliticalStanding()
         }
+        if (window.corSociety.installFamilyGuards) {
+          window.corSociety.installFamilyGuards()
+        }
         window.corSociety.installDebugConsoleCommand()
         window.corSociety.installDebtSaleModalPatch()
         window.corSociety.registerPlayerEntryActions()
@@ -91,6 +94,9 @@
       if (window.corSociety.installPoliticsGuards) {
         window.corSociety.installPoliticsGuards()
         window.corSociety.syncPoliticalStanding()
+      }
+      if (window.corSociety.installFamilyGuards) {
+        window.corSociety.installFamilyGuards()
       }
       window.corSociety.ensure()
       window.corSociety.installDebugConsoleCommand()
@@ -309,6 +315,9 @@
     },
     confirmSocietyMarriage(args) {
       window.corSociety.runAction('confirmSocietyMarriage', args || {})
+    },
+    moveOutWithoutShare(args) {
+      window.corSociety.runAction('moveOutWithoutShare', args || {})
     },
     performSocietyMarriage(args) {
       window.corSociety.runAction('performSocietyMarriage', args || {})

@@ -167,6 +167,107 @@
             })
           })
           return named
+        },
+        foldBackInventedCadets(society, state) {
+          // Step 6. The monthly NPC cadet roll let the relatives the mod invents to fill in the
+          // player's tree (inventedPlayerRelative) found branches of the player's dynasty. Those
+          // branches are dissolved and their people rejoin the player's house; a real relative's
+          // branch stays.
+          if (!society || !society.houses || !state || !state.characters || !this.dissolvePlayerDynastyCadets) {
+            return 0
+          }
+          let houseIds = Object.keys(society.houses).filter((houseId) => {
+            let house = society.houses[houseId]
+            if (!this.isNpcCadetOfPlayerDynasty(society, state, house)) {
+              return false
+            }
+            let founder = house.founderId && state.characters[house.founderId]
+            return !founder || this.inventedPlayerRelative(founder, state)
+          })
+          this.dissolvePlayerDynastyCadets(society, state, houseIds, (name) => name + ' is folded back into your house: no real branch of your family founded it.')
+          return houseIds.length
+        },
+        wipeUnwarnedLudiAmbitus(society) {
+          // Step 7. Ludi seats bought in the game's campaign were recorded as hidden ambitus before
+          // the campaign said so (warnCampaignTickets). The hidden records are wiped; exposed ones,
+          // trials and convictions stay.
+          let wiped = 0
+          Object.keys((society && society.crimes) || {}).forEach((characterId) => {
+            let list = society.crimes[characterId]
+            if (!Array.isArray(list)) {
+              return
+            }
+            let kept = list.filter((crime) => !(crime && crime.type === 'ambitus' && crime.source === 'election' && !crime.exposed))
+            wiped += list.length - kept.length
+            if (kept.length) {
+              society.crimes[characterId] = kept
+            } else {
+              delete society.crimes[characterId]
+            }
+          })
+          return wiped
+        },
+        restoreBridesToTheirGens(society, state) {
+          // Step 8. normalizeGeneratedPeople moved generated brides living in the player's house into the
+          // player's gens. The game then gave their children the gens's adoption agnomen ('Tullianus',
+          // 'Tullia'): a mother of the household's gens counts as a matrilineal marriage. A bride whose
+          // old house record names her gens returns to it, and children of the gens born to a father of
+          // the gens lose an agnomen made from their own nomen.
+          let playerDynastyId = String(this.currentCharacterDynastyId(state) || '')
+          let characters = (state && state.characters) || {}
+          if (!society || !playerDynastyId || !state.dynasties) {
+            return 0
+          }
+          let inGens = (character) => !!character && String(character.dynastyId || '') === playerDynastyId
+          let origins = {}
+          ;[society.houses || {}, society.deadHouses || {}].forEach((houses) => {
+            Object.keys(houses).forEach((houseId) => {
+              let house = houses[houseId]
+              let dynastyId = house && String(this.gameDynastyIdForHouse(house) || '')
+              if (!dynastyId || dynastyId === playerDynastyId || !state.dynasties[dynastyId]) {
+                return
+              }
+              ;['memberIds', 'knownMemberIds', 'deadMemberIds', 'notableIds'].forEach((key) => {
+                ;(house[key] || []).forEach((characterId) => {
+                  origins[String(characterId)] = origins[String(characterId)] || dynastyId
+                })
+              })
+            })
+          })
+          let changed = 0
+          Object.keys(characters).forEach((characterId) => {
+            let character = characters[characterId]
+            let spouse = character && characters[character.spouseId]
+            let bornInGens = character && (inGens(characters[character.fatherId]) || inGens(characters[character.motherId]))
+            let origin = origins[String(characterId)]
+            if (!inGens(character) || !character.corSocietyGenerated || character.corSocietyPlayerTreeRole || !inGens(spouse) || bornInGens || !origin) {
+              return
+            }
+            try {
+              daapi.updateCharacter({ characterId, character: { dynastyId: origin } })
+              changed += 1
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+          let nomen = String((state.dynasties[playerDynastyId] || {}).nomen || '')
+          let stem = nomen.substr(0, nomen.lastIndexOf('i')) || nomen.substr(0, nomen.lastIndexOf('u')) || nomen.substr(0, nomen.lastIndexOf('a')) || nomen
+          Object.keys(characters).forEach((characterId) => {
+            let character = characters[characterId]
+            if (!nomen || !inGens(character) || !character.agnomen || !inGens(characters[character.fatherId])) {
+              return
+            }
+            if (character.agnomen !== stem + 'ianus' && character.agnomen !== stem + 'ia') {
+              return
+            }
+            try {
+              daapi.updateCharacter({ characterId, character: { agnomen: '' } })
+              changed += 1
+            } catch (err) {
+              console.warn(err)
+            }
+          })
+          return changed
         }
       })
       window.corSociety._mixinCorSocietyMigrationsVersion = '1.1.331'

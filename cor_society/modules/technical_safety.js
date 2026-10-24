@@ -14,7 +14,7 @@
       let previousDebugSectionOptions = window.corSociety.debugSectionOptions
       Object.assign(window.corSociety, {
         currentSchemaVersion() {
-          return 5
+          return 8
         },
         runSocietyMigrations(society, state) {
           if (!society || typeof society !== 'object') {
@@ -64,6 +64,21 @@
             if (this.nameNamelessHouses) this.nameNamelessHouses(society, gameState)
             society.schemaVersion = 5
             current = 5
+          }
+          if (current < 6 && gameState) {
+            if (this.foldBackInventedCadets) this.foldBackInventedCadets(society, gameState)
+            society.schemaVersion = 6
+            current = 6
+          }
+          if (current < 7 && current >= 6) {
+            if (this.wipeUnwarnedLudiAmbitus) this.wipeUnwarnedLudiAmbitus(society)
+            society.schemaVersion = 7
+            current = 7
+          }
+          if (current < 8 && current >= 7 && gameState) {
+            if (this.restoreBridesToTheirGens) this.restoreBridesToTheirGens(society, gameState)
+            society.schemaVersion = 8
+            current = 8
           }
           if (gameState && society.schemaVersion < target) {
             society.schemaVersion = target
@@ -133,7 +148,10 @@
           pruneCrimeBuckets(society.crimes || {}, true)
           Object.keys(society.pendingTrials || {}).forEach((characterId) => {
             let trial = society.pendingTrials[characterId]
-            if (!characterExists(characterId) || (trial && trial.until && state && this.monthKeyReached(trial.until, state))) {
+            // The monthly audit gives the verdict when the court sits (until); only a trial left long
+            // after that is dropped. Dropping it on the day itself, before the audit, acquitted
+            // everyone the court was waiting for.
+            if (!characterExists(characterId) || (trial && trial.until && state && this.monthIndex(this.monthKey(state)) >= this.monthIndex(trial.until) + 3)) {
               delete society.pendingTrials[characterId]
               changed = true
             }

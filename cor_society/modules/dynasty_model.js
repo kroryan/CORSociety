@@ -91,10 +91,22 @@
                     }
                     let gameDynasty = (state && state.dynasties && state.dynasties[dynastyId]) || {}
                     let record = society.dynasties[dynastyId] || {}
+                    let promoted = this.promoteDynastyOrigin(society, knownHousesByDynasty[dynastyId])
+                    if (promoted) {
+                      record.originHouseId = promoted.id
+                      record.headHouseId = promoted.id
+                    }
                     let originHouseId = this.originHouseIdForDynasty(dynastyId)
                     let originHouse = society.houses[originHouseId] || society.houses[knownHousesByDynasty[dynastyId][0]] || {}
                     record.id = dynastyId
-                    record.name = record.name || this.houseName(gameDynasty, dynastyId)
+                    // The game's family name wins: a new player can edit the cognomen after the
+                    // dynasty exists, and the game can rename it later. Houses named after the old
+                    // name ('House of Gaius <old>', 'Cadet branch of <old>') are renamed with it.
+                    let gameName = gameDynasty.nomen || gameDynasty.cognomen ? this.houseName(gameDynasty, dynastyId) : ''
+                    if (gameName && record.name && record.name !== gameName) {
+                      this.renameDynastyHouses(society, dynastyId, record.name, gameName)
+                    }
+                    record.name = gameName || record.name || this.houseName(gameDynasty, dynastyId)
                     if (!record.originHouseId || !society.houses[record.originHouseId] || String(this.gameDynastyIdForHouse(society.houses[record.originHouseId])) !== String(dynastyId)) {
                       record.originHouseId = society.houses[originHouseId] ? originHouseId : originHouse.id
                     }
@@ -121,6 +133,49 @@
                     society.dynasties[dynastyId] = record
                   }
                   return society
+                },
+        promoteDynastyOrigin(society, houseIds) {
+                  // A dynasty whose origin house died out is headed by its strongest surviving branch,
+                  // which becomes the origin: its own branches now hang from it, and only its members
+                  // (never its founder again) can split off from it.
+                  let houses = (houseIds || []).map((houseId) => society.houses[houseId]).filter(Boolean)
+                  if (!houses.length || houses.some((house) => house.originHouse)) {
+                    return false
+                  }
+                  let head = houses.slice().sort((a, b) => this.houseHeadshipScore(b) - this.houseHeadshipScore(a))[0]
+                  head.originHouse = true
+                  head.houseKind = 'origin'
+                  head.type = 'origin'
+                  head.parentHouseId = ''
+                  head.branchName = 'House of origin'
+                  houses.forEach((house) => {
+                    if (house !== head) {
+                      house.parentHouseId = head.id
+                    }
+                  })
+                  this.log(society, head.name + ' now heads its dynasty: the house of origin has died out.', 'familyTree', head.id)
+                  return head
+                },
+        renameDynastyHouses(society, dynastyId, oldName, newName) {
+                  let renamed = 0
+                  Object.keys(society.houses || {}).forEach((houseId) => {
+                    let house = society.houses[houseId]
+                    if (!house || String(this.gameDynastyIdForHouse(house)) !== String(dynastyId)) {
+                      return
+                    }
+                    let name = String(house.name || '')
+                    if (name === oldName) {
+                      house.name = newName
+                      renamed += 1
+                    } else if (name.slice(-(oldName.length + 1)) === ' ' + oldName) {
+                      house.name = name.slice(0, name.length - oldName.length) + newName
+                      renamed += 1
+                    }
+                    if (house.branchName === 'Cadet branch of ' + oldName) {
+                      house.branchName = 'Cadet branch of ' + newName
+                    }
+                  })
+                  return renamed
                 },
         repairDynastyHouseSystem(society, state) {
                   if (!society || !state || !state.characters) {
@@ -771,8 +826,57 @@
                     influence: [5, 8, 14, 24, 42, 75][level] || 14
                   }
                 },
+        inventedPlayerRelative(character, state) {
+                  // Not a real relative of the player. A real relative's parents lead, through game people only,
+                  // up to the player or one of the player's ancestors. Not real: anyone the mod generated or
+                  // invented for the player's tree (corSocietyGenerated, corSocietyPlayerTreeRole) and their
+                  // descendants, spouses who married in, the unlinked relative the game gives a new player and
+                  // his line, and a line whose link was culled.
+                  let characters = (state && state.characters) || {}
+                  let usable = (id) => id !== undefined && id !== null && id !== ''
+                  if (!character) {
+                    return false
+                  }
+                  let ancestry = {}
+                  let queue = [this.currentCharacterId(state)]
+                  let guard = 0
+                  while (queue.length && guard < 200) {
+                    guard += 1
+                    let id = queue.shift()
+                    let person = usable(id) ? characters[id] : null
+                    if (!person || ancestry[String(id)]) {
+                      continue
+                    }
+                    ancestry[String(id)] = true
+                    queue.push(person.fatherId, person.motherId)
+                  }
+                  let seen = {}
+                  queue = [character.id]
+                  guard = 0
+                  while (queue.length && guard < 200) {
+                    guard += 1
+                    let id = queue.shift()
+                    if (!usable(id) || seen[String(id)]) {
+                      continue
+                    }
+                    seen[String(id)] = true
+                    if (ancestry[String(id)]) {
+                      return false
+                    }
+                    let person = characters[id]
+                    if (!person || person.corSocietyGenerated || person.corSocietyPlayerTreeRole) {
+                      continue
+                    }
+                    queue.push(person.fatherId, person.motherId)
+                  }
+                  return true
+                },
         cadetFounderCandidate(society, state, dynastyId, playerOnly, excludedIds) {
                   let currentId = this.currentCharacterId(state)
+                  // Only real relatives split off a branch of the player's dynasty, never the line the
+                  // mod invented for the player's tree.
+                  let playerDynasty = !playerOnly && String(dynastyId) === String(this.currentCharacterDynastyId(state))
+                  let founders = playerOnly ? {} : this.houseFounderIdMap(society)
                   let ids = playerOnly ? this.playerFamilyMemberIds(state) : this.memberIdsForDynasty(society, state, dynastyId)
                   let originHouse = this.primaryHouseForDynasty(society, dynastyId)
                   let candidates = ids.map((id) => {
@@ -782,6 +886,8 @@
                   }).filter((character) => {
                     if (!character || character.isDead || character.corSocietySlave || character.corSocietySlaveActive) return false
                     if (excludedIds && excludedIds[String(character.id)]) return false
+                    if (playerDynasty && this.inventedPlayerRelative(character, state)) return false
+                    if (founders[String(character.id)]) return false
                     if (!character.dynastyId || String(character.dynastyId) !== String(dynastyId)) return false
                     let houseId = this.resolveCharacterHouseId(character, state, society, { repair: false })
                     if (originHouse && houseId && String(houseId) !== String(originHouse.id)) return false
@@ -802,6 +908,9 @@
                   if (excludedIds && excludedIds[String(founder.id)]) {
                     return false
                   }
+                  if (excludedIds && String(dynastyId) === String(this.currentCharacterDynastyId(state)) && this.inventedPlayerRelative(founder, state)) {
+                    return false
+                  }
                   let dynasty = society.dynasties[dynastyId] || {}
                   let originHouse = this.primaryHouseForDynasty(society, dynastyId)
                   if (!originHouse) {
@@ -811,6 +920,20 @@
                   let limit = this.cadetHouseLimitForStratum(originHouse.stratum || dynasty.stratum)
                   if (houses.length >= limit) {
                     return false
+                  }
+                  let moveIds = this.cadetBranchMemberIds(state, founder)
+                  if (excludedIds) {
+                    moveIds = moveIds.filter((characterId) => !excludedIds[String(characterId)])
+                    // A branch splits off: its founder has never founded a house before, and someone
+                    // stays behind in the origin house. Otherwise the whole family would hop to a new
+                    // house, leave the old one to die out, and do it again from there.
+                    if (this.houseFounderIdMap(society)[String(founder.id)]) {
+                      return false
+                    }
+                    let leaving = this.idSet(moveIds)
+                    if (!this.houseLivingMemberIds(society, state, originHouse).some((characterId) => !leaving[String(characterId)])) {
+                      return false
+                    }
                   }
                   let houseId = this.branchHouseId(dynastyId, founder.id + '_' + houses.length + '_' + this.monthKey(state))
                   let house = this.createHouseRecord(houseId, dynastyId)
@@ -839,10 +962,6 @@
                   house.memberIds = []
                   house.notableIds = []
                   society.houses[houseId] = house
-                  let moveIds = this.cadetBranchMemberIds(state, founder)
-                  if (excludedIds) {
-                    moveIds = moveIds.filter((characterId) => !excludedIds[String(characterId)])
-                  }
                   moveIds.forEach((characterId) => {
                     try {
                       daapi.updateCharacter({ characterId, character: { corSocietyHouseId: houseId, dynastyId } })
@@ -868,6 +987,17 @@
                   }
                   this.log(society, house.name + ' is founded as a cadet house of ' + (dynasty.name || originHouse.name) + '.', 'familyTree', house.id)
                   return house
+                },
+        houseFounderIdMap(society) {
+                  // Everyone who founded a house that still stands.
+                  let map = {}
+                  Object.keys((society && society.houses) || {}).forEach((houseId) => {
+                    let founderId = society.houses[houseId] && society.houses[houseId].foundedByCharacterId
+                    if (founderId) {
+                      map[String(founderId)] = true
+                    }
+                  })
+                  return map
                 },
         cadetBranchMemberIds(state, founder) {
                   let seen = {}
@@ -1005,6 +1135,38 @@
                     (house.cadetHouse || house.houseKind === 'cadet') && house.foundedReason !== 'player branch foundation' &&
                     String(this.gameDynastyIdForHouse(house)) === String(playerHouseId))
                 },
+        dissolvePlayerDynastyCadets(society, state, houseIds, logText) {
+                  // Dissolves branches of the player's dynasty: everyone of the dynasty living in them
+                  // moves back to the player's house, and the houses are removed.
+                  let playerHouseId = this.currentCharacterDynastyId(state)
+                  if (!playerHouseId || !houseIds || !houseIds.length) {
+                    return 0
+                  }
+                  let moved = 0
+                  let dissolveMap = this.idSet(houseIds)
+                  Object.keys(state.characters).forEach((characterId) => {
+                    let character = state.characters[characterId]
+                    if (!character || String(character.dynastyId || '') !== String(playerHouseId)) {
+                      return
+                    }
+                    let houseId = character.corSocietyHouseId && String(character.corSocietyHouseId)
+                    if (houseId && dissolveMap[houseId] && this.repairCharacterHousePointer(state, characterId, playerHouseId)) {
+                      moved += 1
+                    }
+                  })
+                  let dynasty = society.dynasties && society.dynasties[playerHouseId]
+                  houseIds.forEach((houseId) => {
+                    let house = society.houses[houseId]
+                    delete society.houses[houseId]
+                    society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(houseId))
+                    if (dynasty) {
+                      dynasty.houseIds = (dynasty.houseIds || []).filter((id) => String(id) !== String(houseId))
+                      if (String(dynasty.headHouseId || '') === String(houseId)) dynasty.headHouseId = playerHouseId
+                    }
+                    this.log(society, logText((house && house.name) || 'An AI cadet house'), 'familyTree', playerHouseId)
+                  })
+                  return moved
+                },
         repairPlayerFamilyHouseAssignment(society, state) {
                   // Repairs saves where an NPC cadet foundation absorbed the player's family into an
                   // AI-controlled house. A cadet founded by someone the player keeps (their line,
@@ -1034,23 +1196,13 @@
                         return
                       }
                       let houseId = character.corSocietyHouseId && String(character.corSocietyHouseId)
-                      if (houseId && cadetMap[houseId] && (dissolveMap[houseId] || kept[String(characterId)])) {
+                      if (houseId && cadetMap[houseId] && !dissolveMap[houseId] && kept[String(characterId)]) {
                         if (this.repairCharacterHousePointer(state, characterId, playerHouseId)) {
                           repaired += 1
                         }
                       }
                     })
-                    let dynasty = society.dynasties && society.dynasties[playerHouseId]
-                    dissolveIds.forEach((houseId) => {
-                      let house = society.houses[houseId]
-                      delete society.houses[houseId]
-                      society.generatedHouseIds = (society.generatedHouseIds || []).filter((id) => String(id) !== String(houseId))
-                      if (dynasty) {
-                        dynasty.houseIds = (dynasty.houseIds || []).filter((id) => String(id) !== String(houseId))
-                        if (String(dynasty.headHouseId || '') === String(houseId)) dynasty.headHouseId = playerHouseId
-                      }
-                      this.log(society, (house && house.name || 'An AI cadet house') + ' is dissolved: your family stays in the protected player household.', 'familyTree', playerHouseId)
-                    })
+                    repaired += this.dissolvePlayerDynastyCadets(society, state, dissolveIds, (name) => name + ' is dissolved: your family stays in the protected player household.')
                   }
                   Object.keys(society.houses).forEach((houseId) => {
                     let house = society.houses[houseId]
